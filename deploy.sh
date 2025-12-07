@@ -18,7 +18,11 @@ docker-compose up -d --build
 echo "🧹 Cleaning up old/dangling images..."
 # -f forces cleanup without prompt
 # This removes "dangling" images (the ones replaced by the new build)
-docker image prune -f
+if command -v docker &> /dev/null; then
+    docker image prune -f
+else
+    echo "⚠️ 'docker' command not found. Skipping image cleanup."
+fi
 
 echo "=== ✅ Deployment Complete! ==="
 echo "Frontend: http://localhost:8090"
