@@ -1,0 +1,41 @@
+import axios from 'axios';
+
+export const api = axios.create({
+    baseURL: '/api',
+});
+
+api.interceptors.request.use((config: any) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+});
+
+export const login = (username: string, password: string) => api.post('/auth/login', { username, password });
+export const changePassword = (data: any) => api.post('/auth/change-password', data);
+export const getStats = () => api.get('/media/stats');
+export const getFiles = (params: any) => api.get('/media', { params });
+export const getSources = () => api.get('/scan/sources');
+export const addSource = (data: any, force = false) => api.post(`/scan/sources?force=${force}`, data);
+export const deleteSource = (id: number) => api.delete(`/scan/sources/${id}`);
+export const startScan = (id: number) => api.post(`/scan/start/${id}`);
+export const getScanStatus = () => api.get('/scan/status');
+
+export const getCredentials = () => api.get('/credentials');
+export const addCredential = (data: any) => api.post('/credentials', data);
+export const deleteCredential = (id: number) => api.delete(`/credentials/${id}`);
+export const testCredential = (data: any) => api.post('/credentials/test', data);
+export const getGroups = (groupBy: string) => api.get(`/media/groups?groupBy=${groupBy}`);
+export const getDirectory = (path: string) => api.get(`/media/directory?path=${encodeURIComponent(path)}`);
+export const browse = (data: { credentialId: number; path?: string }) => api.post('/scan/browse', data);
+
+// User / History / Favorites
+export const addToHistory = (id: number) => api.post(`/user/history/${id}`);
+export const getHistory = (page = 1, pageSize = 50) => api.get(`/user/history?page=${page}&pageSize=${pageSize}`);
+export const toggleFavorite = (id: number) => api.post(`/user/favorite/${id}`);
+export const getFavorites = (page = 1, pageSize = 50) => api.get(`/user/favorites?page=${page}&pageSize=${pageSize}`);
+export const getFavoriteIds = () => api.get('/user/favorites/ids');
+export const getUserStats = () => api.get('/user/stats');
+
+export default api;

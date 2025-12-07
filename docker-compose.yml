@@ -1,0 +1,29 @@
+services:
+  backend:
+    build: 
+      context: ./backend
+    container_name: webmusic-backend
+    restart: always
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Data Source=data/webmusic.db
+      # Mount the database directory volume to persist data
+    volumes:
+      - ./data:/app/data
+      # If SMB needs host mounting (optional)
+      # - /mnt/nas:/mnt/nas
+    ports:
+      - "5080:8080" # Distinct from Dev (5098) and AirPlay (5000)
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: webmusic-frontend
+    restart: always
+    ports:
+      - "8090:80" # Distinct from Dev (5173)
+    depends_on:
+      - backend
+
+# We might want to use host networking for simpler Tailscale access if needed,
+# but standard bridge + SMB IP usually works.
