@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Play, Music, Edit, Trash2 } from 'lucide-react';
+import { Plus, Play, Music, Trash2 } from 'lucide-react';
 import { getPlaylists, deletePlaylist, getPlaylist } from '../services/api';
 import CreatePlaylistModal from '../components/CreatePlaylistModal';
 import { useNavigate } from 'react-router-dom';

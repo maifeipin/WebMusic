@@ -15876,3 +15876,362 @@ info: WebMusic.Backend.Services.ScannerService[0]
       Scan completed. Added 3000 new files.
 info: WebMusic.Backend.Services.ScanWorker[0]
       Scan job completed. Added 3000 files.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "MediaFiles" AS "m"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "MediaFiles" AS "m"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "PlayHistories" AS "p"
+      WHERE "p"."UserId" = @__userId_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "PlayHistories" AS "p"
+      WHERE "p"."UserId" = @__userId_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "Favorites" AS "f"
+      WHERE "f"."UserId" = @__userId_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "Favorites" AS "f"
+      WHERE "f"."UserId" = @__userId_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM (
+          SELECT DISTINCT "m"."Artist"
+          FROM "MediaFiles" AS "m"
+      ) AS "t"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM (
+          SELECT DISTINCT "m"."Artist"
+          FROM "MediaFiles" AS "m"
+      ) AS "t"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM (
+          SELECT DISTINCT "m"."Album"
+          FROM "MediaFiles" AS "m"
+      ) AS "t"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__p_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."Id", "m"."Title", "m"."Artist", "m"."Album", "m"."Genre", "m"."Duration", "m"."FilePath"
+      FROM (
+          SELECT "p"."MediaFileId", "p"."PlayedAt"
+          FROM "PlayHistories" AS "p"
+          WHERE "p"."UserId" = @__userId_0
+          ORDER BY "p"."PlayedAt" DESC
+          LIMIT @__p_1
+      ) AS "t"
+      INNER JOIN "MediaFiles" AS "m" ON "t"."MediaFileId" = "m"."Id"
+      ORDER BY "t"."PlayedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__p_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."Id", "m"."Title", "m"."Artist", "m"."Album", "m"."Genre", "m"."Duration", "m"."FilePath"
+      FROM (
+          SELECT "p"."MediaFileId", "p"."PlayedAt"
+          FROM "PlayHistories" AS "p"
+          WHERE "p"."UserId" = @__userId_0
+          ORDER BY "p"."PlayedAt" DESC
+          LIMIT @__p_1
+      ) AS "t"
+      INNER JOIN "MediaFiles" AS "m" ON "t"."MediaFileId" = "m"."Id"
+      ORDER BY "t"."PlayedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM (
+          SELECT DISTINCT "m"."Album"
+          FROM "MediaFiles" AS "m"
+      ) AS "t"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__p_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."Id", "m"."Title", "m"."Artist", "m"."Album", "m"."Genre", "m"."Duration", "m"."FilePath"
+      FROM (
+          SELECT "f"."CreatedAt", "f"."MediaFileId"
+          FROM "Favorites" AS "f"
+          WHERE "f"."UserId" = @__userId_0
+          ORDER BY "f"."CreatedAt" DESC
+          LIMIT @__p_1
+      ) AS "t"
+      INNER JOIN "MediaFiles" AS "m" ON "t"."MediaFileId" = "m"."Id"
+      ORDER BY "t"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__p_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."Id", "m"."Title", "m"."Artist", "m"."Album", "m"."Genre", "m"."Duration", "m"."FilePath"
+      FROM (
+          SELECT "f"."CreatedAt", "f"."MediaFileId"
+          FROM "Favorites" AS "f"
+          WHERE "f"."UserId" = @__userId_0
+          ORDER BY "f"."CreatedAt" DESC
+          LIMIT @__p_1
+      ) AS "t"
+      INNER JOIN "MediaFiles" AS "m" ON "t"."MediaFileId" = "m"."Id"
+      ORDER BY "t"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (9ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT COALESCE(SUM("m"."SizeBytes"), 0)
+      FROM "MediaFiles" AS "m"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (9ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT COALESCE(SUM("m"."SizeBytes"), 0)
+      FROM "MediaFiles" AS "m"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "MediaFiles" AS "m"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "MediaFiles" AS "m"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__p_1='?' (DbType = Int32), @__p_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."Id", "m"."Title", "m"."Artist", "m"."Album", "m"."Genre", "m"."Duration", "m"."Year", "m"."FilePath"
+      FROM "MediaFiles" AS "m"
+      ORDER BY "m"."Title"
+      LIMIT @__p_1 OFFSET @__p_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__p_1='?' (DbType = Int32), @__p_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."Id", "m"."Title", "m"."Artist", "m"."Album", "m"."Genre", "m"."Duration", "m"."Year", "m"."FilePath"
+      FROM "MediaFiles" AS "m"
+      ORDER BY "m"."Title"
+      LIMIT @__p_1 OFFSET @__p_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path"
+      FROM "ScanSources" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path"
+      FROM "ScanSources" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__s_Id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "MediaFiles" AS "m"
+      WHERE "m"."ScanSourceId" = @__s_Id_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__s_Id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "MediaFiles" AS "m"
+      WHERE "m"."ScanSourceId" = @__s_Id_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__s_Id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "MediaFiles" AS "m"
+      WHERE "m"."ScanSourceId" = @__s_Id_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__s_Id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "MediaFiles" AS "m"
+      WHERE "m"."ScanSourceId" = @__s_Id_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type"
+      FROM "ScanSources" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (6ms) [Parameters=[@__dbPath_0='?' (Size = 36)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."ParentPath" AS "Path", COUNT(*) AS "Count"
+      FROM "MediaFiles" AS "m"
+      WHERE instr("m"."ParentPath", @__dbPath_0) > 0 OR instr(replace("m"."ParentPath", '\', '/'), @__dbPath_0) > 0
+      GROUP BY "m"."ParentPath"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (3ms) [Parameters=[@__dbPath_0='?' (Size = 36), @__targetWithSlash_1='?' (Size = 37)], CommandType='Text', CommandTimeout='30']
+      SELECT 'File' AS "Type", "m"."Id", "m"."Title" AS "Name", "m"."FilePath" AS "Path", "m"."Artist", "m"."Album"
+      FROM "MediaFiles" AS "m"
+      WHERE replace("m"."ParentPath", '\', '/') = @__dbPath_0 OR replace("m"."ParentPath", '\', '/') = @__targetWithSlash_1
+      ORDER BY "m"."Title"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."AuthData", "s"."Host", "s"."Name", "s"."ProviderType"
+      FROM "StorageCredentials" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type"
+      FROM "ScanSources" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type"
+      FROM "ScanSources" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."AuthData", "s"."Host", "s"."Name", "s"."ProviderType"
+      FROM "StorageCredentials" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "Favorites" AS "f"
+      WHERE "f"."UserId" = @__userId_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "Favorites" AS "f"
+      WHERE "f"."UserId" = @__userId_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__p_2='?' (DbType = Int32), @__p_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."MediaFileId", "t"."CreatedAt", "m"."Id", "m"."Title", "m"."Artist", "m"."Album", "m"."Genre", "m"."Duration", "m"."FilePath"
+      FROM (
+          SELECT "f"."CreatedAt", "f"."MediaFileId"
+          FROM "Favorites" AS "f"
+          WHERE "f"."UserId" = @__userId_0
+          ORDER BY "f"."CreatedAt" DESC
+          LIMIT @__p_2 OFFSET @__p_1
+      ) AS "t"
+      INNER JOIN "MediaFiles" AS "m" ON "t"."MediaFileId" = "m"."Id"
+      ORDER BY "t"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__p_2='?' (DbType = Int32), @__p_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."MediaFileId", "t"."CreatedAt", "m"."Id", "m"."Title", "m"."Artist", "m"."Album", "m"."Genre", "m"."Duration", "m"."FilePath"
+      FROM (
+          SELECT "f"."CreatedAt", "f"."MediaFileId"
+          FROM "Favorites" AS "f"
+          WHERE "f"."UserId" = @__userId_0
+          ORDER BY "f"."CreatedAt" DESC
+          LIMIT @__p_2 OFFSET @__p_1
+      ) AS "t"
+      INNER JOIN "MediaFiles" AS "m" ON "t"."MediaFileId" = "m"."Id"
+      ORDER BY "t"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__mediaId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."MediaFileId", "p"."PlayedAt", "p"."UserId"
+      FROM "PlayHistories" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."MediaFileId" = @__mediaId_1
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."Id", "m"."AddedAt", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year", "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type", "s0"."Id", "s0"."AuthData", "s0"."Host", "s0"."Name", "s0"."ProviderType"
+      FROM "MediaFiles" AS "m"
+      INNER JOIN "ScanSources" AS "s" ON "m"."ScanSourceId" = "s"."Id"
+      LEFT JOIN "StorageCredentials" AS "s0" ON "s"."StorageCredentialId" = "s0"."Id"
+      WHERE "m"."Id" = @__id_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = Int32), @p1='?' (DbType = DateTime), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlayHistories" ("MediaFileId", "PlayedAt", "UserId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__mediaId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."MediaFileId", "p"."PlayedAt", "p"."UserId"
+      FROM "PlayHistories" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."MediaFileId" = @__mediaId_1
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = Int32), @p1='?' (DbType = DateTime), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlayHistories" ("MediaFileId", "PlayedAt", "UserId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."Id", "m"."AddedAt", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year", "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type", "s0"."Id", "s0"."AuthData", "s0"."Host", "s0"."Name", "s0"."ProviderType"
+      FROM "MediaFiles" AS "m"
+      INNER JOIN "ScanSources" AS "s" ON "m"."ScanSourceId" = "s"."Id"
+      LEFT JOIN "StorageCredentials" AS "s0" ON "s"."StorageCredentialId" = "s0"."Id"
+      WHERE "m"."Id" = @__id_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."Id", "m"."AddedAt", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year", "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type", "s0"."Id", "s0"."AuthData", "s0"."Host", "s0"."Name", "s0"."ProviderType"
+      FROM "MediaFiles" AS "m"
+      INNER JOIN "ScanSources" AS "s" ON "m"."ScanSourceId" = "s"."Id"
+      LEFT JOIN "StorageCredentials" AS "s0" ON "s"."StorageCredentialId" = "s0"."Id"
+      WHERE "m"."Id" = @__id_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__mediaId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."MediaFileId", "p"."PlayedAt", "p"."UserId"
+      FROM "PlayHistories" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."MediaFileId" = @__mediaId_1
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = Int32), @p1='?' (DbType = DateTime), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlayHistories" ("MediaFileId", "PlayedAt", "UserId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."Id", "m"."AddedAt", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year", "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type", "s0"."Id", "s0"."AuthData", "s0"."Host", "s0"."Name", "s0"."ProviderType"
+      FROM "MediaFiles" AS "m"
+      INNER JOIN "ScanSources" AS "s" ON "m"."ScanSourceId" = "s"."Id"
+      LEFT JOIN "StorageCredentials" AS "s0" ON "s"."StorageCredentialId" = "s0"."Id"
+      WHERE "m"."Id" = @__id_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__mediaId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."MediaFileId", "p"."PlayedAt", "p"."UserId"
+      FROM "PlayHistories" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."MediaFileId" = @__mediaId_1
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = Int32), @p1='?' (DbType = DateTime), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlayHistories" ("MediaFileId", "PlayedAt", "UserId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__mediaId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."MediaFileId", "p"."PlayedAt", "p"."UserId"
+      FROM "PlayHistories" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."MediaFileId" = @__mediaId_1
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."Id", "m"."AddedAt", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year", "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type", "s0"."Id", "s0"."AuthData", "s0"."Host", "s0"."Name", "s0"."ProviderType"
+      FROM "MediaFiles" AS "m"
+      INNER JOIN "ScanSources" AS "s" ON "m"."ScanSourceId" = "s"."Id"
+      LEFT JOIN "StorageCredentials" AS "s0" ON "s"."StorageCredentialId" = "s0"."Id"
+      WHERE "m"."Id" = @__id_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = Int32), @p1='?' (DbType = DateTime), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlayHistories" ("MediaFileId", "PlayedAt", "UserId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (3ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__mediaId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."MediaFileId", "p"."PlayedAt", "p"."UserId"
+      FROM "PlayHistories" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."MediaFileId" = @__mediaId_1
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (3ms) [Parameters=[@__id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."Id", "m"."AddedAt", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year", "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type", "s0"."Id", "s0"."AuthData", "s0"."Host", "s0"."Name", "s0"."ProviderType"
+      FROM "MediaFiles" AS "m"
+      INNER JOIN "ScanSources" AS "s" ON "m"."ScanSourceId" = "s"."Id"
+      LEFT JOIN "StorageCredentials" AS "s0" ON "s"."StorageCredentialId" = "s0"."Id"
+      WHERE "m"."Id" = @__id_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = Int32), @p1='?' (DbType = DateTime), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlayHistories" ("MediaFileId", "PlayedAt", "UserId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."Id", "m"."AddedAt", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year", "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type", "s0"."Id", "s0"."AuthData", "s0"."Host", "s0"."Name", "s0"."ProviderType"
+      FROM "MediaFiles" AS "m"
+      INNER JOIN "ScanSources" AS "s" ON "m"."ScanSourceId" = "s"."Id"
+      LEFT JOIN "StorageCredentials" AS "s0" ON "s"."StorageCredentialId" = "s0"."Id"
+      WHERE "m"."Id" = @__id_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__mediaId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."MediaFileId", "p"."PlayedAt", "p"."UserId"
+      FROM "PlayHistories" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."MediaFileId" = @__mediaId_1
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = Int32), @p1='?' (DbType = DateTime), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlayHistories" ("MediaFileId", "PlayedAt", "UserId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";

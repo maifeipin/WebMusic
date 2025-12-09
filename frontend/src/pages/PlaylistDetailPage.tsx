@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getPlaylist, removeSongsFromPlaylist } from '../services/api';
 import { usePlayer } from '../context/PlayerContext';
-import { Play, ArrowLeft, Trash2, Clock, CheckSquare, Square } from 'lucide-react';
+import { Play, ArrowLeft, Trash2, CheckSquare, Square } from 'lucide-react';
 import { formatRelativeTime } from '../utils/time';
 
 interface PlaylistDetail {

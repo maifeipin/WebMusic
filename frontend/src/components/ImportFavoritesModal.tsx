@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Upload, FileText, CheckCircle } from 'lucide-react';
+import { X, Upload, FileText } from 'lucide-react';
 import { importFavorites } from '../services/api';
 
 interface ImportFavoritesModalProps {

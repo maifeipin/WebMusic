@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getDirectory } from '../services/api';
-import { ChevronRight, ChevronDown, Folder, Music, CheckSquare, Square } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, CheckSquare, Square } from 'lucide-react';
 
 export interface DirectoryItem {
     type: 'Folder' | 'File';

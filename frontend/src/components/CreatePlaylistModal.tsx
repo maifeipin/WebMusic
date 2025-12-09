@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { X, Save } from 'lucide-react';
 import SelectionTree from './SelectionTree';
 import { createPlaylist, addSongsToPlaylist } from '../services/api';
