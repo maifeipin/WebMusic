@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePlayer } from '../context/PlayerContext';
 import { useAuth } from '../context/AuthContext';
-import { Play, Pause, Music, SkipBack, SkipForward, AlertTriangle, Minimize2, Maximize2, Heart } from 'lucide-react';
+import { Play, Pause, Music, SkipBack, SkipForward, AlertTriangle, Minimize2, Maximize2, Heart, ListPlus } from 'lucide-react';
+import AddToPlaylistModal from './AddToPlaylistModal';
 
 export default function GlobalPlayer() {
     const { currentSong, isPlaying, togglePlay, showTranscodePrompt, confirmTranscode, transcodeMode, nextSong, prevSong, isFavorite, toggleLike } = usePlayer();
@@ -11,6 +12,7 @@ export default function GlobalPlayer() {
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
     const [seekOffset, setSeekOffset] = useState(0);
+    const [showPlaylistModal, setShowPlaylistModal] = useState(false);
 
     // Reset state on song change
     useEffect(() => {
@@ -134,6 +136,14 @@ export default function GlobalPlayer() {
                                                     fill={isFavorite(currentSong.id) ? "currentColor" : "none"}
                                                 />
                                             </button>
+                                            <button
+                                                onClick={() => setShowPlaylistModal(true)}
+                                                className="hover:scale-110 transition active:scale-95 flex-shrink-0 text-gray-400 hover:text-white"
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                                title="Add to Playlist"
+                                            >
+                                                <ListPlus size={20} />
+                                            </button>
                                         </div>
                                         <p className="text-gray-400 text-sm truncate mt-0.5 select-none">{currentSong.artist}</p>
                                     </div>
@@ -242,6 +252,11 @@ export default function GlobalPlayer() {
                     </div>
                 </div>
             )}
-        </>
-    );
+
+            <AddToPlaylistModal
+                isOpen={showPlaylistModal}
+                onClose={() => setShowPlaylistModal(false)}
+                songId={currentSong?.id || null}
+            />
+        </>);
 }

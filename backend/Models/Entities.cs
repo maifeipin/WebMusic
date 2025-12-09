@@ -78,3 +78,29 @@ public class Favorite
     public MediaFile? MediaFile { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
+
+public class Playlist
+{
+    [Key]
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public int UserId { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    
+    [JsonIgnore]
+    public List<PlaylistSong> PlaylistSongs { get; set; } = new();
+}
+
+public class PlaylistSong
+{
+    [Key]
+    public int Id { get; set; }
+    public int PlaylistId { get; set; }
+    [JsonIgnore]
+    public Playlist? Playlist { get; set; }
+    
+    public int MediaFileId { get; set; }
+    public MediaFile? MediaFile { get; set; }
+    
+    public DateTime AddedAt { get; set; } = DateTime.UtcNow;
+}

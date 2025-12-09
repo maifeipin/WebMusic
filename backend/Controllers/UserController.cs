@@ -217,4 +217,64 @@ public class UserController : ControllerBase
             favorites = new { count = favoriteCount, top10 = favoritesTop10 }
         });
     }
+    // --- Import / Export ---
+    
+    [HttpGet("favorites/export")]
+    public async Task<IActionResult> ExportFavorites()
+    {
+        var userId = GetUserId();
+        var paths = await _context.Favorites
+            .Include(f => f.MediaFile)
+            .Where(f => f.UserId == userId && f.MediaFile != null)
+            .Select(f => f.MediaFile!.FilePath)
+            .ToListAsync();
+            
+        var content = string.Join("\n", paths);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(content);
+        return File(bytes, "text/plain", $"favorites_export_{DateTime.Now:yyyyMMdd}.txt");
+    }
+
+    [HttpPost("favorites/import")]
+    public async Task<IActionResult> ImportFavorites([FromForm] IFormFile file)
+    {
+        var userId = GetUserId();
+        if (file == null || file.Length == 0) return BadRequest("File empty");
+
+        using var reader = new StreamReader(file.OpenReadStream());
+        var content = await reader.ReadToEndAsync();
+        var lines = content.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+        int imported = 0;
+        foreach (var path in lines)
+        {
+            var trimmedPath = path.Trim();
+            if (string.IsNullOrWhiteSpace(trimmedPath)) continue;
+
+            // Find MediaFile by path
+            var media = await _context.MediaFiles
+                .FirstOrDefaultAsync(m => m.FilePath == trimmedPath);
+
+            if (media != null)
+            {
+                // Check if already favorite
+                var exists = await _context.Favorites
+                    .AnyAsync(f => f.UserId == userId && f.MediaFileId == media.Id);
+
+                if (!exists)
+                {
+                    _context.Favorites.Add(new Favorite
+                    {
+                        UserId = userId,
+                        MediaFileId = media.Id,
+                        CreatedAt = DateTime.UtcNow
+                    });
+                    imported++;
+                }
+            }
+        }
+        
+        if (imported > 0) await _context.SaveChangesAsync();
+
+        return Ok(new { imported, total = lines.Length });
+    }
 }

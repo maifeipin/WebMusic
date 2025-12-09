@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Home, Music, Settings, LogOut, Heart, Clock, User } from 'lucide-react';
+import { Home, Music, Settings, LogOut, Heart, Clock, User, ListMusic, DatabaseBackup } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import GlobalPlayer from './GlobalPlayer';
 import ChangePasswordModal from './ChangePasswordModal';
@@ -74,6 +74,7 @@ export const Layout = () => {
                 <nav className="flex-1 px-3 space-y-2 mt-4">
                     <NavItem to="/" icon={<Home size={20} />} label="Dashboard" collapsed={isCollapsed} />
                     <NavItem to="/library" icon={<Music size={20} />} label="Library" collapsed={isCollapsed} />
+                    <NavItem to="/playlists" icon={<ListMusic size={20} />} label="My Playlists" collapsed={isCollapsed} />
                     <NavItem to="/favorites" icon={<Heart size={20} />} label="Favorites" collapsed={isCollapsed} />
                     <NavItem to="/history" icon={<Clock size={20} />} label="History" collapsed={isCollapsed} />
                     <NavItem to="/sources" icon={<Settings size={20} />} label="Sources" collapsed={isCollapsed} />
@@ -81,6 +82,20 @@ export const Layout = () => {
 
                 {/* Footer Actions */}
                 <div className="p-3 border-t border-gray-900 space-y-2 mb-safe">
+                    {/* Tools Group */}
+                    <div className={`flex gap-1`}>
+                        <NavLink
+                            to="/backup"
+                            className={({ isActive }) =>
+                                `flex items-center gap-3 px-3 py-3 rounded-lg transition font-medium ${isActive ? 'bg-blue-600/10 text-blue-500' : 'text-gray-400 hover:text-white hover:bg-white/5'} ${isCollapsed ? 'justify-center' : ''}`
+                            }
+                            title="Backup & Restore"
+                        >
+                            <DatabaseBackup size={20} />
+                            {!isCollapsed && <span className="whitespace-nowrap overflow-hidden text-ellipsis">Backup</span>}
+                        </NavLink>
+                    </div>
+
                     <button
                         onClick={() => setShowPasswordModal(true)}
                         className={`flex items-center gap-3 text-gray-400 hover:text-white w-full p-3 rounded-lg transition hover:bg-white/5 ${isCollapsed ? 'justify-center' : ''}`}

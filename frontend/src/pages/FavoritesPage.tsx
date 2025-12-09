@@ -6,7 +6,7 @@ import { formatRelativeTime } from '../utils/time';
 import { Pagination } from '../components/Pagination';
 
 export default function FavoritesPage() {
-    const { playSong } = usePlayer();
+    const { playSong, playQueue } = usePlayer();
     const [favorites, setFavorites] = useState<{ createdAt: string, song: Song }[]>([]);
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
@@ -61,6 +61,19 @@ export default function FavoritesPage() {
                         <p className="text-gray-400 text-sm">Your loved tracks</p>
                     </div>
                 </div>
+                <button
+                    onClick={() => {
+                        if (favorites.length > 0) {
+                            const queue = favorites.map(f => f.song);
+                            playQueue(queue, 0);
+                        }
+                    }}
+                    disabled={favorites.length === 0}
+                    className="flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-500 disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed text-white rounded-lg font-medium transition shadow-lg shadow-pink-900/20"
+                >
+                    <Play size={18} fill="currentColor" />
+                    <span className="hidden md:inline">Play All</span>
+                </button>
             </header>
 
             {loading ? (
@@ -137,7 +150,8 @@ export default function FavoritesPage() {
                         onPageSizeChange={handlePageSizeChange}
                     />
                 </div>
-            )}
-        </div>
+            )
+            }
+        </div >
     );
 }

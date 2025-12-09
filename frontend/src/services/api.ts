@@ -37,5 +37,15 @@ export const toggleFavorite = (id: number) => api.post(`/user/favorite/${id}`);
 export const getFavorites = (page = 1, pageSize = 50) => api.get(`/user/favorites?page=${page}&pageSize=${pageSize}`);
 export const getFavoriteIds = () => api.get('/user/favorites/ids');
 export const getUserStats = () => api.get('/user/stats');
+export const exportFavorites = () => api.get('/user/favorites/export', { responseType: 'blob' });
+export const importFavorites = (formData: FormData) => api.post('/user/favorites/import', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+
+// Playlists
+export const getPlaylists = () => api.get('/playlist');
+export const getPlaylist = (id: number) => api.get(`/playlist/${id}`);
+export const createPlaylist = (name: string) => api.post('/playlist', { name });
+export const deletePlaylist = (id: number) => api.delete(`/playlist/${id}`);
+export const addSongsToPlaylist = (id: number, mediaFileIds: number[]) => api.post(`/playlist/${id}/songs`, mediaFileIds);
+export const removeSongsFromPlaylist = (id: number, mediaFileIds: number[]) => api.delete(`/playlist/${id}/songs?ids=${mediaFileIds.join(',')}`);
 
 export default api;

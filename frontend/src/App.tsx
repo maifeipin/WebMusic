@@ -7,6 +7,9 @@ import Library from './pages/Library';
 import Sources from './pages/Sources';
 import FavoritesPage from './pages/FavoritesPage';
 import HistoryPage from './pages/HistoryPage';
+import PlaylistsPage from './pages/PlaylistsPage';
+import PlaylistDetailPage from './pages/PlaylistDetailPage';
+import BackupPage from './pages/BackupPage';
 import { Layout } from './components/Layout';
 
 const ProtectedRoute = ({ children }: { children: React.ReactElement }) => {
@@ -28,6 +31,9 @@ function App() {
                 <Route path="/sources" element={<Sources />} />
                 <Route path="/favorites" element={<FavoritesPage />} />
                 <Route path="/history" element={<HistoryPage />} />
+                <Route path="/playlists" element={<PlaylistsPage />} />
+                <Route path="/playlists/:id" element={<PlaylistDetailPage />} />
+                <Route path="/backup" element={<BackupPage />} />
               </Route>
             </Routes>
           </div>

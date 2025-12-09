@@ -6,7 +6,7 @@ import { formatRelativeTime } from '../utils/time';
 import { Pagination } from '../components/Pagination';
 
 export default function HistoryPage() {
-    const { playSong } = usePlayer();
+    const { playSong, playQueue } = usePlayer();
     const [historyItems, setHistoryItems] = useState<{ playedAt: string, song: Song }[]>([]);
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
@@ -58,6 +58,19 @@ export default function HistoryPage() {
                         <p className="text-gray-400 text-sm">Recently played songs</p>
                     </div>
                 </div>
+                <button
+                    onClick={() => {
+                        if (historyItems.length > 0) {
+                            const queue = historyItems.map(h => h.song);
+                            playQueue(queue, 0);
+                        }
+                    }}
+                    disabled={historyItems.length === 0}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed text-white rounded-lg font-medium transition shadow-lg shadow-blue-900/20"
+                >
+                    <Play size={18} fill="currentColor" />
+                    <span className="hidden md:inline">Play All</span>
+                </button>
             </header>
 
             {loading ? (
