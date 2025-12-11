@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using WebMusic.Backend.Data;
 using WebMusic.Backend.Services;
 using WebMusic.Backend.Models;
+using System.IO;
 
 namespace WebMusic.Backend.Controllers;
 
@@ -419,5 +420,227 @@ public class MediaController : ControllerBase
         var totalSize = await _context.MediaFiles.SumAsync(m => m.SizeBytes);
         
         return Ok(new { totalSongs, totalArtists, totalAlbums, totalSize });
+    }
+
+    /// <summary>
+    /// Update song metadata (title, artist, album, genre)
+    /// </summary>
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateMedia(int id, [FromBody] UpdateMediaDto dto)
+    {
+        var media = await _context.MediaFiles.FindAsync(id);
+        if (media == null) return NotFound();
+
+        if (!string.IsNullOrEmpty(dto.Title))
+            media.Title = dto.Title;
+        if (!string.IsNullOrEmpty(dto.Artist))
+            media.Artist = dto.Artist;
+        if (!string.IsNullOrEmpty(dto.Album))
+            media.Album = dto.Album;
+        if (dto.Genre != null)
+            media.Genre = dto.Genre;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { 
+            media.Id, 
+            media.Title, 
+            media.Artist, 
+            media.Album, 
+            media.Genre 
+        });
+    }
+
+    public class UpdateMediaDto
+    {
+        public string? Title { get; set; }
+        public string? Artist { get; set; }
+        public string? Album { get; set; }
+        public string? Genre { get; set; }
+    }
+
+    [HttpGet("directory/ids")]
+    public async Task<ActionResult<List<int>>> GetDirectoryIds([FromQuery] string? path = null)
+    {
+         var query = _context.MediaFiles.AsQueryable();
+
+         // Path Resolution Logic (Same as GetFiles/GetDirectory)
+         if (!string.IsNullOrEmpty(path))
+         {
+             var targetPath = path.Replace('\\', '/').TrimEnd('/');
+             var cleanTargetPath = targetPath.TrimStart('/'); 
+             var sources = await _context.ScanSources.ToListAsync();
+             var matchedSource = sources
+                    .Select(s => new { s, NormPath = s.Path.Replace('\\', '/').Trim('/') })
+                    .Where(x => cleanTargetPath.StartsWith(x.NormPath, StringComparison.OrdinalIgnoreCase))
+                    .OrderByDescending(x => x.NormPath.Length)
+                    .FirstOrDefault();
+
+             var dbPath = cleanTargetPath;
+             if (matchedSource != null)
+             {
+                 var shareName = matchedSource.NormPath.Split('/')[0];
+                 if (dbPath.StartsWith(shareName + "/", StringComparison.OrdinalIgnoreCase))
+                 {
+                     dbPath = dbPath.Substring(shareName.Length + 1);
+                 }
+                 else if (string.Equals(dbPath, shareName, StringComparison.OrdinalIgnoreCase))
+                 {
+                     dbPath = "";
+                 }
+             }
+
+             if (string.IsNullOrEmpty(dbPath))
+             {
+                 // Filter by Source
+                 if (matchedSource != null)
+                 {
+                     query = query.Where(m => m.ScanSourceId == matchedSource.s.Id);
+                 }
+             }
+             else
+             {
+                 // Filter by ParentPath (Recursive)
+                 // ParentPath == dbPath OR ParentPath starts with dbPath + "/"
+                 query = query.Where(m => m.ParentPath == dbPath || m.ParentPath.Replace("\\", "/").StartsWith(dbPath + "/"));
+             }
+         }
+
+         var ids = await query.Select(m => m.Id).ToListAsync();
+         return Ok(ids);
+    }
+
+    [HttpPost("cover")]
+    public async Task<IActionResult> UploadCover([FromForm] IFormFile file)
+    {
+        if (file == null || file.Length == 0) return BadRequest("No file uploaded");
+        
+        var folder = Path.Combine(Directory.GetCurrentDirectory(), "data", "covers");
+        if (!Directory.Exists(folder)) Directory.CreateDirectory(folder);
+        
+        var ext = Path.GetExtension(file.FileName).ToLower();
+        // Allow basic image types
+        if (ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".webp") 
+            return BadRequest("Invalid image type");
+
+        var fileName = Guid.NewGuid().ToString() + ext;
+        var filePath = Path.Combine(folder, fileName);
+        
+        using (var stream = new FileStream(filePath, FileMode.Create))
+        {
+            await file.CopyToAsync(stream);
+        }
+        
+        // Return relative URL
+        return Ok(new { url = $"/api/media/cover/{fileName}" });
+    }
+
+    [HttpGet("cover/{fileName}")]
+    public IActionResult GetCover(string fileName)
+    {
+        var folder = Path.Combine(Directory.GetCurrentDirectory(), "data", "covers");
+        var filePath = Path.Combine(folder, fileName);
+        
+        if (!System.IO.File.Exists(filePath)) return NotFound();
+        
+        var ext = Path.GetExtension(fileName).ToLower();
+        var mime = ext == ".png" ? "image/png" : 
+                   ext == ".webp" ? "image/webp" : "image/jpeg";
+                   
+        return PhysicalFile(filePath, mime);
+    }
+
+    /// <summary>
+    /// Proxy endpoint to fetch images from SMB paths.
+    /// Usage: GET /api/media/smb-image?path=smb://server/share/path/image.jpg
+    /// </summary>
+    [HttpGet("smb-image")]
+    public async Task<IActionResult> GetSmbImage([FromQuery] string path)
+    {
+        if (string.IsNullOrEmpty(path)) return BadRequest("Path required");
+
+        // Parse SMB path to find matching ScanSource
+        // SMB path format: smb://host/share/path/to/file.ext
+        var normalizedPath = path.Replace('\\', '/');
+        if (!normalizedPath.StartsWith("smb://", StringComparison.OrdinalIgnoreCase))
+            return BadRequest("Invalid SMB path");
+
+        // Extract host and path parts
+        var pathWithoutScheme = normalizedPath.Substring(6); // Remove "smb://"
+        var slashIdx = pathWithoutScheme.IndexOf('/');
+        if (slashIdx < 0) return BadRequest("Invalid SMB path format");
+
+        var host = pathWithoutScheme.Substring(0, slashIdx);
+        var fullSharePath = pathWithoutScheme.Substring(slashIdx + 1); // e.g., "PT/opencd/folder/cover.jpg"
+
+        // Split into share name and relative path
+        var pathParts = fullSharePath.Split('/', 2);
+        if (pathParts.Length < 2) return BadRequest($"Invalid path - need share and file path. Got: {fullSharePath}");
+        
+        var shareName = pathParts[0];
+        var relativePath = pathParts[1];
+
+        Console.WriteLine($"[SMB-Image] Host: {host}, Share: {shareName}, RelPath: {relativePath}");
+
+        // Find a StorageCredential by host
+        var credentials = await _context.StorageCredentials.ToListAsync();
+
+        var matchedCredential = credentials.FirstOrDefault(c =>
+        {
+            var credHost = c.Host.Replace('\\', '/');
+            if (credHost.StartsWith("smb://", StringComparison.OrdinalIgnoreCase))
+                credHost = credHost.Substring(6);
+            credHost = credHost.Trim('/');
+            
+            // Handle IP or hostname match
+            return string.Equals(credHost, host, StringComparison.OrdinalIgnoreCase);
+        });
+
+        if (matchedCredential == null)
+            return NotFound($"No matching storage credential found for host: {host}");
+
+        // Attempt to open the file via SMB service using SmbService helper
+        try
+        {
+            // Create a temporary ScanSource-like structure for OpenFile
+            // We need to use the Connect method with credential and share
+            var smbService = (WebMusic.Backend.Services.SmbService)_smbService;
+            
+            if (!smbService.Connect(matchedCredential, shareName, out var client, out var fileStore))
+            {
+                return NotFound($"Failed to connect to SMB share: {shareName}");
+            }
+
+            try
+            {
+                // Convert path to backslash for SMB and open file
+                var smbFilePath = relativePath.Replace('/', '\\');
+                var stream = new WebMusic.Backend.Services.SmbFileStream(client, fileStore, smbFilePath);
+
+                // Determine content type
+                var ext = Path.GetExtension(path).ToLower();
+                var mime = ext switch
+                {
+                    ".png" => "image/png",
+                    ".webp" => "image/webp",
+                    ".gif" => "image/gif",
+                    ".bmp" => "image/bmp",
+                    _ => "image/jpeg"
+                };
+
+                return File(stream, mime);
+            }
+            catch (Exception ex)
+            {
+                client.Disconnect();
+                Console.Error.WriteLine($"SMB File Open Error: {ex.Message}");
+                return NotFound($"Image not found on SMB share: {relativePath}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"SMB Image Error: {ex.Message}");
+            return NotFound("Failed to load image from SMB");
+        }
     }
 }

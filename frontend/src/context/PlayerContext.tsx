@@ -34,6 +34,8 @@ interface PlayerContextType {
     // User
     isFavorite: (id: number) => boolean;
     toggleLike: (id: number) => Promise<void>;
+    // Song Update
+    updateCurrentSong: (updates: Partial<Song>) => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
@@ -138,6 +140,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         setPendingSong(null);
     };
 
+    const updateCurrentSong = (updates: Partial<Song>) => {
+        if (currentSong) {
+            const updated = { ...currentSong, ...updates };
+            setCurrentSong(updated);
+            // Also update in queue if present
+            setQueue(prev => prev.map(s => s.id === updated.id ? updated : s));
+        }
+    };
+
     const togglePlay = () => setIsPlaying(!isPlaying);
 
     const nextSong = () => {
@@ -174,7 +185,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             currentIndex,
             addToQueue,
             isFavorite,
-            toggleLike
+            toggleLike,
+            updateCurrentSong
         }}>
             {children}
         </PlayerContext.Provider>

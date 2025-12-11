@@ -38,6 +38,7 @@ public class PlaylistController : ControllerBase
             {
                 p.Id,
                 p.Name,
+                p.CoverArt,
                 p.CreatedAt,
                 count = p.PlaylistSongs.Count()
             })
@@ -58,6 +59,7 @@ public class PlaylistController : ControllerBase
         { 
             Name = dto.Name,
             UserId = userId,
+            CoverArt = dto.CoverArt,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -94,6 +96,7 @@ public class PlaylistController : ControllerBase
         {
             playlist.Id,
             playlist.Name,
+            coverArt = playlist.CoverArt,
             playlist.CreatedAt,
             Songs = songs
         });
@@ -180,9 +183,31 @@ public class PlaylistController : ControllerBase
 
         return NoContent();
     }
+
+    // PUT: api/playlist/5
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdatePlaylist(int id, [FromBody] UpdatePlaylistDto dto)
+    {
+        var userId = GetUserId();
+        var playlist = await _context.Playlists.FirstOrDefaultAsync(p => p.Id == id && p.UserId == userId);
+        if (playlist == null) return NotFound();
+        
+        if (!string.IsNullOrWhiteSpace(dto.Name)) playlist.Name = dto.Name;
+        if (dto.CoverArt != null) playlist.CoverArt = dto.CoverArt;
+        
+        await _context.SaveChangesAsync();
+        return Ok(playlist);
+    }
 }
 
 public class CreatePlaylistDto
 {
     public string Name { get; set; } = string.Empty;
+    public string? CoverArt { get; set; }
+}
+
+public class UpdatePlaylistDto
+{
+    public string? Name { get; set; }
+    public string? CoverArt { get; set; }
 }

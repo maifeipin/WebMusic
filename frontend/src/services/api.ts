@@ -16,6 +16,7 @@ export const login = (username: string, password: string) => api.post('/auth/log
 export const changePassword = (data: any) => api.post('/auth/change-password', data);
 export const getStats = () => api.get('/media/stats');
 export const getFiles = (params: any) => api.get('/media', { params });
+export const updateMedia = (id: number, data: { title?: string; artist?: string; album?: string; genre?: string }) => api.put(`/media/${id}`, data);
 export const getSources = () => api.get('/scan/sources');
 export const addSource = (data: any, force = false) => api.post(`/scan/sources?force=${force}`, data);
 export const deleteSource = (id: number) => api.delete(`/scan/sources/${id}`);
@@ -45,6 +46,7 @@ export const getPlaylists = () => api.get('/playlist');
 export const getPlaylist = (id: number) => api.get(`/playlist/${id}`);
 export const createPlaylist = (name: string) => api.post('/playlist', { name });
 export const deletePlaylist = (id: number) => api.delete(`/playlist/${id}`);
+export const updatePlaylist = (id: number, data: { name?: string; coverArt?: string }) => api.put(`/playlist/${id}`, data);
 export const addSongsToPlaylist = (id: number, mediaFileIds: number[]) => api.post(`/playlist/${id}/songs`, mediaFileIds);
 export const removeSongsFromPlaylist = (id: number, mediaFileIds: number[]) => api.delete(`/playlist/${id}/songs?ids=${mediaFileIds.join(',')}`);
 

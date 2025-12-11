@@ -16,9 +16,10 @@ interface SelectionTreeProps {
     onNameSuggest: (name: string) => void;
     selectedIds: number[];
     onToggleSelect: (id: number) => void;
+    onBatchSelect?: (ids: number[], select: boolean) => void;
 }
 
-export default function SelectionTree({ onNameSuggest, selectedIds, onToggleSelect }: SelectionTreeProps) {
+export default function SelectionTree({ onNameSuggest, selectedIds, onToggleSelect, onBatchSelect }: SelectionTreeProps) {
     const [rootItems, setRootItems] = useState<DirectoryItem[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -48,6 +49,7 @@ export default function SelectionTree({ onNameSuggest, selectedIds, onToggleSele
                     onNameSuggest={onNameSuggest}
                     selectedIds={selectedIds}
                     onToggleSelect={onToggleSelect}
+                    onBatchSelect={onBatchSelect}
                 />
             ))}
         </div>
@@ -59,15 +61,31 @@ interface TreeNodeProps {
     onNameSuggest: (name: string) => void;
     selectedIds: number[];
     onToggleSelect: (id: number) => void;
+    onBatchSelect?: (ids: number[], select: boolean) => void;
 }
 
-function TreeNode({ item, onNameSuggest, selectedIds, onToggleSelect }: TreeNodeProps) {
+function TreeNode({ item, onNameSuggest, selectedIds, onToggleSelect, onBatchSelect }: TreeNodeProps) {
     const [expanded, setExpanded] = useState(false);
     const [children, setChildren] = useState<DirectoryItem[]>([]);
     const [loading, setLoading] = useState(false);
     const [hasLoaded, setHasLoaded] = useState(false);
 
     const currentPath = item.path || item.name;
+
+    // Recursively collect all file IDs from loaded children
+    const collectFileIds = (items: DirectoryItem[]): number[] => {
+        let ids: number[] = [];
+        for (const c of items) {
+            if (c.type === 'File') {
+                ids.push(c.id);
+            }
+        }
+        return ids;
+    };
+
+    const childFileIds = collectFileIds(children);
+    const allChildrenSelected = childFileIds.length > 0 && childFileIds.every(id => selectedIds.includes(id));
+    const someChildrenSelected = childFileIds.some(id => selectedIds.includes(id));
 
     const handleExpand = async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -93,6 +111,24 @@ function TreeNode({ item, onNameSuggest, selectedIds, onToggleSelect }: TreeNode
         if (item.type === 'Folder') {
             onNameSuggest(item.name);
             handleExpand(e);
+        }
+    };
+
+    // Toggle all files in this folder
+    const handleFolderCheckboxClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!hasLoaded || childFileIds.length === 0) return;
+
+        const willSelect = !allChildrenSelected;
+
+        if (onBatchSelect) {
+            // If all selected, deselect all; otherwise select all
+            onBatchSelect(childFileIds, willSelect);
+        }
+
+        // When selecting folder, also suggest folder name
+        if (willSelect) {
+            onNameSuggest(item.name);
         }
     };
 
@@ -124,6 +160,17 @@ function TreeNode({ item, onNameSuggest, selectedIds, onToggleSelect }: TreeNode
                     </div>
                 )}
 
+                {/* Checkbox for Folder (only when loaded and has files) */}
+                {item.type === 'Folder' && hasLoaded && childFileIds.length > 0 && (
+                    <div
+                        onClick={handleFolderCheckboxClick}
+                        className={`${allChildrenSelected ? "text-blue-500" : someChildrenSelected ? "text-blue-300" : "text-gray-600"} hover:text-blue-400`}
+                        title={allChildrenSelected ? "Deselect all songs in folder" : "Select all songs in folder"}
+                    >
+                        {allChildrenSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                    </div>
+                )}
+
                 {/* Icon */}
                 {item.type === 'Folder' ? (
                     <Folder size={16} className="text-blue-500" fill="currentColor" fillOpacity={0.2} />
@@ -133,6 +180,9 @@ function TreeNode({ item, onNameSuggest, selectedIds, onToggleSelect }: TreeNode
                 <span className="flex-1 truncate flex items-center gap-2">
                     <span>{item.name}</span>
                     {item.type === 'File' && item.artist && <span className="text-gray-600">- {item.artist}</span>}
+                    {item.type === 'Folder' && hasLoaded && childFileIds.length > 0 && (
+                        <span className="text-xs text-gray-500">({childFileIds.length} songs)</span>
+                    )}
                 </span>
             </div>
 
@@ -147,6 +197,7 @@ function TreeNode({ item, onNameSuggest, selectedIds, onToggleSelect }: TreeNode
                             onNameSuggest={onNameSuggest}
                             selectedIds={selectedIds}
                             onToggleSelect={onToggleSelect}
+                            onBatchSelect={onBatchSelect}
                         />
                     ))}
                 </div>

@@ -47,6 +47,19 @@ export default function CreatePlaylistModal({ isOpen, onClose, onSuccess }: Crea
         );
     };
 
+    const handleBatchSelect = (ids: number[], select: boolean) => {
+        setSelectedIds(prev => {
+            if (select) {
+                // Add all ids that are not already selected
+                const newIds = ids.filter(id => !prev.includes(id));
+                return [...prev, ...newIds];
+            } else {
+                // Remove all specified ids
+                return prev.filter(id => !ids.includes(id));
+            }
+        });
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-2xl h-[80vh] flex flex-col shadow-2xl animate-fade-in">
@@ -75,7 +88,7 @@ export default function CreatePlaylistModal({ isOpen, onClose, onSuccess }: Crea
                             autoFocus
                         />
                         <p className="text-xs text-gray-500">
-                            Tip: Click a folder below to auto-fill the name.
+                            Tip: Click a folder to auto-fill the name. Expand folder and click checkbox to select all songs.
                         </p>
                     </div>
 
@@ -99,6 +112,7 @@ export default function CreatePlaylistModal({ isOpen, onClose, onSuccess }: Crea
                                 }}
                                 selectedIds={selectedIds}
                                 onToggleSelect={toggleSelect}
+                                onBatchSelect={handleBatchSelect}
                             />
                         </div>
                     </div>

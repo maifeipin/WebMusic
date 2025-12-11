@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react';
 import { Plus, Play, Music, Trash2 } from 'lucide-react';
 import { getPlaylists, deletePlaylist, getPlaylist } from '../services/api';
 import CreatePlaylistModal from '../components/CreatePlaylistModal';
+import SmbImage from '../components/SmbImage';
 import { useNavigate } from 'react-router-dom';
 import { usePlayer } from '../context/PlayerContext';
 
 interface Playlist {
     id: number;
     name: string;
+    coverArt?: string;
     count: number;
 }
 
@@ -104,9 +106,18 @@ export default function PlaylistsPage() {
                             onClick={() => navigate(`/playlists/${p.id}`)}
                             className="bg-gray-900/50 border border-gray-800/50 rounded-2xl p-4 hover:bg-gray-800 transition cursor-pointer group relative overflow-hidden"
                         >
-                            {/* Visual Placeholder */}
-                            <div className="aspect-square bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl mb-4 flex items-center justify-center relative shadow-lg">
-                                <Music size={48} className="text-gray-700" />
+                            {/* Cover Art or Placeholder */}
+                            <div className="aspect-square bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl mb-4 flex items-center justify-center relative shadow-lg overflow-hidden">
+                                {p.coverArt ? (
+                                    <SmbImage
+                                        smbPath={p.coverArt}
+                                        alt={p.name}
+                                        className="w-full h-full object-cover"
+                                        fallbackClassName="text-gray-700"
+                                    />
+                                ) : (
+                                    <Music size={48} className="text-gray-700" />
+                                )}
 
                                 {/* Play Overlay */}
                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center backdrop-blur-[2px]">

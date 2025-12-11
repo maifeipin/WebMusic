@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePlayer } from '../context/PlayerContext';
 import { useAuth } from '../context/AuthContext';
-import { Play, Pause, Music, SkipBack, SkipForward, AlertTriangle, Minimize2, Maximize2, Heart, ListPlus } from 'lucide-react';
+import { Play, Pause, Music, SkipBack, SkipForward, AlertTriangle, Minimize2, Maximize2, Heart, ListPlus, Edit2 } from 'lucide-react';
 import AddToPlaylistModal from './AddToPlaylistModal';
+import EditSongModal from './EditSongModal';
 
 export default function GlobalPlayer() {
-    const { currentSong, isPlaying, togglePlay, showTranscodePrompt, confirmTranscode, transcodeMode, nextSong, prevSong, isFavorite, toggleLike } = usePlayer();
+    const { currentSong, isPlaying, togglePlay, showTranscodePrompt, confirmTranscode, transcodeMode, nextSong, prevSong, isFavorite, toggleLike, updateCurrentSong } = usePlayer();
     const { token } = useAuth();
     const audioRef = useRef<HTMLAudioElement>(null);
     const [isMinimized, setIsMinimized] = useState(false);
@@ -13,6 +14,7 @@ export default function GlobalPlayer() {
     const [duration, setDuration] = useState(0);
     const [seekOffset, setSeekOffset] = useState(0);
     const [showPlaylistModal, setShowPlaylistModal] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
 
     // Reset state on song change
     useEffect(() => {
@@ -144,6 +146,14 @@ export default function GlobalPlayer() {
                                             >
                                                 <ListPlus size={20} />
                                             </button>
+                                            <button
+                                                onClick={() => setShowEditModal(true)}
+                                                className="hover:scale-110 transition active:scale-95 flex-shrink-0 text-gray-400 hover:text-blue-400"
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                                title="Edit Song Info"
+                                            >
+                                                <Edit2 size={18} />
+                                            </button>
                                         </div>
                                         <p className="text-gray-400 text-sm truncate mt-0.5 select-none">{currentSong.artist}</p>
                                     </div>
@@ -257,6 +267,15 @@ export default function GlobalPlayer() {
                 isOpen={showPlaylistModal}
                 onClose={() => setShowPlaylistModal(false)}
                 songId={currentSong?.id || null}
+            />
+
+            <EditSongModal
+                isOpen={showEditModal}
+                onClose={() => setShowEditModal(false)}
+                song={currentSong}
+                onSaved={(updated) => {
+                    updateCurrentSong(updated);
+                }}
             />
         </>);
 }
