@@ -266,7 +266,7 @@ export default function GlobalPlayer() {
             <AddToPlaylistModal
                 isOpen={showPlaylistModal}
                 onClose={() => setShowPlaylistModal(false)}
-                songId={currentSong?.id || null}
+                songIds={currentSong?.id ? [currentSong.id] : []}
             />
 
             <EditSongModal
