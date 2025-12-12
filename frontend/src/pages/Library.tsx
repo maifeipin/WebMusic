@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { usePlayer } from '../context/PlayerContext';
 import { getFiles, getGroups } from '../services/api';
-import { Play, Music, Folder, List, Grid, ChevronRight, ChevronDown } from 'lucide-react';
+import { Play, Music, Folder, List, Grid, ChevronRight, ChevronDown, ArrowUp, ArrowDown, CheckSquare, Square, X, ListPlus } from 'lucide-react';
 import DirectoryTree from '../components/DirectoryTree';
+import AddToPlaylistModal from '../components/AddToPlaylistModal';
 
 interface Song {
     id: number;
@@ -20,23 +21,37 @@ interface GroupRow {
     count: number;
 }
 
-export default function Library() {
-    // Modes: 'flat', 'group', 'directory'
-    const [viewMode, setViewMode] = useState<'flat' | 'group' | 'directory'>('flat');
-    const [groupBy, setGroupBy] = useState<string>('artist'); // Default group
+type SortField = 'title' | 'artist' | 'album' | 'genre' | 'filePath' | 'duration';
+type SortDirection = 'asc' | 'desc';
 
-    // Flat Data
+interface ActiveFilter {
+    field: 'artist' | 'album' | 'genre' | 'path';
+    value: string;
+}
+
+export default function Library() {
+    const [viewMode, setViewMode] = useState<'flat' | 'group' | 'directory'>('flat');
+    const [groupBy, setGroupBy] = useState<string>('artist');
+
     const [songs, setSongs] = useState<Song[]>([]);
     const [page, setPage] = useState(1);
     const [search, setSearch] = useState('');
     const [total, setTotal] = useState(0);
 
-    // Grouping Data
+    const [sortField, setSortField] = useState<SortField>('title');
+    const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+
+    const [selectedIds, setSelectedIds] = useState<number[]>([]);
+
+    const [activeFilter, setActiveFilter] = useState<ActiveFilter | null>(null);
+
+    // Add to Playlist Modal
+    const [showAddToPlaylist, setShowAddToPlaylist] = useState(false);
+
     const [groups, setGroups] = useState<GroupRow[]>([]);
-    const [expandedGroups, setExpandedGroups] = useState<Record<string, Song[]>>({}); // Cache fetched songs per group
+    const [expandedGroups, setExpandedGroups] = useState<Record<string, Song[]>>({});
     const [expandedState, setExpandedState] = useState<Record<string, boolean>>({});
 
-    // Player State (Global)
     const { playSong, playQueue } = usePlayer();
 
     useEffect(() => {
@@ -44,17 +59,27 @@ export default function Library() {
         else if (viewMode === 'group') {
             if (groupBy !== 'directory') fetchGroups();
         }
-        // directory mode handles its own fetch via component
-    }, [page, search, viewMode, groupBy]);
+    }, [page, search, viewMode, groupBy, activeFilter]);
 
     const fetchSongs = async () => {
-        const res = await getFiles({ page, search, pageSize: 50 });
+        const params: any = { page, search, pageSize: 50 };
+        if (activeFilter) {
+            if (activeFilter.field === 'path') {
+                // For path filtering, use the path parameter with recursive
+                params.path = activeFilter.value;
+                params.recursive = false; // Only this directory
+            } else {
+                params.filterBy = activeFilter.field;
+                params.filterValue = activeFilter.value;
+            }
+        }
+        const res = await getFiles(params);
         setSongs(res.data.files);
         setTotal(res.data.total);
+        setSelectedIds([]);
     };
 
     const fetchGroups = async () => {
-        // Fetch groups (e.g. list of Artists)
         try {
             const res = await getGroups(groupBy);
             setGroups(res.data);
@@ -66,28 +91,44 @@ export default function Library() {
     };
 
     const fetchGroupContent = async (groupKey: string) => {
-        // Fetch songs for this group
-        if (expandedGroups[groupKey]) return; // Already loaded
-
+        if (expandedGroups[groupKey]) return;
         const res = await getFiles({ page: 1, pageSize: 1000, filterBy: groupBy, filterValue: groupKey });
         setExpandedGroups(prev => ({ ...prev, [groupKey]: res.data.files }));
     };
 
+    const sortedSongs = [...songs].sort((a, b) => {
+        let aVal: any = a[sortField];
+        let bVal: any = b[sortField];
+        if (sortField === 'duration') {
+            aVal = aVal || 0;
+            bVal = bVal || 0;
+        } else {
+            aVal = (aVal || '').toString().toLowerCase();
+            bVal = (bVal || '').toString().toLowerCase();
+        }
+        if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+    });
 
+    const handleSort = (field: SortField) => {
+        if (sortField === field) {
+            setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortField(field);
+            setSortDirection('asc');
+        }
+    };
 
     const handlePlay = (song: Song) => {
-        // If in a list (songs or expanded group), play that list starting from this song
         if (viewMode === 'flat') {
-            const index = songs.findIndex(s => s.id === song.id);
+            const index = sortedSongs.findIndex(s => s.id === song.id);
             if (index !== -1) {
-                playQueue(songs, index);
+                playQueue(sortedSongs, index);
             } else {
                 playSong(song);
             }
         } else if (viewMode === 'group') {
-            // Find which group this song belongs to
-            // Optimization: Pass context from UI loop
-            // For now, simple fallback: search all loaded groups
             let foundGroup: Song[] | null = null;
             let foundIndex = -1;
             Object.values(expandedGroups).forEach(groupSongs => {
@@ -97,44 +138,32 @@ export default function Library() {
                     foundIndex = idx;
                 }
             });
-
             if (foundGroup) {
                 playQueue(foundGroup, foundIndex);
             } else {
                 playSong(song);
             }
-        } else if (viewMode === 'directory') {
-            // In directory mode, we play the single file. 
-            // Future improvement: DirectoryTree could pass siblings to create a queue.
-            playSong(song);
         } else {
             playSong(song);
         }
     };
 
     const handlePlayGroup = async (groupKey: string) => {
-        // Prepare songs
         let songsToPlay: Song[] = [];
         if (expandedGroups[groupKey]) {
             songsToPlay = expandedGroups[groupKey];
         } else {
-            // Fetch if not present
             const res = await getFiles({ page: 1, pageSize: 1000, filterBy: groupBy, filterValue: groupKey });
             songsToPlay = res.data.files;
-            // Optionally cache it
             setExpandedGroups(prev => ({ ...prev, [groupKey]: songsToPlay }));
         }
         if (songsToPlay.length > 0) playQueue(songsToPlay, 0);
     };
 
     const handlePlayFolder = async (path: string) => {
-        // Recursive Play: Fetch all files in this folder OR subfolders
         try {
-            // Use GetFiles with recursive=true
-            // PageSize large to get all (for now limit 2000)
             const res = await getFiles({ page: 1, pageSize: 2000, path: path, recursive: true });
             const songs = res.data.files;
-
             if (songs.length > 0) {
                 playQueue(songs, 0);
             } else {
@@ -143,23 +172,110 @@ export default function Library() {
         } catch (e) { console.error(e); }
     };
 
+    const toggleSelect = (id: number) => {
+        setSelectedIds(prev =>
+            prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+        );
+    };
 
+    const toggleSelectAll = () => {
+        if (selectedIds.length === sortedSongs.length) {
+            setSelectedIds([]);
+        } else {
+            setSelectedIds(sortedSongs.map(s => s.id));
+        }
+    };
+
+    const handlePlaySelected = () => {
+        const selected = sortedSongs.filter(s => selectedIds.includes(s.id));
+        if (selected.length > 0) {
+            playQueue(selected, 0);
+        }
+    };
+
+    // Extract directory path from full file path
+    const extractDirectoryPath = (filePath: string): string => {
+        if (!filePath) return '';
+        // Normalize slashes
+        const normalized = filePath.replace(/\\/g, '/');
+        // Find last slash
+        const lastSlash = normalized.lastIndexOf('/');
+        if (lastSlash > 0) {
+            return normalized.substring(0, lastSlash);
+        }
+        return normalized;
+    };
+
+    const handleCellClick = (field: 'artist' | 'album' | 'genre' | 'path', value: string, filePath?: string) => {
+        if (!value && field !== 'path') return;
+
+        let filterValue = value;
+
+        // For path, extract directory from the full file path
+        if (field === 'path') {
+            if (!filePath) return;
+            filterValue = extractDirectoryPath(filePath);
+            if (!filterValue) return;
+        }
+
+        setActiveFilter({ field, value: filterValue });
+        setPage(1);
+    };
+
+    const clearFilter = () => {
+        setActiveFilter(null);
+        setPage(1);
+    };
 
     const formatTime = (seconds: number) =>
         `${Math.floor(seconds / 60)}:${(Math.floor(seconds % 60)).toString().padStart(2, '0')}`;
+
+    const SortHeader = ({ field, label, className = '' }: { field: SortField; label: string; className?: string }) => (
+        <th
+            className={`px-4 py-3 cursor-pointer hover:bg-gray-800 select-none transition ${className}`}
+            onClick={() => handleSort(field)}
+        >
+            <div className="flex items-center gap-1">
+                <span>{label}</span>
+                {sortField === field && (
+                    sortDirection === 'asc' ? <ArrowUp size={14} /> : <ArrowDown size={14} />
+                )}
+            </div>
+        </th>
+    );
 
     return (
         <div className="flex flex-col h-full bg-black text-white">
             <div className="p-8 flex-1 overflow-auto mb-24">
                 {/* Header Controls */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-4 flex-wrap">
                         <h1 className="text-3xl font-bold">Library</h1>
                         <div className="flex bg-gray-800 rounded p-1">
                             <button onClick={() => setViewMode('flat')} className={`p-2 rounded ${viewMode === 'flat' ? 'bg-gray-700 text-white' : 'text-gray-400'}`} title="List View"><List size={18} /></button>
                             <button onClick={() => setViewMode('group')} className={`p-2 rounded ${viewMode === 'group' ? 'bg-gray-700 text-white' : 'text-gray-400'}`} title="Group View"><Grid size={18} /></button>
                             <button onClick={() => setViewMode('directory')} className={`p-2 rounded ${viewMode === 'directory' ? 'bg-gray-700 text-white' : 'text-gray-400'}`} title="Directory View"><Folder size={18} /></button>
                         </div>
+
+                        {/* Action Buttons for Selected Items */}
+                        {viewMode === 'flat' && selectedIds.length > 0 && (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={handlePlaySelected}
+                                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition shadow-lg shadow-blue-900/30"
+                                >
+                                    <Play size={18} fill="currentColor" />
+                                    Play ({selectedIds.length})
+                                </button>
+                                <button
+                                    onClick={() => setShowAddToPlaylist(true)}
+                                    className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium transition shadow-lg shadow-green-900/30"
+                                >
+                                    <ListPlus size={18} />
+                                    Add to Playlist
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex gap-4 items-center">
@@ -181,45 +297,99 @@ export default function Library() {
                     </div>
                 </div>
 
-                {/* VIEW Modes */}
+                {activeFilter && (
+                    <div className="mb-4 flex items-center gap-2">
+                        <span className="text-gray-400 text-sm">Filtering by:</span>
+                        <div className="flex items-center gap-2 bg-blue-600/20 border border-blue-500/50 text-blue-400 px-3 py-1 rounded-full text-sm">
+                            <span className="font-medium capitalize">{activeFilter.field}:</span>
+                            <span className="max-w-[300px] truncate">{activeFilter.value}</span>
+                            <button onClick={clearFilter} className="hover:text-white ml-1"><X size={14} /></button>
+                        </div>
+                    </div>
+                )}
 
                 {viewMode === 'flat' && (
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm text-gray-400">
                             <thead className="bg-gray-900 uppercase font-medium">
                                 <tr>
+                                    <th className="px-4 py-3 w-10">
+                                        <button
+                                            onClick={toggleSelectAll}
+                                            className={`p-1 rounded transition ${selectedIds.length === sortedSongs.length && sortedSongs.length > 0 ? 'text-blue-500' : 'text-gray-500 hover:text-gray-300'}`}
+                                        >
+                                            {selectedIds.length === sortedSongs.length && sortedSongs.length > 0 ? <CheckSquare size={18} /> : <Square size={18} />}
+                                        </button>
+                                    </th>
                                     <th className="px-4 py-3 w-12">#</th>
-                                    <th className="px-4 py-3">Title</th>
-                                    <th className="px-4 py-3">Artist</th>
-                                    <th className="px-4 py-3">Album</th>
-                                    <th className="px-4 py-3">Genre</th>
-                                    <th className="px-4 py-3 w-48">Path</th>
-                                    <th className="px-4 py-3 w-20">Time</th>
+                                    <SortHeader field="title" label="Title" />
+                                    <SortHeader field="artist" label="Artist" />
+                                    <SortHeader field="album" label="Album" />
+                                    <SortHeader field="genre" label="Genre" />
+                                    <SortHeader field="filePath" label="Path" className="w-48" />
+                                    <SortHeader field="duration" label="Time" className="w-20" />
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-800">
-                                {songs.map((song, i) => (
-                                    <tr key={song.id} className="hover:bg-gray-800/50 group cursor-pointer transition" onDoubleClick={() => handlePlay(song)}>
-                                        <td className="px-4 py-3 text-center">
-                                            <span className="group-hover:hidden">{(page - 1) * 50 + i + 1}</span>
-                                            <button onClick={() => handlePlay(song)} className="hidden group-hover:block text-blue-400"><Play size={16} fill="currentColor" /></button>
-                                        </td>
-                                        <td className="px-4 py-3 font-medium text-white">{song.title}</td>
-                                        <td className="px-4 py-3">{song.artist}</td>
-                                        <td className="px-4 py-3">{song.album}</td>
-                                        <td className="px-4 py-3">{song.genre}</td>
-                                        <td className="px-4 py-3 max-w-[200px]" title={song.filePath}>
-                                            <div className="truncate text-xs font-mono text-gray-500">{song.filePath}</div>
-                                        </td>
-                                        <td className="px-4 py-3">{song.duration && formatTime(song.duration)}</td>
-                                    </tr>
-                                ))}
+                                {sortedSongs.map((song, i) => {
+                                    const isSelected = selectedIds.includes(song.id);
+                                    const directoryPath = extractDirectoryPath(song.filePath || '');
+                                    return (
+                                        <tr
+                                            key={song.id}
+                                            className={`hover:bg-gray-800/50 group cursor-pointer transition ${isSelected ? 'bg-blue-600/10' : ''}`}
+                                            onDoubleClick={() => handlePlay(song)}
+                                        >
+                                            <td className="px-4 py-3">
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); toggleSelect(song.id); }}
+                                                    className={`p-1 rounded transition ${isSelected ? 'text-blue-500' : 'text-gray-600 hover:text-gray-400'}`}
+                                                >
+                                                    {isSelected ? <CheckSquare size={16} /> : <Square size={16} />}
+                                                </button>
+                                            </td>
+                                            <td className="px-4 py-3 text-center">
+                                                <span className="group-hover:hidden">{(page - 1) * 50 + i + 1}</span>
+                                                <button onClick={() => handlePlay(song)} className="hidden group-hover:block text-blue-400"><Play size={16} fill="currentColor" /></button>
+                                            </td>
+                                            <td className="px-4 py-3 font-medium text-white">{song.title}</td>
+                                            <td
+                                                className="px-4 py-3 hover:text-blue-400 hover:underline cursor-pointer transition"
+                                                onClick={(e) => { e.stopPropagation(); handleCellClick('artist', song.artist); }}
+                                                title={`Filter by artist: ${song.artist}`}
+                                            >
+                                                {song.artist}
+                                            </td>
+                                            <td
+                                                className="px-4 py-3 hover:text-blue-400 hover:underline cursor-pointer transition"
+                                                onClick={(e) => { e.stopPropagation(); handleCellClick('album', song.album); }}
+                                                title={`Filter by album: ${song.album}`}
+                                            >
+                                                {song.album}
+                                            </td>
+                                            <td
+                                                className="px-4 py-3 hover:text-blue-400 hover:underline cursor-pointer transition"
+                                                onClick={(e) => { e.stopPropagation(); handleCellClick('genre', song.genre); }}
+                                                title={`Filter by genre: ${song.genre}`}
+                                            >
+                                                {song.genre}
+                                            </td>
+                                            <td
+                                                className="px-4 py-3 hover:text-blue-400 cursor-pointer transition max-w-[200px]"
+                                                onClick={(e) => { e.stopPropagation(); handleCellClick('path', directoryPath, song.filePath); }}
+                                                title={`Filter by path: ${directoryPath}`}
+                                            >
+                                                <div className="truncate text-xs font-mono text-gray-500 hover:text-blue-400">{directoryPath}</div>
+                                            </td>
+                                            <td className="px-4 py-3">{song.duration && formatTime(song.duration)}</td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
-                        {/* Pagination */}
                         <div className="flex justify-center mt-6 gap-2">
                             <button disabled={page === 1} onClick={() => setPage(page - 1)} className="px-3 py-1 bg-gray-800 rounded disabled:opacity-50">Prev</button>
-                            <span className="px-3 py-1 text-gray-400">Page {page}</span>
+                            <span className="px-3 py-1 text-gray-400">Page {page} • {total} songs</span>
                             <button disabled={page * 50 >= total} onClick={() => setPage(page + 1)} className="px-3 py-1 bg-gray-800 rounded disabled:opacity-50">Next</button>
                         </div>
                     </div>
@@ -229,10 +399,7 @@ export default function Library() {
                     <div className="bg-gray-900/30 rounded-lg p-4 min-h-[500px] border border-gray-800">
                         <DirectoryTree
                             onPlayFile={(id, title, artist, album) => {
-                                handlePlay({
-                                    id, title, artist, album,
-                                    genre: '', year: 0, duration: 0, filePath: ''
-                                });
+                                handlePlay({ id, title, artist, album, genre: '', year: 0, duration: 0, filePath: '' });
                             }}
                             onPlayFolder={(path) => handlePlayFolder(path)}
                         />
@@ -259,10 +426,7 @@ export default function Library() {
                                             <span className="text-sm text-gray-500 bg-gray-950 px-2 py-0.5 rounded-full">{group.count} songs</span>
                                         </div>
                                         <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handlePlayGroup(group.key);
-                                            }}
+                                            onClick={(e) => { e.stopPropagation(); handlePlayGroup(group.key); }}
                                             className="p-2 hover:bg-gray-700 rounded-full text-blue-400"
                                             title="Play Group"
                                         >
@@ -300,10 +464,7 @@ export default function Library() {
                     <div className="bg-gray-900/30 rounded-lg p-4 min-h-[500px] border border-gray-800">
                         <DirectoryTree
                             onPlayFile={(id, title, artist, album) => {
-                                handlePlay({
-                                    id, title, artist, album,
-                                    genre: '', year: 0, duration: 0, filePath: ''
-                                });
+                                handlePlay({ id, title, artist, album, genre: '', year: 0, duration: 0, filePath: '' });
                             }}
                             onPlayFolder={(path) => handlePlayFolder(path)}
                         />
@@ -311,8 +472,12 @@ export default function Library() {
                 )}
             </div>
 
-            {/* Persistent Player (Same as before) */}
+            {/* Add to Playlist Modal */}
+            <AddToPlaylistModal
+                isOpen={showAddToPlaylist}
+                onClose={() => setShowAddToPlaylist(false)}
+                songIds={selectedIds}
+            />
         </div>
     );
 }
-
