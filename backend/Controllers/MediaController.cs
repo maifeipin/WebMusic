@@ -15,11 +15,13 @@ public class MediaController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly ISmbService _smbService;
+    private readonly PathResolver _pathResolver;
 
-    public MediaController(AppDbContext context, ISmbService smbService)
+    public MediaController(AppDbContext context, ISmbService smbService, PathResolver pathResolver)
     {
         _context = context;
         _smbService = smbService;
+        _pathResolver = pathResolver;
     }
 
     [HttpGet]
@@ -34,76 +36,34 @@ public class MediaController : ControllerBase
     {
         var query = _context.MediaFiles.AsQueryable();
 
-        // Path Filtering (Directory Playback)
+        // Path Filtering (Directory Playback) - Using PathResolver for consistent path handling
         if (!string.IsNullOrEmpty(path))
         {
-             var targetPath = path.Replace('\\', '/').TrimEnd('/');
-             var cleanTargetPath = targetPath.TrimStart('/'); 
-
-             // Resolve "Share Name" mapping (Same as GetDirectory)
-             var sources = await _context.ScanSources.ToListAsync();
-             var matchedSource = sources
-                    .Select(s => new { s, NormPath = s.Path.Replace('\\', '/').Trim('/') })
-                    .Where(x => cleanTargetPath.StartsWith(x.NormPath, StringComparison.OrdinalIgnoreCase))
-                    .OrderByDescending(x => x.NormPath.Length)
-                    .FirstOrDefault();
-
-             var dbPath = cleanTargetPath;
-             if (matchedSource != null)
-             {
-                 var shareName = matchedSource.NormPath.Split('/')[0];
-                 if (dbPath.StartsWith(shareName + "/", StringComparison.OrdinalIgnoreCase))
-                 {
-                     dbPath = dbPath.Substring(shareName.Length + 1);
-                 }
-                 else if (string.Equals(dbPath, shareName, StringComparison.OrdinalIgnoreCase))
-                 {
-                     dbPath = "";
-                 }
-             }
-             
-             // Apply Path Filter
-             if (recursive)
-             {
-                 if (string.IsNullOrEmpty(dbPath))
-                 {
-                     // Root of share: Return everything in this share?
-                     // Actually logic should be: ParentPath starts with dbPath...
-                     // But dbPath is empty. ParentPath can be anything.
-                     // But we should limit to the MATCHED SOURCE if possible?
-                     // Or just everything?
-                     // If path provided is just "ShareName", then Source Match found it.
-                     // We probably want all files belonging to that Share (effectively query by SourceId?)
-                     // OR just any file.
-                     // But wait, if multiple sources share same folder names (unlikely but possible).
-                     // Best to filter by SourceId if we matched a source?
-                     // For now, naive ParentPath prefix match.
-                     // If dbPath is "", `StartsWith` "" is true.
-                     // But we really only want files "under" that path.
-                     // If dbPath is empty, it means we are at Share Root.
-                     // We should filter files that belong to this Share.
-                     // `matchedSource` gives us `ScanSourceId`.
-                     if (matchedSource != null)
-                     {
-                         query = query.Where(m => m.ScanSourceId == matchedSource.s.Id);
-                     }
-                 }
-                 else
-                 {
-                     // Recursive: ParentPath == dbPath OR ParentPath starts with dbPath + "/"
-                     // Note: SQLite contains/startswith logic
-                     query = query.Where(m => m.ParentPath == dbPath || m.ParentPath.Replace("\\", "/").StartsWith(dbPath + "/"));
-                 }
-             }
-             else
-             {
-                 // Non-Recursive: ParentPath == dbPath
-                 // Handle exact match.
-                 // dbPath might be empty.
-                 var queryDbPath = dbPath.Replace('/', '\\'); // fallback? no, standardize on / for check if possible.
-                 // We rely on standardizing query side.
-                 query = query.Where(m => m.ParentPath.Replace("\\", "/") == dbPath);
-             }
+            var sources = await _context.ScanSources.ToListAsync();
+            var resolved = _pathResolver.ResolveFrontendToDbPath(path, sources);
+            
+            if (recursive)
+            {
+                if (string.IsNullOrEmpty(resolved.DbPath) && resolved.HasMatch)
+                {
+                    // Root of share: filter by source ID
+                    query = query.Where(m => m.ScanSourceId == resolved.MatchedSource!.Id);
+                }
+                else if (!string.IsNullOrEmpty(resolved.DbPath))
+                {
+                    // Recursive: ParentPath == dbPath OR starts with dbPath + "/"
+                    var dbPath = resolved.DbPath;
+                    query = query.Where(m => 
+                        m.ParentPath.Replace("\\", "/") == dbPath || 
+                        m.ParentPath.Replace("\\", "/").StartsWith(dbPath + "/"));
+                }
+            }
+            else
+            {
+                // Non-Recursive: exact match
+                var dbPath = resolved.DbPath;
+                query = query.Where(m => m.ParentPath.Replace("\\", "/") == dbPath);
+            }
         }
 
         if (!string.IsNullOrEmpty(search))
@@ -192,15 +152,9 @@ public class MediaController : ControllerBase
     [HttpGet("directory")]
     public async Task<IActionResult> GetDirectory([FromQuery] string? path = "")
     {
-        // Normalize Request Path
-        // If path is empty, we return Roots (Sources)
-        // If path is present, we return children
-        
-        var targetPath = (path ?? "").Replace('\\', '/').TrimEnd('/');
-        // Ensure no leading slash for consistent processing in C#, but handle DB mismatch later
-        var cleanTargetPath = targetPath.TrimStart('/'); 
+        var cleanPath = _pathResolver.NormalizePath(path);
 
-        if (string.IsNullOrEmpty(targetPath))
+        if (string.IsNullOrEmpty(cleanPath))
         {
             // Root Level: Return Configured Sources as "Roots"
             var sources = await _context.ScanSources
@@ -212,15 +166,14 @@ public class MediaController : ControllerBase
             foreach (var s in sources)
             {
                 var count = await _context.MediaFiles.CountAsync(m => m.ScanSourceId == s.Id);
-                var normPath = s.Path.Replace('\\', '/').TrimEnd('/');
-                // Use Source Name if available, otherwise Path
+                var normPath = _pathResolver.NormalizePath(s.Path);
                 var displayName = string.IsNullOrWhiteSpace(s.Name) ? normPath : s.Name;
                 
                 rootList.Add(new { 
                     Type = "Folder", 
                     Id = 0, 
                     Name = displayName, 
-                    Path = normPath, // Actual path for next query
+                    Path = normPath,
                     Artist = "", 
                     Album = "", 
                     Count = count 
@@ -231,36 +184,12 @@ public class MediaController : ControllerBase
         }
         else
         {
-            // Sub-Folder Level: Find children
-            
-            // Resolve "Share Name" mapping
-            // ScanSource Path includes Share Name (e.g. "DataSync/Music")
-            // MediaFile ParentPath excludes Share Name (e.g. "Music")
-            
+            // Sub-Folder Level: Find children using PathResolver
             var sources = await _context.ScanSources.ToListAsync();
-            var matchedSource = sources
-                .Select(s => new { s, NormPath = s.Path.Replace('\\', '/').Trim('/') })
-                .Where(x => cleanTargetPath.StartsWith(x.NormPath, StringComparison.OrdinalIgnoreCase))
-                .OrderByDescending(x => x.NormPath.Length)
-                .FirstOrDefault();
-                
-            var dbPath = cleanTargetPath;
-            
-            if (matchedSource != null)
-            {
-                var shareName = matchedSource.NormPath.Split('/')[0];
-                if (dbPath.StartsWith(shareName + "/", StringComparison.OrdinalIgnoreCase))
-                {
-                    dbPath = dbPath.Substring(shareName.Length + 1);
-                }
-                else if (string.Equals(dbPath, shareName, StringComparison.OrdinalIgnoreCase))
-                {
-                    dbPath = "";
-                }
-            }
+            var resolved = _pathResolver.ResolveFrontendToDbPath(path, sources);
+            var dbPath = resolved.DbPath;
             
             // 1. Folders: In-Memory aggregation
-            // Filter coarsely by dbPath to reduce memory load
             var query = _context.MediaFiles.AsQueryable();
             if (!string.IsNullOrEmpty(dbPath))
             {
@@ -327,7 +256,7 @@ public class MediaController : ControllerBase
                     Type = "Folder", 
                     Id = 0, 
                     Name = kvp.Key, 
-                    Path = (cleanTargetPath + "/" + kvp.Key), // Frontend Path includes Share
+                    Path = (cleanPath + "/" + kvp.Key), // Frontend Path includes Share
                     Artist = "", 
                     Album = "", 
                     Count = kvp.Value 

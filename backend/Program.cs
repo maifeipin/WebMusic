@@ -12,7 +12,11 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+{
+    // Global exception filter for unified API error responses
+    options.Filters.Add<WebMusic.Backend.Filters.GlobalExceptionFilter>();
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
@@ -74,6 +78,7 @@ builder.Services.AddScoped<WebMusic.Backend.Services.ISmbService, WebMusic.Backe
 builder.Services.AddScoped<WebMusic.Backend.Services.ScannerService>();
 builder.Services.AddSingleton<WebMusic.Backend.Services.BackgroundQueue>();
 builder.Services.AddSingleton<WebMusic.Backend.Services.ScanStateService>();
+builder.Services.AddSingleton<WebMusic.Backend.Services.PathResolver>(); // Centralized path resolution
 builder.Services.AddHostedService<WebMusic.Backend.Services.ScanWorker>();
 
 var app = builder.Build();
