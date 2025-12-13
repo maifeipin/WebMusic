@@ -37,7 +37,6 @@ export default function SharedPlaylistPage() {
     const [playedIds, setPlayedIds] = useState<Set<number>>(new Set()); // Track played songs
     const audioRef = useRef<HTMLAudioElement>(null);
 
-    // ... (keep useEffects for token/mediaSession)
 
     // Initial playlist load
     useEffect(() => {
@@ -172,6 +171,76 @@ export default function SharedPlaylistPage() {
         const idx = playlist.songs.findIndex(s => s.id === currentSong.id);
         if (idx > 0) playSong(playlist.songs[idx - 1]);
     };
+
+    // Media Session API
+    useEffect(() => {
+        if (!currentSong) return;
+
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: currentSong.title,
+                artist: currentSong.artist,
+                album: currentSong.album,
+                artwork: [
+                    { src: '/icon-192.svg', sizes: '192x192', type: 'image/svg+xml' },
+                    { src: '/icon-512.svg', sizes: '512x512', type: 'image/svg+xml' }
+                ]
+            });
+
+            navigator.mediaSession.setActionHandler('play', () => {
+                if (audioRef.current) {
+                    audioRef.current.play().catch(console.error);
+                    setIsPlaying(true);
+                }
+            });
+            navigator.mediaSession.setActionHandler('pause', () => {
+                if (audioRef.current) {
+                    audioRef.current.pause();
+                    setIsPlaying(false);
+                }
+            });
+            navigator.mediaSession.setActionHandler('previoustrack', playPrev);
+            navigator.mediaSession.setActionHandler('nexttrack', playNext);
+
+            // Seek handlers
+            navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+                if (audioRef.current) {
+                    audioRef.current.currentTime = Math.max(0, audioRef.current.currentTime - (details.seekOffset || 10));
+                }
+            });
+            navigator.mediaSession.setActionHandler('seekforward', (details) => {
+                if (audioRef.current) {
+                    audioRef.current.currentTime = Math.min(audioRef.current.duration || 0, audioRef.current.currentTime + (details.seekOffset || 10));
+                }
+            });
+            navigator.mediaSession.setActionHandler('seekto', (details) => {
+                if (audioRef.current && details.seekTime !== undefined) {
+                    audioRef.current.currentTime = details.seekTime;
+                }
+            });
+        }
+    }, [currentSong, playlist]); // Re-bind when song or playlist (next/prev logic) changes
+
+    useEffect(() => {
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+        }
+    }, [isPlaying]);
+
+    useEffect(() => {
+        if ('mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
+            const duration = currentSong?.duration || audioRef.current?.duration || 0;
+            if (duration && isFinite(duration)) {
+                try {
+                    navigator.mediaSession.setPositionState({
+                        duration: duration,
+                        playbackRate: 1,
+                        position: Math.min(currentTime, duration)
+                    });
+                } catch { }
+            }
+        }
+    }, [currentTime, currentSong]);
 
     const formatTime = (s: number) => {
         if (!isFinite(s)) return '0:00';
