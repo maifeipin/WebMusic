@@ -17,9 +17,9 @@ export default function Sources() {
     // Credential State
     const [credName, setCredName] = useState('HomeNAS');
     const [credProvider, setCredProvider] = useState('SMB');
-    const [credHost, setCredHost] = useState('192.168.2.18');
-    const [credUser, setCredUser] = useState('adminn');
-    const [credPass, setCredPass] = useState('Nnnnn');
+    const [credHost, setCredHost] = useState('');
+    const [credUser, setCredUser] = useState('');
+    const [credPass, setCredPass] = useState('');
     const [showCredForm, setShowCredForm] = useState(false);
     const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'failure'>('idle');
 
