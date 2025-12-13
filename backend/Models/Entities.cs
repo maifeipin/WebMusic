@@ -97,6 +97,16 @@ public class Playlist
     /// Share token for public access. Null means not shared.
     /// </summary>
     public string? ShareToken { get; set; }
+
+    /// <summary>
+    /// Expiration time for the share link. Null means never expires (legacy data).
+    /// </summary>
+    public DateTime? ShareExpiresAt { get; set; }
+
+    /// <summary>
+    /// Optional password for accessing the shared playlist.
+    /// </summary>
+    public string? SharePassword { get; set; }
     
     [JsonIgnore]
     public List<PlaylistSong> PlaylistSongs { get; set; } = new();

@@ -51,11 +51,12 @@ export const addSongsToPlaylist = (id: number, mediaFileIds: number[]) => api.po
 export const removeSongsFromPlaylist = (id: number, mediaFileIds: number[]) => api.delete(`/playlist/${id}/songs?ids=${mediaFileIds.join(',')}`);
 
 // Sharing
-export const sharePlaylist = (id: number, options?: { name?: string; songIds?: number[] }) =>
+export const sharePlaylist = (id: number, options?: { name?: string; songIds?: number[]; password?: string; expiresInDays?: number }) =>
     api.post(`/playlist/${id}/share`, options || {});
 export const revokePlaylistShare = (id: number) => api.delete(`/playlist/${id}/share`);
 // Note: getSharedPlaylist doesn't need auth, so we use a plain axios call
-export const getSharedPlaylist = (token: string) => axios.get(`/api/playlist/shared/${token}`);
+export const getSharedPlaylist = (token: string, password?: string) =>
+    axios.get(`/api/playlist/shared/${token}${password ? `?password=${encodeURIComponent(password)}` : ''}`);
 
 export default api;
 

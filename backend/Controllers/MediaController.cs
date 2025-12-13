@@ -345,15 +345,25 @@ public class MediaController : ControllerBase
     /// </summary>
     [AllowAnonymous]
     [HttpGet("stream/shared/{shareToken}/{songId}")]
-    public async Task<IActionResult> StreamShared(string shareToken, int songId, [FromQuery] bool transcode = false)
+    public async Task<IActionResult> StreamShared(string shareToken, int songId, [FromQuery] bool transcode = false, [FromQuery] string? pwd = null)
     {
-        // Validate the share token and song belongs to that playlist
+        // 1. Validate Share Token
         var playlist = await _context.Playlists
             .Include(p => p.PlaylistSongs)
             .FirstOrDefaultAsync(p => p.ShareToken == shareToken);
 
-        if (playlist == null)
-            return NotFound("Share link invalid");
+        if (playlist == null) return NotFound("Share link invalid");
+
+        // 2. Check Expiry
+        if (playlist.ShareExpiresAt.HasValue && DateTime.UtcNow > playlist.ShareExpiresAt.Value)
+            return StatusCode(410, "Share link expired");
+
+        // 3. Check Password
+        if (!string.IsNullOrEmpty(playlist.SharePassword))
+        {
+            if (string.IsNullOrEmpty(pwd) || pwd != playlist.SharePassword)
+                return Forbid("Invalid password");
+        }
 
         var belongsToPlaylist = playlist.PlaylistSongs.Any(ps => ps.MediaFileId == songId);
         if (!belongsToPlaylist)

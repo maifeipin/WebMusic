@@ -14,164 +14,1060 @@ info: Microsoft.Hosting.Lifetime[0]
 info: Microsoft.Hosting.Lifetime[0]
       Content root path: /Users/lilee/Projects/dev/WebMusic/v2/backend
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      Executed DbCommand (2ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "f"."MediaFileId"
+      FROM "Favorites" AS "f"
+      WHERE "f"."UserId" = @__userId_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "f"."MediaFileId"
+      FROM "Favorites" AS "f"
+      WHERE "f"."UserId" = @__userId_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."AuthData", "s"."Host", "s"."Name", "s"."ProviderType"
+      FROM "StorageCredentials" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type"
+      FROM "ScanSources" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."AuthData", "s"."Host", "s"."Name", "s"."ProviderType"
+      FROM "StorageCredentials" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type"
+      FROM "ScanSources" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__p_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."AuthData", "s"."Host", "s"."Name", "s"."ProviderType"
+      FROM "StorageCredentials" AS "s"
+      WHERE "s"."Id" = @__p_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__p_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."AuthData", "s"."Host", "s"."Name", "s"."ProviderType"
+      FROM "StorageCredentials" AS "s"
+      WHERE "s"."Id" = @__p_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__p_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."AuthData", "s"."Host", "s"."Name", "s"."ProviderType"
+      FROM "StorageCredentials" AS "s"
+      WHERE "s"."Id" = @__p_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__p_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."AuthData", "s"."Host", "s"."Name", "s"."ProviderType"
+      FROM "StorageCredentials" AS "s"
+      WHERE "s"."Id" = @__p_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__p_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."AuthData", "s"."Host", "s"."Name", "s"."ProviderType"
+      FROM "StorageCredentials" AS "s"
+      WHERE "s"."Id" = @__p_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__p_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."AuthData", "s"."Host", "s"."Name", "s"."ProviderType"
+      FROM "StorageCredentials" AS "s"
+      WHERE "s"."Id" = @__p_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__source_StorageCredentialId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type"
+      FROM "ScanSources" AS "s"
+      WHERE "s"."StorageCredentialId" = @__source_StorageCredentialId_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (Size = 3), @p1='?' (Size = 25), @p2='?' (DbType = Int32), @p3='?' (Size = 3)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "ScanSources" ("Name", "Path", "StorageCredentialId", "Type")
+      VALUES (@p0, @p1, @p2, @p3)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."AuthData", "s"."Host", "s"."Name", "s"."ProviderType"
+      FROM "StorageCredentials" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type"
+      FROM "ScanSources" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
       SELECT EXISTS (
           SELECT 1
-          FROM "Users" AS "u")
+          FROM "ScanSources" AS "s"
+          WHERE "s"."Id" = @__id_0)
+info: WebMusic.Backend.Services.ScanWorker[0]
+      Processing scan job for SourceId: 3
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (1ms) [Parameters=[@__request_Username_0='?' (Size = 5)], CommandType='Text', CommandTimeout='30']
-      SELECT "u"."Id", "u"."PasswordHash", "u"."Username"
-      FROM "Users" AS "u"
-      WHERE "u"."Username" = @__request_Username_0
-      LIMIT 2
+      Executed DbCommand (0ms) [Parameters=[@__sourceId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type", "s0"."Id", "s0"."AuthData", "s0"."Host", "s0"."Name", "s0"."ProviderType"
+      FROM "ScanSources" AS "s"
+      LEFT JOIN "StorageCredentials" AS "s0" ON "s"."StorageCredentialId" = "s0"."Id"
+      WHERE "s"."Id" = @__sourceId_0
+      LIMIT 1
+info: WebMusic.Backend.Services.ScannerService[0]
+      Starting scan for source: 童安格
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (1ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
-      SELECT COUNT(*)
-      FROM "PlayHistories" AS "p"
-      WHERE "p"."UserId" = @__userId_0
-info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (2ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
-      SELECT COUNT(*)
+      Executed DbCommand (1ms) [Parameters=[@__source_StorageCredentialId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."FilePath"
       FROM "MediaFiles" AS "m"
+      INNER JOIN "ScanSources" AS "s" ON "m"."ScanSourceId" = "s"."Id"
+      WHERE "s"."StorageCredentialId" = @__source_StorageCredentialId_0
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
-      SELECT COUNT(*)
-      FROM "Favorites" AS "f"
-      WHERE "f"."UserId" = @__userId_0
+      Executed DbCommand (1ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 42), @p5='?' (Size = 69), @p6='?' (Size = 13), @p7='?' (Size = 34), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 30), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
-      SELECT COUNT(*)
-      FROM (
-          SELECT DISTINCT "m"."Artist"
-          FROM "MediaFiles" AS "m"
-      ) AS "t"
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 18), @p2='?' (Size = 7), @p3='?' (DbType = Time), @p4='?' (Size = 42), @p5='?' (Size = 79), @p6='?' (Size = 3), @p7='?' (Size = 32), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 4), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
-      SELECT COUNT(*)
-      FROM (
-          SELECT DISTINCT "m"."Album"
-          FROM "MediaFiles" AS "m"
-      ) AS "t"
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 18), @p2='?' (Size = 7), @p3='?' (DbType = Time), @p4='?' (Size = 42), @p5='?' (Size = 79), @p6='?' (Size = 3), @p7='?' (Size = 32), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 2), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (6ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
-      SELECT COALESCE(SUM("m"."SizeBytes"), 0)
-      FROM "MediaFiles" AS "m"
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 18), @p2='?' (Size = 7), @p3='?' (DbType = Time), @p4='?' (Size = 42), @p5='?' (Size = 79), @p6='?' (Size = 3), @p7='?' (Size = 32), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 4), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__p_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
-      SELECT "m"."Id", "m"."Title", "m"."Artist", "m"."Album", "m"."Genre", "m"."Duration", "m"."FilePath"
-      FROM (
-          SELECT "p"."MediaFileId", "p"."PlayedAt"
-          FROM "PlayHistories" AS "p"
-          WHERE "p"."UserId" = @__userId_0
-          ORDER BY "p"."PlayedAt" DESC
-          LIMIT @__p_1
-      ) AS "t"
-      INNER JOIN "MediaFiles" AS "m" ON "t"."MediaFileId" = "m"."Id"
-      ORDER BY "t"."PlayedAt" DESC
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 47), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 22), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__p_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
-      SELECT "m"."Id", "m"."Title", "m"."Artist", "m"."Album", "m"."Genre", "m"."Duration", "m"."FilePath"
-      FROM (
-          SELECT "f"."CreatedAt", "f"."MediaFileId"
-          FROM "Favorites" AS "f"
-          WHERE "f"."UserId" = @__userId_0
-          ORDER BY "f"."CreatedAt" DESC
-          LIMIT @__p_1
-      ) AS "t"
-      INNER JOIN "MediaFiles" AS "m" ON "t"."MediaFileId" = "m"."Id"
-      ORDER BY "t"."CreatedAt" DESC
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 53), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 28), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 48), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 23), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 51), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 26), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 45), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 20), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 45), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 20), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 46), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 21), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 47), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 22), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 48), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 23), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 52), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 27), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 48), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 23), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 47), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 22), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 47), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 22), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 54), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 29), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 48), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 23), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 48), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 23), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 46), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 21), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 48), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 23), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 47), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 22), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 48), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 23), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 13), @p2='?' (Size = 14), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 46), @p6='?' (Size = 12), @p7='?' (Size = 20), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 21), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 81), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 4), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 85), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 8), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 79), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 2), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 79), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 2), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 82), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 5), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 83), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 6), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 81), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 4), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 88), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 11), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 82), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 5), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 81), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 4), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 82), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 5), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 81), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 4), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 80), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 3), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 82), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 5), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 81), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 4), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 80), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 3), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 79), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 2), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 81), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 4), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 83), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 6), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 81), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 4), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 86), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 9), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 82), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 5), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 81), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 4), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 80), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 3), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 84), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 7), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 82), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 5), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 82), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 5), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (Size = 22), @p2='?' (Size = 3), @p3='?' (DbType = Time), @p4='?' (Size = 41), @p5='?' (Size = 81), @p6='?' (Size = 13), @p7='?' (Size = 65), @p8='?' (DbType = Int32), @p9='?' (DbType = Int64), @p10='?' (Size = 4), @p11='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "MediaFiles" ("AddedAt", "Album", "Artist", "Duration", "FileHash", "FilePath", "Genre", "ParentPath", "ScanSourceId", "SizeBytes", "Title", "Year")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)
+      RETURNING "Id";
+info: WebMusic.Backend.Services.ScannerService[0]
+      Scan completed. Added 53 new files.
+info: WebMusic.Backend.Services.ScanWorker[0]
+      Scan job completed. Added 53 files.
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
       Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path"
+      FROM "ScanSources" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__s_Id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
       SELECT COUNT(*)
       FROM "MediaFiles" AS "m"
+      WHERE "m"."ScanSourceId" = @__s_Id_0
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      Executed DbCommand (0ms) [Parameters=[@__s_Id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
       SELECT COUNT(*)
-      FROM "PlayHistories" AS "p"
-      WHERE "p"."UserId" = @__userId_0
-info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
-      SELECT COUNT(*)
-      FROM "Favorites" AS "f"
-      WHERE "f"."UserId" = @__userId_0
-info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
-      SELECT COUNT(*)
-      FROM (
-          SELECT DISTINCT "m"."Artist"
-          FROM "MediaFiles" AS "m"
-      ) AS "t"
-info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
-      SELECT COUNT(*)
-      FROM (
-          SELECT DISTINCT "m"."Album"
-          FROM "MediaFiles" AS "m"
-      ) AS "t"
-info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__p_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
-      SELECT "m"."Id", "m"."Title", "m"."Artist", "m"."Album", "m"."Genre", "m"."Duration", "m"."FilePath"
-      FROM (
-          SELECT "p"."MediaFileId", "p"."PlayedAt"
-          FROM "PlayHistories" AS "p"
-          WHERE "p"."UserId" = @__userId_0
-          ORDER BY "p"."PlayedAt" DESC
-          LIMIT @__p_1
-      ) AS "t"
-      INNER JOIN "MediaFiles" AS "m" ON "t"."MediaFileId" = "m"."Id"
-      ORDER BY "t"."PlayedAt" DESC
-info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__p_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
-      SELECT "m"."Id", "m"."Title", "m"."Artist", "m"."Album", "m"."Genre", "m"."Duration", "m"."FilePath"
-      FROM (
-          SELECT "f"."CreatedAt", "f"."MediaFileId"
-          FROM "Favorites" AS "f"
-          WHERE "f"."UserId" = @__userId_0
-          ORDER BY "f"."CreatedAt" DESC
-          LIMIT @__p_1
-      ) AS "t"
-      INNER JOIN "MediaFiles" AS "m" ON "t"."MediaFileId" = "m"."Id"
-      ORDER BY "t"."CreatedAt" DESC
-info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (1ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
-      SELECT COALESCE(SUM("m"."SizeBytes"), 0)
       FROM "MediaFiles" AS "m"
+      WHERE "m"."ScanSourceId" = @__s_Id_0
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      Executed DbCommand (0ms) [Parameters=[@__s_Id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
       SELECT COUNT(*)
-      FROM "Favorites" AS "f"
-      WHERE "f"."UserId" = @__userId_0
+      FROM "MediaFiles" AS "m"
+      WHERE "m"."ScanSourceId" = @__s_Id_0
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__p_2='?' (DbType = Int32), @__p_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
-      SELECT "t"."MediaFileId", "t"."CreatedAt", "m"."Id", "m"."Title", "m"."Artist", "m"."Album", "m"."Genre", "m"."Duration", "m"."FilePath"
-      FROM (
-          SELECT "f"."CreatedAt", "f"."MediaFileId"
-          FROM "Favorites" AS "f"
-          WHERE "f"."UserId" = @__userId_0
-          ORDER BY "f"."CreatedAt" DESC
-          LIMIT @__p_2 OFFSET @__p_1
-      ) AS "t"
-      INNER JOIN "MediaFiles" AS "m" ON "t"."MediaFileId" = "m"."Id"
-      ORDER BY "t"."CreatedAt" DESC
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path"
+      FROM "ScanSources" AS "s"
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      Executed DbCommand (0ms) [Parameters=[@__s_Id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
       SELECT COUNT(*)
-      FROM "Favorites" AS "f"
-      WHERE "f"."UserId" = @__userId_0
+      FROM "MediaFiles" AS "m"
+      WHERE "m"."ScanSourceId" = @__s_Id_0
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__p_2='?' (DbType = Int32), @__p_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
-      SELECT "t"."MediaFileId", "t"."CreatedAt", "m"."Id", "m"."Title", "m"."Artist", "m"."Album", "m"."Genre", "m"."Duration", "m"."FilePath"
+      Executed DbCommand (0ms) [Parameters=[@__s_Id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "MediaFiles" AS "m"
+      WHERE "m"."ScanSourceId" = @__s_Id_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__s_Id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "MediaFiles" AS "m"
+      WHERE "m"."ScanSourceId" = @__s_Id_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type"
+      FROM "ScanSources" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__dbPath_0='?' (Size = 16)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."ParentPath" AS "Path", COUNT(*) AS "Count"
+      FROM "MediaFiles" AS "m"
+      WHERE instr("m"."ParentPath", @__dbPath_0) > 0 OR instr(replace("m"."ParentPath", '\', '/'), @__dbPath_0) > 0
+      GROUP BY "m"."ParentPath"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__dbPath_0='?' (Size = 16), @__targetWithSlash_1='?' (Size = 17)], CommandType='Text', CommandTimeout='30']
+      SELECT 'File' AS "Type", "m"."Id", "m"."Title" AS "Name", "m"."FilePath" AS "Path", "m"."Artist", "m"."Album"
+      FROM "MediaFiles" AS "m"
+      WHERE replace("m"."ParentPath", '\', '/') = @__dbPath_0 OR replace("m"."ParentPath", '\', '/') = @__targetWithSlash_1
+      ORDER BY "m"."Title"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type"
+      FROM "ScanSources" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__dbPath_0='?' (Size = 36)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."ParentPath" AS "Path", COUNT(*) AS "Count"
+      FROM "MediaFiles" AS "m"
+      WHERE instr("m"."ParentPath", @__dbPath_0) > 0 OR instr(replace("m"."ParentPath", '\', '/'), @__dbPath_0) > 0
+      GROUP BY "m"."ParentPath"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__dbPath_0='?' (Size = 36), @__targetWithSlash_1='?' (Size = 37)], CommandType='Text', CommandTimeout='30']
+      SELECT 'File' AS "Type", "m"."Id", "m"."Title" AS "Name", "m"."FilePath" AS "Path", "m"."Artist", "m"."Album"
+      FROM "MediaFiles" AS "m"
+      WHERE replace("m"."ParentPath", '\', '/') = @__dbPath_0 OR replace("m"."ParentPath", '\', '/') = @__targetWithSlash_1
+      ORDER BY "m"."Title"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?', @p1='?' (DbType = DateTime), @p2='?' (Size = 19), @p3='?' (DbType = DateTime), @p4='?', @p5='?', @p6='?' (Size = 6), @p7='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "Playlists" ("CoverArt", "CreatedAt", "Name", "ShareExpiresAt", "SharePassword", "ShareToken", "Type", "UserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__id_0='?' (DbType = Int32), @__userId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
       FROM (
-          SELECT "f"."CreatedAt", "f"."MediaFileId"
-          FROM "Favorites" AS "f"
-          WHERE "f"."UserId" = @__userId_0
-          ORDER BY "f"."CreatedAt" DESC
-          LIMIT @__p_2 OFFSET @__p_1
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."Id" = @__id_0 AND "p"."UserId" = @__userId_1
+          LIMIT 1
       ) AS "t"
-      INNER JOIN "MediaFiles" AS "m" ON "t"."MediaFileId" = "m"."Id"
-      ORDER BY "t"."CreatedAt" DESC
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__mediaId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32), @__userId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."Id" = @__id_0 AND "p"."UserId" = @__userId_1
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (2ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32), @__userId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."Id" = @__id_0 AND "p"."UserId" = @__userId_1
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN "PlaylistSongs" AS "p0" ON "t"."Id" = "p0"."PlaylistId"
+      ORDER BY "t"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      DELETE FROM "Playlists"
+      WHERE "Id" = @p0
+      RETURNING 1;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path"
+      FROM "ScanSources" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__s_Id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "MediaFiles" AS "m"
+      WHERE "m"."ScanSourceId" = @__s_Id_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__s_Id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "MediaFiles" AS "m"
+      WHERE "m"."ScanSourceId" = @__s_Id_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__s_Id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "MediaFiles" AS "m"
+      WHERE "m"."ScanSourceId" = @__s_Id_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path"
+      FROM "ScanSources" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__s_Id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "MediaFiles" AS "m"
+      WHERE "m"."ScanSourceId" = @__s_Id_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__s_Id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "MediaFiles" AS "m"
+      WHERE "m"."ScanSourceId" = @__s_Id_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__s_Id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT COUNT(*)
+      FROM "MediaFiles" AS "m"
+      WHERE "m"."ScanSourceId" = @__s_Id_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type"
+      FROM "ScanSources" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__dbPath_0='?' (Size = 16)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."ParentPath" AS "Path", COUNT(*) AS "Count"
+      FROM "MediaFiles" AS "m"
+      WHERE instr("m"."ParentPath", @__dbPath_0) > 0 OR instr(replace("m"."ParentPath", '\', '/'), @__dbPath_0) > 0
+      GROUP BY "m"."ParentPath"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__dbPath_0='?' (Size = 16), @__targetWithSlash_1='?' (Size = 17)], CommandType='Text', CommandTimeout='30']
+      SELECT 'File' AS "Type", "m"."Id", "m"."Title" AS "Name", "m"."FilePath" AS "Path", "m"."Artist", "m"."Album"
+      FROM "MediaFiles" AS "m"
+      WHERE replace("m"."ParentPath", '\', '/') = @__dbPath_0 OR replace("m"."ParentPath", '\', '/') = @__targetWithSlash_1
+      ORDER BY "m"."Title"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type"
+      FROM "ScanSources" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__dbPath_0='?' (Size = 34)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."ParentPath" AS "Path", COUNT(*) AS "Count"
+      FROM "MediaFiles" AS "m"
+      WHERE instr("m"."ParentPath", @__dbPath_0) > 0 OR instr(replace("m"."ParentPath", '\', '/'), @__dbPath_0) > 0
+      GROUP BY "m"."ParentPath"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__dbPath_0='?' (Size = 34), @__targetWithSlash_1='?' (Size = 35)], CommandType='Text', CommandTimeout='30']
+      SELECT 'File' AS "Type", "m"."Id", "m"."Title" AS "Name", "m"."FilePath" AS "Path", "m"."Artist", "m"."Album"
+      FROM "MediaFiles" AS "m"
+      WHERE replace("m"."ParentPath", '\', '/') = @__dbPath_0 OR replace("m"."ParentPath", '\', '/') = @__targetWithSlash_1
+      ORDER BY "m"."Title"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type"
+      FROM "ScanSources" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__dbPath_0='?' (Size = 20)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."ParentPath" AS "Path", COUNT(*) AS "Count"
+      FROM "MediaFiles" AS "m"
+      WHERE instr("m"."ParentPath", @__dbPath_0) > 0 OR instr(replace("m"."ParentPath", '\', '/'), @__dbPath_0) > 0
+      GROUP BY "m"."ParentPath"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__dbPath_0='?' (Size = 20), @__targetWithSlash_1='?' (Size = 21)], CommandType='Text', CommandTimeout='30']
+      SELECT 'File' AS "Type", "m"."Id", "m"."Title" AS "Name", "m"."FilePath" AS "Path", "m"."Artist", "m"."Album"
+      FROM "MediaFiles" AS "m"
+      WHERE replace("m"."ParentPath", '\', '/') = @__dbPath_0 OR replace("m"."ParentPath", '\', '/') = @__targetWithSlash_1
+      ORDER BY "m"."Title"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type"
+      FROM "ScanSources" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__dbPath_0='?' (Size = 36)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."ParentPath" AS "Path", COUNT(*) AS "Count"
+      FROM "MediaFiles" AS "m"
+      WHERE instr("m"."ParentPath", @__dbPath_0) > 0 OR instr(replace("m"."ParentPath", '\', '/'), @__dbPath_0) > 0
+      GROUP BY "m"."ParentPath"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__dbPath_0='?' (Size = 36), @__targetWithSlash_1='?' (Size = 37)], CommandType='Text', CommandTimeout='30']
+      SELECT 'File' AS "Type", "m"."Id", "m"."Title" AS "Name", "m"."FilePath" AS "Path", "m"."Artist", "m"."Album"
+      FROM "MediaFiles" AS "m"
+      WHERE replace("m"."ParentPath", '\', '/') = @__dbPath_0 OR replace("m"."ParentPath", '\', '/') = @__targetWithSlash_1
+      ORDER BY "m"."Title"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[], CommandType='Text', CommandTimeout='30']
+      SELECT "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type"
+      FROM "ScanSources" AS "s"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__dbPath_0='?' (Size = 65)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."ParentPath" AS "Path", COUNT(*) AS "Count"
+      FROM "MediaFiles" AS "m"
+      WHERE instr("m"."ParentPath", @__dbPath_0) > 0 OR instr(replace("m"."ParentPath", '\', '/'), @__dbPath_0) > 0
+      GROUP BY "m"."ParentPath"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__dbPath_0='?' (Size = 65), @__targetWithSlash_1='?' (Size = 66)], CommandType='Text', CommandTimeout='30']
+      SELECT 'File' AS "Type", "m"."Id", "m"."Title" AS "Name", "m"."FilePath" AS "Path", "m"."Artist", "m"."Album"
+      FROM "MediaFiles" AS "m"
+      WHERE replace("m"."ParentPath", '\', '/') = @__dbPath_0 OR replace("m"."ParentPath", '\', '/') = @__targetWithSlash_1
+      ORDER BY "m"."Title"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?', @p1='?' (DbType = DateTime), @p2='?' (Size = 28), @p3='?' (DbType = DateTime), @p4='?', @p5='?', @p6='?' (Size = 6), @p7='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "Playlists" ("CoverArt", "CreatedAt", "Name", "ShareExpiresAt", "SharePassword", "ShareToken", "Type", "UserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32), @__userId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+      FROM "Playlists" AS "p"
+      WHERE "p"."Id" = @__id_0 AND "p"."UserId" = @__userId_1
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__mediaFileIds_0='?' (Size = 57)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."Id", "m"."AddedAt", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+      FROM "MediaFiles" AS "m"
+      WHERE "m"."Id" IN (
+          SELECT "m0"."value"
+          FROM json_each(@__mediaFileIds_0) AS "m0"
+      )
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__8__locals1_id_0='?' (DbType = Int32), @__file_Id_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "PlaylistSongs" AS "p"
+          WHERE "p"."PlaylistId" = @__8__locals1_id_0 AND "p"."MediaFileId" = @__file_Id_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__8__locals1_id_0='?' (DbType = Int32), @__file_Id_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "PlaylistSongs" AS "p"
+          WHERE "p"."PlaylistId" = @__8__locals1_id_0 AND "p"."MediaFileId" = @__file_Id_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__8__locals1_id_0='?' (DbType = Int32), @__file_Id_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "PlaylistSongs" AS "p"
+          WHERE "p"."PlaylistId" = @__8__locals1_id_0 AND "p"."MediaFileId" = @__file_Id_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__8__locals1_id_0='?' (DbType = Int32), @__file_Id_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "PlaylistSongs" AS "p"
+          WHERE "p"."PlaylistId" = @__8__locals1_id_0 AND "p"."MediaFileId" = @__file_Id_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__8__locals1_id_0='?' (DbType = Int32), @__file_Id_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "PlaylistSongs" AS "p"
+          WHERE "p"."PlaylistId" = @__8__locals1_id_0 AND "p"."MediaFileId" = @__file_Id_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__8__locals1_id_0='?' (DbType = Int32), @__file_Id_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "PlaylistSongs" AS "p"
+          WHERE "p"."PlaylistId" = @__8__locals1_id_0 AND "p"."MediaFileId" = @__file_Id_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__8__locals1_id_0='?' (DbType = Int32), @__file_Id_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "PlaylistSongs" AS "p"
+          WHERE "p"."PlaylistId" = @__8__locals1_id_0 AND "p"."MediaFileId" = @__file_Id_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__8__locals1_id_0='?' (DbType = Int32), @__file_Id_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "PlaylistSongs" AS "p"
+          WHERE "p"."PlaylistId" = @__8__locals1_id_0 AND "p"."MediaFileId" = @__file_Id_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__8__locals1_id_0='?' (DbType = Int32), @__file_Id_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "PlaylistSongs" AS "p"
+          WHERE "p"."PlaylistId" = @__8__locals1_id_0 AND "p"."MediaFileId" = @__file_Id_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__8__locals1_id_0='?' (DbType = Int32), @__file_Id_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "PlaylistSongs" AS "p"
+          WHERE "p"."PlaylistId" = @__8__locals1_id_0 AND "p"."MediaFileId" = @__file_Id_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__8__locals1_id_0='?' (DbType = Int32), @__file_Id_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "PlaylistSongs" AS "p"
+          WHERE "p"."PlaylistId" = @__8__locals1_id_0 AND "p"."MediaFileId" = @__file_Id_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__8__locals1_id_0='?' (DbType = Int32), @__file_Id_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "PlaylistSongs" AS "p"
+          WHERE "p"."PlaylistId" = @__8__locals1_id_0 AND "p"."MediaFileId" = @__file_Id_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__8__locals1_id_0='?' (DbType = Int32), @__file_Id_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "PlaylistSongs" AS "p"
+          WHERE "p"."PlaylistId" = @__8__locals1_id_0 AND "p"."MediaFileId" = @__file_Id_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__8__locals1_id_0='?' (DbType = Int32), @__file_Id_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT EXISTS (
+          SELECT 1
+          FROM "PlaylistSongs" AS "p"
+          WHERE "p"."PlaylistId" = @__8__locals1_id_0 AND "p"."MediaFileId" = @__file_Id_1)
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (DbType = Int32), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlaylistSongs" ("AddedAt", "MediaFileId", "PlaylistId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (DbType = Int32), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlaylistSongs" ("AddedAt", "MediaFileId", "PlaylistId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (DbType = Int32), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlaylistSongs" ("AddedAt", "MediaFileId", "PlaylistId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (DbType = Int32), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlaylistSongs" ("AddedAt", "MediaFileId", "PlaylistId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (DbType = Int32), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlaylistSongs" ("AddedAt", "MediaFileId", "PlaylistId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (DbType = Int32), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlaylistSongs" ("AddedAt", "MediaFileId", "PlaylistId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (DbType = Int32), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlaylistSongs" ("AddedAt", "MediaFileId", "PlaylistId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (DbType = Int32), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlaylistSongs" ("AddedAt", "MediaFileId", "PlaylistId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (DbType = Int32), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlaylistSongs" ("AddedAt", "MediaFileId", "PlaylistId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (DbType = Int32), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlaylistSongs" ("AddedAt", "MediaFileId", "PlaylistId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (DbType = Int32), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlaylistSongs" ("AddedAt", "MediaFileId", "PlaylistId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (DbType = Int32), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlaylistSongs" ("AddedAt", "MediaFileId", "PlaylistId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (DbType = Int32), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlaylistSongs" ("AddedAt", "MediaFileId", "PlaylistId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (DbType = Int32), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlaylistSongs" ("AddedAt", "MediaFileId", "PlaylistId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32), @__userId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."Id" = @__id_0 AND "p"."UserId" = @__userId_1
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32), @__userId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."Id" = @__id_0 AND "p"."UserId" = @__userId_1
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32), @__userId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+      FROM "Playlists" AS "p"
+      WHERE "p"."Id" = @__id_0 AND "p"."UserId" = @__userId_1
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p1='?' (DbType = Int32), @p0='?' (Size = 19)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Playlists" SET "Name" = @p0
+      WHERE "Id" = @p1
+      RETURNING 1;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32), @__userId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."Id" = @__id_0 AND "p"."UserId" = @__userId_1
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32), @__userId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."Id" = @__id_0 AND "p"."UserId" = @__userId_1
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__mediaId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
       SELECT "p"."Id", "p"."MediaFileId", "p"."PlayedAt", "p"."UserId"
       FROM "PlayHistories" AS "p"
       WHERE "p"."UserId" = @__userId_0 AND "p"."MediaFileId" = @__mediaId_1
@@ -185,45 +1081,569 @@ info: Microsoft.EntityFrameworkCore.Database.Command[20101]
       WHERE "m"."Id" = @__id_0
       LIMIT 1
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (1ms) [Parameters=[@p3='?' (DbType = Int32), @p0='?' (DbType = Int32), @p1='?' (DbType = DateTime), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
-      UPDATE "PlayHistories" SET "MediaFileId" = @p0, "PlayedAt" = @p1, "UserId" = @p2
-      WHERE "Id" = @p3
+      Executed DbCommand (1ms) [Parameters=[@p0='?' (DbType = Int32), @p1='?' (DbType = DateTime), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlayHistories" ("MediaFileId", "PlayedAt", "UserId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__id_0='?' (DbType = Int32), @__userId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."Id" = @__id_0 AND "p"."UserId" = @__userId_1
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32), @__userId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."Id" = @__id_0 AND "p"."UserId" = @__userId_1
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32), @__userId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."Id" = @__id_0 AND "p"."UserId" = @__userId_1
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN "PlaylistSongs" AS "p0" ON "t"."Id" = "p0"."PlaylistId"
+      ORDER BY "t"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p2='?' (DbType = Int32), @p0='?' (DbType = DateTime), @p1='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Playlists" SET "ShareExpiresAt" = @p0, "ShareToken" = @p1
+      WHERE "Id" = @p2
       RETURNING 1;
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__mediaId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
-      SELECT "p"."Id", "p"."MediaFileId", "p"."PlayedAt", "p"."UserId"
-      FROM "PlayHistories" AS "p"
-      WHERE "p"."UserId" = @__userId_0 AND "p"."MediaFileId" = @__mediaId_1
-      LIMIT 1
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "f"."MediaFileId"
+      FROM "Favorites" AS "f"
+      WHERE "f"."UserId" = @__userId_0
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[@p3='?' (DbType = Int32), @p0='?' (DbType = Int32), @p1='?' (DbType = DateTime), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
-      UPDATE "PlayHistories" SET "MediaFileId" = @p0, "PlayedAt" = @p1, "UserId" = @p2
-      WHERE "Id" = @p3
-      RETURNING 1;
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "f"."MediaFileId"
+      FROM "Favorites" AS "f"
+      WHERE "f"."UserId" = @__userId_0
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      Executed DbCommand (0ms) [Parameters=[@__token_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__token_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__token_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__token_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__shareToken_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__shareToken_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN "PlaylistSongs" AS "p0" ON "t"."Id" = "p0"."PlaylistId"
+      ORDER BY "t"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__songId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
       SELECT "m"."Id", "m"."AddedAt", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year", "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type", "s0"."Id", "s0"."AuthData", "s0"."Host", "s0"."Name", "s0"."ProviderType"
       FROM "MediaFiles" AS "m"
       INNER JOIN "ScanSources" AS "s" ON "m"."ScanSourceId" = "s"."Id"
       LEFT JOIN "StorageCredentials" AS "s0" ON "s"."StorageCredentialId" = "s0"."Id"
-      WHERE "m"."Id" = @__id_0
+      WHERE "m"."Id" = @__songId_0
       LIMIT 1
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__mediaId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
-      SELECT "p"."Id", "p"."MediaFileId", "p"."PlayedAt", "p"."UserId"
-      FROM "PlayHistories" AS "p"
-      WHERE "p"."UserId" = @__userId_0 AND "p"."MediaFileId" = @__mediaId_1
-      LIMIT 1
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "f"."MediaFileId"
+      FROM "Favorites" AS "f"
+      WHERE "f"."UserId" = @__userId_0
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (0ms) [Parameters=[@p3='?' (DbType = Int32), @p0='?' (DbType = Int32), @p1='?' (DbType = DateTime), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
-      UPDATE "PlayHistories" SET "MediaFileId" = @p0, "PlayedAt" = @p1, "UserId" = @p2
-      WHERE "Id" = @p3
+      Executed DbCommand (1ms) [Parameters=[@__token_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__token_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__token_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__token_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "f"."MediaFileId"
+      FROM "Favorites" AS "f"
+      WHERE "f"."UserId" = @__userId_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "f"."MediaFileId"
+      FROM "Favorites" AS "f"
+      WHERE "f"."UserId" = @__userId_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "f"."MediaFileId"
+      FROM "Favorites" AS "f"
+      WHERE "f"."UserId" = @__userId_0
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__id_0='?' (DbType = Int32), @__userId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."Id" = @__id_0 AND "p"."UserId" = @__userId_1
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32), @__userId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."Id" = @__id_0 AND "p"."UserId" = @__userId_1
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32), @__userId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."Id" = @__id_0 AND "p"."UserId" = @__userId_1
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN "PlaylistSongs" AS "p0" ON "t"."Id" = "p0"."PlaylistId"
+      ORDER BY "t"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (3ms) [Parameters=[@p0='?', @p1='?' (DbType = DateTime), @p2='?' (Size = 31), @p3='?' (DbType = DateTime), @p4='?', @p5='?' (Size = 32), @p6='?' (Size = 6), @p7='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "Playlists" ("CoverArt", "CreatedAt", "Name", "ShareExpiresAt", "SharePassword", "ShareToken", "Type", "UserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (DbType = Int32), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlaylistSongs" ("AddedAt", "MediaFileId", "PlaylistId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (DbType = Int32), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlaylistSongs" ("AddedAt", "MediaFileId", "PlaylistId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p2='?' (DbType = Int32), @p0='?' (DbType = DateTime), @p1='?' (Size = 3)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Playlists" SET "ShareExpiresAt" = @p0, "SharePassword" = @p1
+      WHERE "Id" = @p2
       RETURNING 1;
 info: Microsoft.EntityFrameworkCore.Database.Command[20101]
-      Executed DbCommand (1ms) [Parameters=[@__id_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      Executed DbCommand (0ms) [Parameters=[@__token_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__token_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__token_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__token_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__token_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__token_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__token_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__token_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__token_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__token_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__token_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__token_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__token_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__token_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__token_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__token_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__token_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__token_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__token_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__token_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__userId_0='?' (DbType = Int32), @__type_1='?' (Size = 6)], CommandType='Text', CommandTimeout='30']
+      SELECT "p"."Id", "p"."Name", "p"."CoverArt", "p"."CreatedAt", "p"."Type", "p"."ShareToken", (
+          SELECT COUNT(*)
+          FROM "PlaylistSongs" AS "p0"
+          WHERE "p"."Id" = "p0"."PlaylistId") AS "count"
+      FROM "Playlists" AS "p"
+      WHERE "p"."UserId" = @__userId_0 AND "p"."Type" = @__type_1
+      ORDER BY "p"."CreatedAt" DESC
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (1ms) [Parameters=[@__id_0='?' (DbType = Int32), @__userId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."Id" = @__id_0 AND "p"."UserId" = @__userId_1
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32), @__userId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."Id" = @__id_0 AND "p"."UserId" = @__userId_1
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__id_0='?' (DbType = Int32), @__userId_1='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."Id" = @__id_0 AND "p"."UserId" = @__userId_1
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN "PlaylistSongs" AS "p0" ON "t"."Id" = "p0"."PlaylistId"
+      ORDER BY "t"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?', @p1='?' (DbType = DateTime), @p2='?' (Size = 31), @p3='?' (DbType = DateTime), @p4='?', @p5='?' (Size = 32), @p6='?' (Size = 6), @p7='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "Playlists" ("CoverArt", "CreatedAt", "Name", "ShareExpiresAt", "SharePassword", "ShareToken", "Type", "UserId")
+      VALUES (@p0, @p1, @p2, @p3, @p4, @p5, @p6, @p7)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p0='?' (DbType = DateTime), @p1='?' (DbType = Int32), @p2='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      INSERT INTO "PlaylistSongs" ("AddedAt", "MediaFileId", "PlaylistId")
+      VALUES (@p0, @p1, @p2)
+      RETURNING "Id";
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@p2='?' (DbType = Int32), @p0='?' (DbType = DateTime), @p1='?' (Size = 3)], CommandType='Text', CommandTimeout='30']
+      UPDATE "Playlists" SET "ShareExpiresAt" = @p0, "SharePassword" = @p1
+      WHERE "Id" = @p2
+      RETURNING 1;
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__token_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__token_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__token_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "t0"."Id", "t0"."AddedAt", "t0"."MediaFileId", "t0"."PlaylistId", "t0"."Id0", "t0"."AddedAt0", "t0"."Album", "t0"."Artist", "t0"."Duration", "t0"."FileHash", "t0"."FilePath", "t0"."Genre", "t0"."ParentPath", "t0"."ScanSourceId", "t0"."SizeBytes", "t0"."Title", "t0"."Year"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__token_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN (
+          SELECT "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId", "m"."Id" AS "Id0", "m"."AddedAt" AS "AddedAt0", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year"
+          FROM "PlaylistSongs" AS "p0"
+          INNER JOIN "MediaFiles" AS "m" ON "p0"."MediaFileId" = "m"."Id"
+      ) AS "t0" ON "t"."Id" = "t0"."PlaylistId"
+      ORDER BY "t"."Id", "t0"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__shareToken_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__shareToken_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN "PlaylistSongs" AS "p0" ON "t"."Id" = "p0"."PlaylistId"
+      ORDER BY "t"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__songId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
       SELECT "m"."Id", "m"."AddedAt", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year", "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type", "s0"."Id", "s0"."AuthData", "s0"."Host", "s0"."Name", "s0"."ProviderType"
       FROM "MediaFiles" AS "m"
       INNER JOIN "ScanSources" AS "s" ON "m"."ScanSourceId" = "s"."Id"
       LEFT JOIN "StorageCredentials" AS "s0" ON "s"."StorageCredentialId" = "s0"."Id"
-      WHERE "m"."Id" = @__id_0
+      WHERE "m"."Id" = @__songId_0
+      LIMIT 1
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__shareToken_0='?' (Size = 32)], CommandType='Text', CommandTimeout='30']
+      SELECT "t"."Id", "t"."CoverArt", "t"."CreatedAt", "t"."Name", "t"."ShareExpiresAt", "t"."SharePassword", "t"."ShareToken", "t"."Type", "t"."UserId", "p0"."Id", "p0"."AddedAt", "p0"."MediaFileId", "p0"."PlaylistId"
+      FROM (
+          SELECT "p"."Id", "p"."CoverArt", "p"."CreatedAt", "p"."Name", "p"."ShareExpiresAt", "p"."SharePassword", "p"."ShareToken", "p"."Type", "p"."UserId"
+          FROM "Playlists" AS "p"
+          WHERE "p"."ShareToken" = @__shareToken_0
+          LIMIT 1
+      ) AS "t"
+      LEFT JOIN "PlaylistSongs" AS "p0" ON "t"."Id" = "p0"."PlaylistId"
+      ORDER BY "t"."Id"
+info: Microsoft.EntityFrameworkCore.Database.Command[20101]
+      Executed DbCommand (0ms) [Parameters=[@__songId_0='?' (DbType = Int32)], CommandType='Text', CommandTimeout='30']
+      SELECT "m"."Id", "m"."AddedAt", "m"."Album", "m"."Artist", "m"."Duration", "m"."FileHash", "m"."FilePath", "m"."Genre", "m"."ParentPath", "m"."ScanSourceId", "m"."SizeBytes", "m"."Title", "m"."Year", "s"."Id", "s"."Name", "s"."Path", "s"."StorageCredentialId", "s"."Type", "s0"."Id", "s0"."AuthData", "s0"."Host", "s0"."Name", "s0"."ProviderType"
+      FROM "MediaFiles" AS "m"
+      INNER JOIN "ScanSources" AS "s" ON "m"."ScanSourceId" = "s"."Id"
+      LEFT JOIN "StorageCredentials" AS "s0" ON "s"."StorageCredentialId" = "s0"."Id"
+      WHERE "m"."Id" = @__songId_0
       LIMIT 1

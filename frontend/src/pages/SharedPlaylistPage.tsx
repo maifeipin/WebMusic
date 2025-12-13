@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { getSharedPlaylist } from '../services/api';
-import { Play, Pause, Music, SkipBack, SkipForward, Share2, Loader } from 'lucide-react';
+import { Play, Pause, Music, SkipBack, SkipForward, Share2, Loader, Lock, AlertTriangle } from 'lucide-react';
 
 interface SharedSong {
     id: number;
@@ -23,6 +23,12 @@ export default function SharedPlaylistPage() {
     const [playlist, setPlaylist] = useState<SharedPlaylistData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [isExpired, setIsExpired] = useState(false);
+
+    // Password State
+    const [passwordRequired, setPasswordRequired] = useState(false);
+    const [passwordInput, setPasswordInput] = useState('');
+    const [password, setPassword] = useState<string | undefined>(undefined); // Confirmed password
 
     const [currentSong, setCurrentSong] = useState<SharedSong | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -30,21 +36,72 @@ export default function SharedPlaylistPage() {
     const audioRef = useRef<HTMLAudioElement>(null);
 
     useEffect(() => {
-        if (token) loadPlaylist();
+        if (token) loadPlaylist(undefined);
     }, [token]);
 
-    const loadPlaylist = async () => {
+    // Media Session API Support
+    useEffect(() => {
+        if (!currentSong) return;
+
+        if ('mediaSession' in navigator) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+                title: currentSong.title,
+                artist: currentSong.artist,
+                album: currentSong.album,
+                artwork: [
+                    { src: '/icon-192.svg', sizes: '192x192', type: 'image/svg+xml' },
+                    { src: '/icon-512.svg', sizes: '512x512', type: 'image/svg+xml' },
+                ]
+            });
+
+            navigator.mediaSession.setActionHandler('play', () => {
+                if (audioRef.current) {
+                    audioRef.current.play();
+                    setIsPlaying(true);
+                }
+            });
+            navigator.mediaSession.setActionHandler('pause', () => {
+                if (audioRef.current) {
+                    audioRef.current.pause();
+                    setIsPlaying(false);
+                }
+            });
+            navigator.mediaSession.setActionHandler('previoustrack', playPrev);
+            navigator.mediaSession.setActionHandler('nexttrack', playNext);
+
+            // Sync playback state
+            navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+        }
+    }, [currentSong, isPlaying]);
+
+    const loadPlaylist = async (pwd?: string) => {
         try {
             setLoading(true);
-            const res = await getSharedPlaylist(token!);
+            setError(null);
+            const res = await getSharedPlaylist(token!, pwd);
             setPlaylist(res.data);
+            if (pwd) setPassword(pwd); // Save validated password
+            setPasswordRequired(false);
         } catch (err: any) {
-            setError(err.response?.status === 404
-                ? 'This shared playlist is no longer available.'
-                : 'Failed to load playlist.');
+            const status = err.response?.status;
+            if (status === 401 && err.response?.data?.code === 'PASSWORD_REQUIRED') {
+                setPasswordRequired(true);
+            } else if (status === 410) {
+                setIsExpired(true);
+                setError('This share link has expired.');
+            } else if (status === 404) {
+                setError('Playlist not found.');
+            } else {
+                setError('Failed to load playlist.');
+            }
         } finally {
             setLoading(false);
         }
+    };
+
+    const handlePasswordSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        loadPlaylist(passwordInput);
     };
 
     const playSong = (song: SharedSong) => {
@@ -77,12 +134,59 @@ export default function SharedPlaylistPage() {
         return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
     };
 
-    const streamUrl = currentSong && token ? `/api/media/stream/shared/${token}/${currentSong.id}` : '';
+    const streamUrl = currentSong && token
+        ? `/api/media/stream/shared/${token}/${currentSong.id}${password ? `?pwd=${encodeURIComponent(password)}` : ''}`
+        : '';
 
-    if (loading) {
+    if (loading && !passwordRequired) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 flex items-center justify-center">
                 <Loader size={48} className="animate-spin text-blue-500" />
+            </div>
+        );
+    }
+
+    if (isExpired) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 flex items-center justify-center p-4">
+                <div className="text-center bg-gray-900 p-8 rounded-2xl border border-gray-800 shadow-2xl max-w-md w-full">
+                    <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <AlertTriangle size={32} className="text-red-500" />
+                    </div>
+                    <h1 className="text-2xl font-bold text-white mb-2">Link Expired</h1>
+                    <p className="text-gray-400">This shared playlist is no longer available.</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (passwordRequired) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 flex items-center justify-center p-4">
+                <form onSubmit={handlePasswordSubmit} className="bg-gray-900 p-8 rounded-2xl border border-gray-800 shadow-2xl max-w-md w-full">
+                    <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <Lock size={32} className="text-emerald-500" />
+                    </div>
+                    <h1 className="text-2xl font-bold text-white mb-2 text-center">Password Protected</h1>
+                    <p className="text-gray-400 text-center mb-6">Please enter the access code to view this playlist.</p>
+
+                    <input
+                        type="password"
+                        value={passwordInput}
+                        onChange={(e) => setPasswordInput(e.target.value)}
+                        className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition mb-4 text-center tracking-widest text-lg"
+                        placeholder="••••"
+                        autoFocus
+                    />
+
+                    <button
+                        type="submit"
+                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition"
+                    >
+                        Unlock Playlist
+                    </button>
+                    {error && <p className="text-red-500 text-sm text-center mt-4">Invalid password, please try again.</p>}
+                </form>
             </div>
         );
     }
@@ -91,9 +195,9 @@ export default function SharedPlaylistPage() {
         return (
             <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 flex items-center justify-center p-4">
                 <div className="text-center">
-                    <Music size={48} className="text-red-500 mx-auto mb-4" />
+                    <Music size={48} className="text-gray-600 mx-auto mb-4" />
                     <h1 className="text-2xl font-bold text-white mb-2">Playlist Not Found</h1>
-                    <p className="text-gray-400">{error}</p>
+                    <p className="text-gray-400">{error || 'This link may be invalid.'}</p>
                 </div>
             </div>
         );

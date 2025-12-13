@@ -157,141 +157,143 @@ export default function GlobalPlayer() {
         return `${minutes}:${seconds.toString().padStart(2, '0')}`;
     };
 
-    if (!currentSong) return null;
-
     // Effective time to display
     const displayTime = transcodeMode ? (seekOffset + currentTime) : currentTime;
-    const totalDuration = currentSong.duration || duration || 0;
-    // const progress = totalDuration > 0 ? (displayTime / totalDuration) * 100 : 0; (Unused)
+    const totalDuration = currentSong?.duration || duration || 0;
 
-    const streamUrl = `/api/media/stream/${currentSong.id}?access_token=${token || ''}${transcodeMode ? `&transcode=true&startTime=${seekOffset}` : ''}`;
+    // Stream URL calculation
+    const streamUrl = currentSong
+        ? `/api/media/stream/${currentSong.id}?access_token=${token || ''}${transcodeMode ? `&transcode=true&startTime=${seekOffset}` : ''}`
+        : '';
 
     return (
         <>
-            <div
-                className={`fixed z-50 transition-all duration-300 ${isMinimized ? 'w-64' : 'w-96 md:w-[32rem]'}`}
-                style={{
-                    bottom: '2rem',
-                    right: '2rem',
-                    transform: `translate(${position.x}px, ${position.y}px)`,
-                    cursor: isDragging.current ? 'grabbing' : 'default'
-                }}
-            >
-                <div className="bg-black/60 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+            {currentSong && (
+                <div
+                    className={`fixed z-50 transition-all duration-300 ${isMinimized ? 'w-64' : 'w-96 md:w-[32rem]'}`}
+                    style={{
+                        bottom: '2rem',
+                        right: '2rem',
+                        transform: `translate(${position.x}px, ${position.y}px)`,
+                        cursor: isDragging.current ? 'grabbing' : 'default'
+                    }}
+                >
+                    <div className="bg-black/60 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
 
-                    {/* Header / Handle */}
-                    <div
-                        onMouseDown={handleMouseDown}
-                        className="h-6 bg-white/5 cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-white/10 transition"
-                    >
-                        <div className="w-12 h-1 bg-white/20 rounded-full mt-2" />
-                    </div>
-
-                    {/* Content */}
-                    <div className="p-4 pt-2">
-                        {/* Top Row: Song Info & Controls */}
-                        <div className="flex gap-4">
-                            <div className={`relative bg-gray-800 rounded-lg overflow-hidden flex-shrink-0 transition-all ${isMinimized ? 'w-10 h-10' : 'w-16 h-16'}`}>
-                                <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-900">
-                                    <Music size={isMinimized ? 16 : 24} className="text-white/50" />
-                                </div>
-                            </div>
-
-                            <div className="flex-1 min-w-0 flex flex-col justify-center">
-                                <div className="flex items-start justify-between">
-                                    <div className="overflow-hidden flex-1 mr-4">
-                                        <div className="flex items-center gap-3">
-                                            <h4 className="font-bold text-white truncate leading-tight select-none text-lg">
-                                                {currentSong.title}
-                                            </h4>
-                                            <button
-                                                onClick={() => toggleLike(currentSong.id)}
-                                                className="hover:scale-110 transition active:scale-95 flex-shrink-0"
-                                                onMouseDown={(e) => e.stopPropagation()}
-                                            >
-                                                <Heart
-                                                    size={20}
-                                                    className={isFavorite(currentSong.id) ? "text-red-500" : "text-gray-400 hover:text-white"}
-                                                    fill={isFavorite(currentSong.id) ? "currentColor" : "none"}
-                                                />
-                                            </button>
-                                            <button
-                                                onClick={() => setShowPlaylistModal(true)}
-                                                className="hover:scale-110 transition active:scale-95 flex-shrink-0 text-gray-400 hover:text-white"
-                                                onMouseDown={(e) => e.stopPropagation()}
-                                                title="Add to Playlist"
-                                            >
-                                                <ListPlus size={20} />
-                                            </button>
-                                            <button
-                                                onClick={() => setShowEditModal(true)}
-                                                className="hover:scale-110 transition active:scale-95 flex-shrink-0 text-gray-400 hover:text-blue-400"
-                                                onMouseDown={(e) => e.stopPropagation()}
-                                                title="Edit Song Info"
-                                            >
-                                                <Edit2 size={18} />
-                                            </button>
-                                        </div>
-                                        <p className="text-gray-400 text-sm truncate mt-0.5 select-none">{currentSong.artist}</p>
-                                    </div>
-                                    {/* Minimize Toggle */}
-                                    <button
-                                        onClick={() => setIsMinimized(!isMinimized)}
-                                        className="text-gray-500 hover:text-white p-1 ml-2"
-                                        onMouseDown={(e) => e.stopPropagation()}
-                                    >
-                                        {isMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
-                                    </button>
-                                </div>
-
-                                {transcodeMode && !isMinimized && (
-                                    <span className="text-[10px] text-yellow-500 border border-yellow-500/30 bg-yellow-500/10 px-1.5 py-0.5 rounded w-fit mt-1 select-none">
-                                        Transcoding {seekOffset > 0 && `(+${Math.round(seekOffset)}s)`}
-                                    </span>
-                                )}
-                            </div>
+                        {/* Header / Handle */}
+                        <div
+                            onMouseDown={handleMouseDown}
+                            className="h-6 bg-white/5 cursor-grab active:cursor-grabbing flex items-center justify-center hover:bg-white/10 transition"
+                        >
+                            <div className="w-12 h-1 bg-white/20 rounded-full mt-2" />
                         </div>
 
-                        {/* Controls */}
-                        {!isMinimized && (
-                            <div className="mt-4 flex items-center justify-center gap-6">
-                                <button onClick={prevSong} className="text-gray-400 hover:text-white transition hover:scale-110" onMouseDown={(e) => e.stopPropagation()}>
-                                    <SkipBack size={20} />
-                                </button>
-                                <button
-                                    onClick={togglePlay}
-                                    className="bg-white text-black rounded-full p-3 hover:scale-105 transition shadow-lg shadow-white/10"
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                >
-                                    {isPlaying ? <Pause fill="currentColor" size={24} /> : <Play fill="currentColor" size={24} />}
-                                </button>
-                                <button onClick={nextSong} className="text-gray-400 hover:text-white transition hover:scale-110" onMouseDown={(e) => e.stopPropagation()}>
-                                    <SkipForward size={20} />
-                                </button>
-                            </div>
-                        )}
+                        {/* Content */}
+                        <div className="p-4 pt-2">
+                            {/* Top Row: Song Info & Controls */}
+                            <div className="flex gap-4">
+                                <div className={`relative bg-gray-800 rounded-lg overflow-hidden flex-shrink-0 transition-all ${isMinimized ? 'w-10 h-10' : 'w-16 h-16'}`}>
+                                    <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-900">
+                                        <Music size={isMinimized ? 16 : 24} className="text-white/50" />
+                                    </div>
+                                </div>
 
-                        {/* Progress Bar */}
-                        {!isMinimized && (
-                            <div className="mt-4 space-y-1">
-                                <input
-                                    type="range"
-                                    min={0}
-                                    max={totalDuration}
-                                    value={displayTime}
-                                    onChange={handleSeek}
-                                    className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-400"
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                />
-                                <div className="flex justify-between text-[10px] text-gray-500 font-mono">
-                                    <span>{formatTime(displayTime)}</span>
-                                    <span>{formatTime(totalDuration)}</span>
+                                <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                    <div className="flex items-start justify-between">
+                                        <div className="overflow-hidden flex-1 mr-4">
+                                            <div className="flex items-center gap-3">
+                                                <h4 className="font-bold text-white truncate leading-tight select-none text-lg">
+                                                    {currentSong.title}
+                                                </h4>
+                                                <button
+                                                    onClick={() => toggleLike(currentSong.id)}
+                                                    className="hover:scale-110 transition active:scale-95 flex-shrink-0"
+                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                >
+                                                    <Heart
+                                                        size={20}
+                                                        className={isFavorite(currentSong.id) ? "text-red-500" : "text-gray-400 hover:text-white"}
+                                                        fill={isFavorite(currentSong.id) ? "currentColor" : "none"}
+                                                    />
+                                                </button>
+                                                <button
+                                                    onClick={() => setShowPlaylistModal(true)}
+                                                    className="hover:scale-110 transition active:scale-95 flex-shrink-0 text-gray-400 hover:text-white"
+                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                    title="Add to Playlist"
+                                                >
+                                                    <ListPlus size={20} />
+                                                </button>
+                                                <button
+                                                    onClick={() => setShowEditModal(true)}
+                                                    className="hover:scale-110 transition active:scale-95 flex-shrink-0 text-gray-400 hover:text-blue-400"
+                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                    title="Edit Song Info"
+                                                >
+                                                    <Edit2 size={18} />
+                                                </button>
+                                            </div>
+                                            <p className="text-gray-400 text-sm truncate mt-0.5 select-none">{currentSong.artist}</p>
+                                        </div>
+                                        {/* Minimize Toggle */}
+                                        <button
+                                            onClick={() => setIsMinimized(!isMinimized)}
+                                            className="text-gray-500 hover:text-white p-1 ml-2"
+                                            onMouseDown={(e) => e.stopPropagation()}
+                                        >
+                                            {isMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
+                                        </button>
+                                    </div>
+
+                                    {transcodeMode && !isMinimized && (
+                                        <span className="text-[10px] text-yellow-500 border border-yellow-500/30 bg-yellow-500/10 px-1.5 py-0.5 rounded w-fit mt-1 select-none">
+                                            Transcoding {seekOffset > 0 && `(+${Math.round(seekOffset)}s)`}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
-                        )}
+
+                            {/* Controls */}
+                            {!isMinimized && (
+                                <div className="mt-4 flex items-center justify-center gap-6">
+                                    <button onClick={prevSong} className="text-gray-400 hover:text-white transition hover:scale-110" onMouseDown={(e) => e.stopPropagation()}>
+                                        <SkipBack size={20} />
+                                    </button>
+                                    <button
+                                        onClick={togglePlay}
+                                        className="bg-white text-black rounded-full p-3 hover:scale-105 transition shadow-lg shadow-white/10"
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                    >
+                                        {isPlaying ? <Pause fill="currentColor" size={24} /> : <Play fill="currentColor" size={24} />}
+                                    </button>
+                                    <button onClick={nextSong} className="text-gray-400 hover:text-white transition hover:scale-110" onMouseDown={(e) => e.stopPropagation()}>
+                                        <SkipForward size={20} />
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Progress Bar */}
+                            {!isMinimized && (
+                                <div className="mt-4 space-y-1">
+                                    <input
+                                        type="range"
+                                        min={0}
+                                        max={totalDuration}
+                                        value={displayTime}
+                                        onChange={handleSeek}
+                                        className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-400"
+                                        onMouseDown={(e) => e.stopPropagation()}
+                                    />
+                                    <div className="flex justify-between text-[10px] text-gray-500 font-mono">
+                                        <span>{formatTime(displayTime)}</span>
+                                        <span>{formatTime(totalDuration)}</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
 
             <audio
                 ref={audioRef}

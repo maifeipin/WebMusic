@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getPlaylist, removeSongsFromPlaylist, updatePlaylist, sharePlaylist } from '../services/api';
 import { usePlayer } from '../context/PlayerContext';
-import { Play, ArrowLeft, Trash2, CheckSquare, Square, Edit2, Save, X, Image as ImageIcon, Share2, Copy, ExternalLink } from 'lucide-react';
+import { Play, ArrowLeft, Trash2, CheckSquare, Square, Edit2, Save, X, Image as ImageIcon, Share2, Copy, ExternalLink, Lock, Clock } from 'lucide-react';
 import { formatRelativeTime } from '../utils/time';
 import CoverPickerModal from '../components/CoverPickerModal';
 import SmbImage from '../components/SmbImage';
@@ -89,14 +89,24 @@ export default function PlaylistDetailPage() {
 
     const handlePlayAll = () => {
         if (!playlist || playlist.songs.length === 0) return;
+
+        // If songs are selected, play only selected; otherwise play all
+        let songsToPlay = playlist.songs;
+        if (selectedItems.length > 0) {
+            songsToPlay = playlist.songs.filter(item => selectedItems.includes(item.song.id));
+        }
+
+        if (songsToPlay.length === 0) return;
+
         // Transform to QueueItem
-        const queue = playlist.songs.map(item => ({
+        const queue = songsToPlay.map(item => ({
             id: item.song.id,
             title: item.song.title,
             artist: item.song.artist,
             album: item.song.album,
-            duration: 0, // Default to 0 number to satisfy TS
-        })) as any; // Cast to avoid strict check on Song property mismatch
+            duration: 0,
+        })) as any;
+
         playQueue(queue, 0);
     };
 
@@ -121,12 +131,17 @@ export default function PlaylistDetailPage() {
     // Share state
     const [showShareModal, setShowShareModal] = useState(false);
     const [shareName, setShareName] = useState('');
+    const [shareExpireDays, setShareExpireDays] = useState(7); // Default 7 days
+    const [sharePassword, setSharePassword] = useState('');
     const [shareResult, setShareResult] = useState<{ token: string; url: string } | null>(null);
     const [sharing, setSharing] = useState(false);
 
     const handleOpenShareModal = () => {
         if (!playlist) return;
         setShareName(selectedItems.length > 0 ? `${playlist.name} - Selection` : playlist.name);
+        // Reset defaults
+        setShareExpireDays(7);
+        setSharePassword('');
         setShareResult(null);
         setShowShareModal(true);
     };
@@ -136,7 +151,12 @@ export default function PlaylistDetailPage() {
         setSharing(true);
         try {
             const songIds = selectedItems.length > 0 ? selectedItems : undefined;
-            const res = await sharePlaylist(playlist.id, { name: shareName.trim(), songIds });
+            const res = await sharePlaylist(playlist.id, {
+                name: shareName.trim(),
+                songIds,
+                expiresInDays: shareExpireDays,
+                password: sharePassword.trim() || undefined
+            });
             setShareResult({ token: res.data.shareToken, url: `${window.location.origin}/share/${res.data.shareToken}` });
         } catch (e) {
             alert('Failed to generate share link');
@@ -277,7 +297,7 @@ export default function PlaylistDetailPage() {
                                 className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg flex items-center gap-2 font-medium transition shadow-lg shadow-blue-900/20"
                             >
                                 <Play size={20} fill="currentColor" />
-                                Play All
+                                {selectedItems.length > 0 ? `Play (${selectedItems.length})` : 'Play All'}
                             </button>
                         </>
                     )}
@@ -371,6 +391,37 @@ export default function PlaylistDetailPage() {
                                         className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition"
                                         placeholder="Enter a name..."
                                     />
+                                </div>
+
+                                {/* Security Settings */}
+                                <div className="grid grid-cols-2 gap-4 mb-4">
+                                    <div>
+                                        <label className="block text-sm text-gray-400 mb-2 flex items-center gap-1">
+                                            <Clock size={14} /> Validity
+                                        </label>
+                                        <select
+                                            value={shareExpireDays}
+                                            onChange={(e) => setShareExpireDays(Number(e.target.value))}
+                                            className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition appearance-none"
+                                        >
+                                            <option value={1}>1 Day</option>
+                                            <option value={7}>7 Days</option>
+                                            <option value={30}>30 Days</option>
+                                            <option value={-1}>Permanent</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm text-gray-400 mb-2 flex items-center gap-1">
+                                            <Lock size={14} /> Password
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={sharePassword}
+                                            onChange={(e) => setSharePassword(e.target.value)}
+                                            className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition"
+                                            placeholder="(Optional)"
+                                        />
+                                    </div>
                                 </div>
                                 <div className="mb-6 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
                                     <p className="text-sm text-emerald-400">
