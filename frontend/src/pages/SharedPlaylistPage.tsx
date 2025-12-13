@@ -76,7 +76,12 @@ export default function SharedPlaylistPage() {
         }
     }, [playlist]);
 
-    // ... (keep Restored Time effect)
+    // Restored Time effect
+    useEffect(() => {
+        if (restoredTime > 0 && audioRef.current) {
+            audioRef.current.currentTime = restoredTime;
+        }
+    }, [restoredTime, currentSong]);
 
     // Save State Interval
     useEffect(() => {

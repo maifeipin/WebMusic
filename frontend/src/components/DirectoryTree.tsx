@@ -51,7 +51,8 @@ export default function DirectoryTree({
 
     return (
         <div className="select-none text-sm">
-            {rootItems.map((item, i) => (
+            {loading && <div className="p-2 text-gray-500">Loading...</div>}
+            {!loading && rootItems.map((item, i) => (
                 <TreeNode
                     key={item.name + i}
                     item={item}
@@ -63,7 +64,7 @@ export default function DirectoryTree({
                     onToggleFile={onToggleFile}
                 />
             ))}
-            {rootItems.length === 0 && <div className="text-gray-500">No items found.</div>}
+            {!loading && rootItems.length === 0 && <div className="text-gray-500">No items found.</div>}
         </div>
     );
 }
