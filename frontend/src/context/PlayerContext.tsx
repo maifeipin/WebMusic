@@ -67,7 +67,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             // 1. Device ID
             let deviceId = localStorage.getItem('webmusic_device_id');
             if (!deviceId) {
-                deviceId = crypto.randomUUID();
+                // Polyfill for randomUUID
+                if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+                    deviceId = crypto.randomUUID();
+                } else {
+                    // Simple replacement for non-secure contexts
+                    deviceId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+                        var r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+                        return v.toString(16);
+                    });
+                }
                 localStorage.setItem('webmusic_device_id', deviceId);
             }
 
@@ -86,6 +95,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
                                 const idx = res.data.findIndex((s: Song) => s.id === state.currentSongId);
                                 if (idx !== -1) {
                                     setCurrentIndex(idx);
+                                    // Important: set currentSong explicitly to trigger UI
                                     setCurrentSong(res.data[idx]);
                                     setRestoredTime(state.currentTime || 0);
                                     // Do NOT auto play

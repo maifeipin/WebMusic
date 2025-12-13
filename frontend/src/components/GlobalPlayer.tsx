@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePlayer } from '../context/PlayerContext';
 import { useAuth } from '../context/AuthContext';
-import { Play, Pause, Music, SkipBack, SkipForward, AlertTriangle, Minimize2, Maximize2, Heart, ListPlus, Edit2 } from 'lucide-react';
+import { Play, Pause, Music, SkipBack, SkipForward, AlertTriangle, Minimize2, Maximize2, Heart, ListPlus, Edit2, ListOrdered } from 'lucide-react';
 import AddToPlaylistModal from './AddToPlaylistModal';
 import EditSongModal from './EditSongModal';
 
 export default function GlobalPlayer() {
     const {
         currentSong, isPlaying, togglePlay, showTranscodePrompt, confirmTranscode, transcodeMode, nextSong, prevSong,
-        isFavorite, toggleLike, updateCurrentSong, restoredTime, saveProgress
+        isFavorite, toggleLike, updateCurrentSong, restoredTime, saveProgress, queue, playQueue, currentIndex
     } = usePlayer();
     const { token } = useAuth();
     const audioRef = useRef<HTMLAudioElement>(null);
@@ -18,6 +18,7 @@ export default function GlobalPlayer() {
     const [seekOffset, setSeekOffset] = useState(0);
     const [showPlaylistModal, setShowPlaylistModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
+    const [showQueue, setShowQueue] = useState(false);
 
     // Resume Time
     useEffect(() => {
@@ -141,9 +142,17 @@ export default function GlobalPlayer() {
     const dragStart = useRef({ x: 0, y: 0 });
 
     useEffect(() => {
-        if (audioRef.current) {
-            if (isPlaying) audioRef.current.play().catch(e => console.error("Play error:", e));
-            else audioRef.current.pause();
+        if (audioRef.current && currentSong) {
+            if (isPlaying) {
+                audioRef.current.play().catch(e => {
+                    // Suppress "The element has no supported sources" error typical during init/reload
+                    if (e.name !== 'NotSupportedError' && e.name !== 'AbortError') {
+                        console.error("Play error:", e);
+                    }
+                });
+            } else {
+                audioRef.current.pause();
+            }
         }
     }, [isPlaying, currentSong]);
 
@@ -187,7 +196,7 @@ export default function GlobalPlayer() {
         if (!isFinite(time)) return "0:00";
         const minutes = Math.floor(time / 60);
         const seconds = Math.floor(time % 60);
-        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        return `${minutes}:${seconds.toString().padStart(2, '0')} `;
     };
 
     // Effective time to display
@@ -195,15 +204,15 @@ export default function GlobalPlayer() {
     const totalDuration = currentSong?.duration || duration || 0;
 
     // Stream URL calculation
-    const streamUrl = currentSong
-        ? `/api/media/stream/${currentSong.id}?access_token=${token || ''}${transcodeMode ? `&transcode=true&startTime=${seekOffset}` : ''}`
-        : '';
+    const streamUrl = (currentSong && token)
+        ? `/api/media/stream/${currentSong.id}?access_token=${token}${transcodeMode ? `&transcode=true&startTime=${seekOffset}` : ''}`
+        : undefined;
 
     return (
         <>
             {currentSong && (
                 <div
-                    className={`fixed z-50 transition-all duration-300 ${isMinimized ? 'w-64' : 'w-96 md:w-[32rem]'}`}
+                    className={`fixed z - 50 transition - all duration - 300 ${isMinimized ? 'w-64' : 'w-96 md:w-[32rem]'} `}
                     style={{
                         bottom: '2rem',
                         right: '2rem',
@@ -225,7 +234,7 @@ export default function GlobalPlayer() {
                         <div className="p-4 pt-2">
                             {/* Top Row: Song Info & Controls */}
                             <div className="flex gap-4">
-                                <div className={`relative bg-gray-800 rounded-lg overflow-hidden flex-shrink-0 transition-all ${isMinimized ? 'w-10 h-10' : 'w-16 h-16'}`}>
+                                <div className={`relative bg - gray - 800 rounded - lg overflow - hidden flex - shrink - 0 transition - all ${isMinimized ? 'w-10 h-10' : 'w-16 h-16'} `}>
                                     <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-900">
                                         <Music size={isMinimized ? 16 : 24} className="text-white/50" />
                                     </div>
@@ -258,6 +267,14 @@ export default function GlobalPlayer() {
                                                     <ListPlus size={20} />
                                                 </button>
                                                 <button
+                                                    onClick={() => setShowQueue(!showQueue)}
+                                                    className={`hover: scale - 110 transition active: scale - 95 flex - shrink - 0 ${showQueue ? 'text-blue-400' : 'text-gray-400 hover:text-white'} `}
+                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                    title="Current Queue"
+                                                >
+                                                    <ListOrdered size={20} />
+                                                </button>
+                                                <button
                                                     onClick={() => setShowEditModal(true)}
                                                     className="hover:scale-110 transition active:scale-95 flex-shrink-0 text-gray-400 hover:text-blue-400"
                                                     onMouseDown={(e) => e.stopPropagation()}
@@ -286,8 +303,36 @@ export default function GlobalPlayer() {
                                 </div>
                             </div>
 
+                            {/* Queue Overlay */}
+                            {showQueue && !isMinimized && (
+                                <div className="mt-4 bg-black/40 rounded-lg p-2 max-h-48 overflow-y-auto custom-scrollbar border border-white/5" onMouseDown={e => e.stopPropagation()}>
+                                    <div className="text-xs text-gray-400 mb-2 px-1 flex justify-between">
+                                        <span>Queue ({queue.length})</span>
+                                        <button onClick={() => setShowQueue(false)}>Close</button>
+                                    </div>
+                                    <div className="space-y-1">
+                                        {queue.map((song, idx) => (
+                                            <div
+                                                key={`${song.id} -${idx} `}
+                                                onClick={() => {
+                                                    playQueue(queue, idx);
+                                                    // Optional: close queue after selection? No, keep it open.
+                                                }}
+                                                className={`text - sm py - 1.5 px - 2 rounded cursor - pointer truncate flex items - center justify - between group ${idx === currentIndex
+                                                    ? 'bg-blue-600/30 text-blue-200 font-medium'
+                                                    : 'hover:bg-white/5 text-gray-300'
+                                                    } `}
+                                            >
+                                                <span className="truncate flex-1">{idx + 1}. {song.title}</span>
+                                                <span className="text-xs text-gray-500 ml-2 group-hover:block hidden">{song.artist}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Controls */}
-                            {!isMinimized && (
+                            {!isMinimized && !showQueue && (
                                 <div className="mt-4 flex items-center justify-center gap-6">
                                     <button onClick={prevSong} className="text-gray-400 hover:text-white transition hover:scale-110" onMouseDown={(e) => e.stopPropagation()}>
                                         <SkipBack size={20} />
@@ -305,8 +350,8 @@ export default function GlobalPlayer() {
                                 </div>
                             )}
 
-                            {/* Progress Bar */}
-                            {!isMinimized && (
+                            {/* Progress Bar (Always show unless minimized and queuing?) No, Keep it simple */}
+                            {!isMinimized && !showQueue && (
                                 <div className="mt-4 space-y-1">
                                     <input
                                         type="range"
