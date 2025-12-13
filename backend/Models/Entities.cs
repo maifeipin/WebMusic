@@ -88,6 +88,16 @@ public class Playlist
     public string? CoverArt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     
+    /// <summary>
+    /// Playlist type: "normal" for user playlists, "shared" for share-created playlists.
+    /// </summary>
+    public string Type { get; set; } = "normal";
+    
+    /// <summary>
+    /// Share token for public access. Null means not shared.
+    /// </summary>
+    public string? ShareToken { get; set; }
+    
     [JsonIgnore]
     public List<PlaylistSong> PlaylistSongs { get; set; } = new();
 }

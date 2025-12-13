@@ -10,6 +10,7 @@ import HistoryPage from './pages/HistoryPage';
 import PlaylistsPage from './pages/PlaylistsPage';
 import PlaylistDetailPage from './pages/PlaylistDetailPage';
 import BackupPage from './pages/BackupPage';
+import SharedPlaylistPage from './pages/SharedPlaylistPage';
 import { Layout } from './components/Layout';
 
 const ProtectedRoute = ({ children }: { children: React.ReactElement }) => {
@@ -24,7 +25,11 @@ function App() {
         <BrowserRouter>
           <div className="min-h-screen bg-black text-gray-200 font-sans">
             <Routes>
+              {/* Public routes */}
               <Route path="/login" element={<Login />} />
+              <Route path="/share/:token" element={<SharedPlaylistPage />} />
+
+              {/* Protected routes */}
               <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/library" element={<Library />} />
@@ -44,3 +49,4 @@ function App() {
 }
 
 export default App;
+

@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getPlaylist, removeSongsFromPlaylist, updatePlaylist } from '../services/api';
+import { getPlaylist, removeSongsFromPlaylist, updatePlaylist, sharePlaylist } from '../services/api';
 import { usePlayer } from '../context/PlayerContext';
-import { Play, ArrowLeft, Trash2, CheckSquare, Square, Edit2, Save, X, Image as ImageIcon } from 'lucide-react';
+import { Play, ArrowLeft, Trash2, CheckSquare, Square, Edit2, Save, X, Image as ImageIcon, Share2, Copy, ExternalLink } from 'lucide-react';
 import { formatRelativeTime } from '../utils/time';
 import CoverPickerModal from '../components/CoverPickerModal';
 import SmbImage from '../components/SmbImage';
@@ -118,6 +118,43 @@ export default function PlaylistDetailPage() {
         }
     };
 
+    // Share state
+    const [showShareModal, setShowShareModal] = useState(false);
+    const [shareName, setShareName] = useState('');
+    const [shareResult, setShareResult] = useState<{ token: string; url: string } | null>(null);
+    const [sharing, setSharing] = useState(false);
+
+    const handleOpenShareModal = () => {
+        if (!playlist) return;
+        setShareName(selectedItems.length > 0 ? `${playlist.name} - Selection` : playlist.name);
+        setShareResult(null);
+        setShowShareModal(true);
+    };
+
+    const handleShare = async () => {
+        if (!playlist) return;
+        setSharing(true);
+        try {
+            const songIds = selectedItems.length > 0 ? selectedItems : undefined;
+            const res = await sharePlaylist(playlist.id, { name: shareName.trim(), songIds });
+            setShareResult({ token: res.data.shareToken, url: `${window.location.origin}/share/${res.data.shareToken}` });
+        } catch (e) {
+            alert('Failed to generate share link');
+        } finally {
+            setSharing(false);
+        }
+    };
+
+    const handleCopyShareLink = async () => {
+        if (!shareResult) return;
+        try {
+            await navigator.clipboard.writeText(shareResult.url);
+            alert('✅ Link copied to clipboard!');
+        } catch (err) {
+            // Fallback for browsers that don't support clipboard API
+            prompt('Copy this link:', shareResult.url);
+        }
+    };
 
     if (loading) return <div className="p-8 text-gray-500">Loading...</div>;
     if (!playlist) return null;
@@ -225,9 +262,16 @@ export default function PlaylistDetailPage() {
                                     className="px-4 py-2 bg-red-500/10 text-red-500 hover:bg-red-500/20 rounded-lg flex items-center gap-2 font-medium transition"
                                 >
                                     <Trash2 size={18} />
-                                    Remove Selected ({selectedItems.length})
+                                    Remove ({selectedItems.length})
                                 </button>
                             )}
+                            <button
+                                onClick={handleOpenShareModal}
+                                className="px-4 py-2 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 rounded-lg flex items-center gap-2 font-medium transition"
+                            >
+                                <Share2 size={18} />
+                                {selectedItems.length > 0 ? `Share (${selectedItems.length})` : 'Share All'}
+                            </button>
                             <button
                                 onClick={handlePlayAll}
                                 className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg flex items-center gap-2 font-medium transition shadow-lg shadow-blue-900/20"
@@ -243,7 +287,31 @@ export default function PlaylistDetailPage() {
             {/* List */}
             <div className="bg-gray-900/50 border border-gray-800/50 rounded-2xl overflow-hidden">
                 <div className="grid grid-cols-[auto_40px_1fr_1fr_100px] gap-4 p-4 border-b border-gray-800 text-sm font-medium text-gray-400 select-none">
-                    <div className="w-6"></div> {/* Checkbox */}
+                    {/* Select All / None Checkbox */}
+                    <div
+                        className="w-6 cursor-pointer hover:text-blue-400 transition"
+                        onClick={() => {
+                            if (!playlist) return;
+                            if (selectedItems.length === playlist.songs.length) {
+                                // All selected -> clear all
+                                setSelectedItems([]);
+                            } else {
+                                // Select all
+                                setSelectedItems(playlist.songs.map(s => s.song.id));
+                            }
+                        }}
+                        title={selectedItems.length === playlist?.songs.length ? "Deselect all" : "Select all"}
+                    >
+                        {playlist && selectedItems.length === playlist.songs.length && playlist.songs.length > 0 ? (
+                            <CheckSquare size={18} className="text-blue-500" />
+                        ) : selectedItems.length > 0 ? (
+                            <div className="w-[18px] h-[18px] border-2 border-blue-500 rounded bg-blue-500/30 flex items-center justify-center">
+                                <div className="w-2 h-0.5 bg-blue-500" />
+                            </div>
+                        ) : (
+                            <Square size={18} />
+                        )}
+                    </div>
                     <div>#</div>
                     <div>Title</div>
                     <div>Artist</div>
@@ -282,6 +350,86 @@ export default function PlaylistDetailPage() {
                 onSelect={(path) => setEditCoverArt(path)}
                 currentCover={editCoverArt}
             />
+
+            {/* Share Modal */}
+            {showShareModal && (
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+                        <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                            <Share2 size={20} className="text-emerald-400" />
+                            {shareResult ? 'Share Link Ready!' : 'Share Playlist'}
+                        </h3>
+
+                        {!shareResult ? (
+                            <>
+                                <div className="mb-4">
+                                    <label className="block text-sm text-gray-400 mb-2">Share Name</label>
+                                    <input
+                                        type="text"
+                                        value={shareName}
+                                        onChange={(e) => setShareName(e.target.value)}
+                                        className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition"
+                                        placeholder="Enter a name..."
+                                    />
+                                </div>
+                                <div className="mb-6 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                                    <p className="text-sm text-emerald-400">
+                                        {selectedItems.length > 0
+                                            ? `Sharing ${selectedItems.length} selected song${selectedItems.length > 1 ? 's' : ''}`
+                                            : `Sharing all ${playlist?.songs.length || 0} songs`
+                                        }
+                                    </p>
+                                </div>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setShowShareModal(false)}
+                                        className="flex-1 px-4 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg font-medium transition"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleShare}
+                                        disabled={sharing}
+                                        className="flex-1 px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition disabled:opacity-50"
+                                    >
+                                        {sharing ? 'Generating...' : 'Generate Link'}
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="mb-4 bg-black/50 rounded-lg p-3 border border-gray-700">
+                                    <p className="text-xs text-gray-400 mb-1">Share Link:</p>
+                                    <p className="text-sm text-emerald-400 break-all font-mono">{shareResult.url}</p>
+                                </div>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={handleCopyShareLink}
+                                        className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition"
+                                    >
+                                        <Copy size={18} />
+                                        Copy Link
+                                    </button>
+                                    <button
+                                        onClick={() => window.open(shareResult.url, '_blank')}
+                                        className="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium flex items-center justify-center gap-2 transition"
+                                    >
+                                        <ExternalLink size={18} />
+                                        Open
+                                    </button>
+                                </div>
+                                <button
+                                    onClick={() => setShowShareModal(false)}
+                                    className="w-full mt-3 text-sm text-gray-500 hover:text-gray-400 transition"
+                                >
+                                    Close
+                                </button>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
+

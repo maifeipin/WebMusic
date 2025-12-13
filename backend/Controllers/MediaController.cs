@@ -339,6 +339,92 @@ public class MediaController : ControllerBase
         
         return File(stream, contentType, enableRangeProcessing: true);
     }
+
+    /// <summary>
+    /// Stream audio for shared playlists (PUBLIC - no authentication required).
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet("stream/shared/{shareToken}/{songId}")]
+    public async Task<IActionResult> StreamShared(string shareToken, int songId, [FromQuery] bool transcode = false)
+    {
+        // Validate the share token and song belongs to that playlist
+        var playlist = await _context.Playlists
+            .Include(p => p.PlaylistSongs)
+            .FirstOrDefaultAsync(p => p.ShareToken == shareToken);
+
+        if (playlist == null)
+            return NotFound("Share link invalid");
+
+        var belongsToPlaylist = playlist.PlaylistSongs.Any(ps => ps.MediaFileId == songId);
+        if (!belongsToPlaylist)
+            return Forbid("Song not in shared playlist");
+
+        // Get the media file
+        var media = await _context.MediaFiles
+            .Include(m => m.ScanSource)
+            .ThenInclude(s => s!.StorageCredential)
+            .FirstOrDefaultAsync(m => m.Id == songId);
+
+        if (media == null || media.ScanSource == null)
+            return NotFound("Song not found");
+
+        var stream = _smbService.OpenFile(media.ScanSource, media.FilePath);
+        if (stream == null)
+            return NotFound("File not available");
+
+        string contentType = "audio/mpeg";
+        if (media.FilePath.EndsWith(".flac", StringComparison.OrdinalIgnoreCase)) contentType = "audio/flac";
+        if (media.FilePath.EndsWith(".wav", StringComparison.OrdinalIgnoreCase)) contentType = "audio/wav";
+        if (media.FilePath.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase)) contentType = "audio/ogg";
+        if (media.FilePath.EndsWith(".m4a", StringComparison.OrdinalIgnoreCase)) contentType = "audio/mp4";
+
+        if (transcode)
+        {
+            try
+            {
+                var process = new System.Diagnostics.Process
+                {
+                    StartInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "ffmpeg",
+                        Arguments = "-i pipe:0 -f mp3 -ab 192k -",
+                        RedirectStandardInput = true,
+                        RedirectStandardOutput = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+
+                process.Start();
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await stream.CopyToAsync(process.StandardInput.BaseStream);
+                        process.StandardInput.Close();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Shared Transcode Error: {ex.Message}");
+                    }
+                    finally
+                    {
+                        stream.Dispose();
+                    }
+                });
+
+                return File(process.StandardOutput.BaseStream, "audio/mpeg", enableRangeProcessing: false);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Shared Stream FFmpeg Error: {ex.Message}");
+                return BadRequest("Transcoding failed");
+            }
+        }
+
+        return File(stream, contentType, enableRangeProcessing: true);
+    }
     
     [HttpGet("stats")]
     public async Task<IActionResult> GetStats()

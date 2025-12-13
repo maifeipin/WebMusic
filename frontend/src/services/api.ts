@@ -42,7 +42,7 @@ export const exportFavorites = () => api.get('/user/favorites/export', { respons
 export const importFavorites = (formData: FormData) => api.post('/user/favorites/import', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 
 // Playlists
-export const getPlaylists = () => api.get('/playlist');
+export const getPlaylists = (type: 'normal' | 'shared' | 'all' = 'normal') => api.get(`/playlist?type=${type}`);
 export const getPlaylist = (id: number) => api.get(`/playlist/${id}`);
 export const createPlaylist = (name: string) => api.post('/playlist', { name });
 export const deletePlaylist = (id: number) => api.delete(`/playlist/${id}`);
@@ -50,4 +50,12 @@ export const updatePlaylist = (id: number, data: { name?: string; coverArt?: str
 export const addSongsToPlaylist = (id: number, mediaFileIds: number[]) => api.post(`/playlist/${id}/songs`, mediaFileIds);
 export const removeSongsFromPlaylist = (id: number, mediaFileIds: number[]) => api.delete(`/playlist/${id}/songs?ids=${mediaFileIds.join(',')}`);
 
+// Sharing
+export const sharePlaylist = (id: number, options?: { name?: string; songIds?: number[] }) =>
+    api.post(`/playlist/${id}/share`, options || {});
+export const revokePlaylistShare = (id: number) => api.delete(`/playlist/${id}/share`);
+// Note: getSharedPlaylist doesn't need auth, so we use a plain axios call
+export const getSharedPlaylist = (token: string) => axios.get(`/api/playlist/shared/${token}`);
+
 export default api;
+

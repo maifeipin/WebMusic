@@ -27,19 +27,28 @@ public class PlaylistController : ControllerBase
         return 1;
     }
 
-    // GET: api/playlist
+    // GET: api/playlist?type=normal|shared|all
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<object>>> GetPlaylists()
+    public async Task<ActionResult<IEnumerable<object>>> GetPlaylists([FromQuery] string type = "normal")
     {
         var userId = GetUserId();
-        var playlists = await _context.Playlists
-            .Where(p => p.UserId == userId)
+        var query = _context.Playlists.Where(p => p.UserId == userId);
+        
+        // Filter by type
+        if (type != "all")
+        {
+            query = query.Where(p => p.Type == type);
+        }
+        
+        var playlists = await query
             .Select(p => new 
             {
                 p.Id,
                 p.Name,
                 p.CoverArt,
                 p.CreatedAt,
+                p.Type,
+                p.ShareToken,
                 count = p.PlaylistSongs.Count()
             })
             .OrderByDescending(p => p.CreatedAt)
@@ -198,6 +207,139 @@ public class PlaylistController : ControllerBase
         await _context.SaveChangesAsync();
         return Ok(playlist);
     }
+
+    // ================== SHARING ENDPOINTS ==================
+
+    /// <summary>
+    /// Share a playlist or selected songs.
+    /// If songIds provided, creates a new "shared" type playlist with those songs.
+    /// If no songIds, shares the existing playlist directly.
+    /// </summary>
+    [HttpPost("{id}/share")]
+    public async Task<IActionResult> SharePlaylist(int id, [FromBody] SharePlaylistDto dto)
+    {
+        var userId = GetUserId();
+        var playlist = await _context.Playlists
+            .Include(p => p.PlaylistSongs)
+            .FirstOrDefaultAsync(p => p.Id == id && p.UserId == userId);
+        
+        if (playlist == null) return NotFound();
+
+        // Case 1: Share selected songs -> create new "shared" playlist
+        if (dto.SongIds != null && dto.SongIds.Count > 0)
+        {
+            // Validate songs belong to this playlist
+            var validSongIds = playlist.PlaylistSongs
+                .Where(ps => dto.SongIds.Contains(ps.MediaFileId))
+                .Select(ps => ps.MediaFileId)
+                .ToList();
+            
+            if (validSongIds.Count == 0) return BadRequest("No valid songs selected");
+
+            // Create new shared playlist
+            var sharedPlaylist = new Playlist
+            {
+                Name = string.IsNullOrWhiteSpace(dto.Name) ? $"{playlist.Name} - Share" : dto.Name.Trim(),
+                UserId = userId,
+                Type = "shared",
+                ShareToken = Guid.NewGuid().ToString("N"),
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.Playlists.Add(sharedPlaylist);
+            await _context.SaveChangesAsync();
+
+            // Add songs
+            foreach (var songId in validSongIds)
+            {
+                _context.PlaylistSongs.Add(new PlaylistSong
+                {
+                    PlaylistId = sharedPlaylist.Id,
+                    MediaFileId = songId,
+                    AddedAt = DateTime.UtcNow
+                });
+            }
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                shareToken = sharedPlaylist.ShareToken,
+                shareUrl = $"/share/{sharedPlaylist.ShareToken}",
+                name = sharedPlaylist.Name,
+                songCount = validSongIds.Count,
+                isNewPlaylist = true
+            });
+        }
+        
+        // Case 2: Share entire playlist -> add ShareToken to existing playlist
+        if (string.IsNullOrEmpty(playlist.ShareToken))
+        {
+            playlist.ShareToken = Guid.NewGuid().ToString("N");
+            await _context.SaveChangesAsync();
+        }
+
+        return Ok(new
+        {
+            shareToken = playlist.ShareToken,
+            shareUrl = $"/share/{playlist.ShareToken}",
+            name = playlist.Name,
+            songCount = playlist.PlaylistSongs.Count,
+            isNewPlaylist = false
+        });
+    }
+
+    /// <summary>
+    /// Revoke sharing for a playlist.
+    /// </summary>
+    [HttpDelete("{id}/share")]
+    public async Task<IActionResult> RevokeShare(int id)
+    {
+        var userId = GetUserId();
+        var playlist = await _context.Playlists.FirstOrDefaultAsync(p => p.Id == id && p.UserId == userId);
+        if (playlist == null) return NotFound();
+
+        playlist.ShareToken = null;
+        await _context.SaveChangesAsync();
+
+        return NoContent();
+    }
+
+    /// <summary>
+    /// Get shared playlist by token (PUBLIC - no authentication required).
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet("shared/{token}")]
+    public async Task<IActionResult> GetSharedPlaylist(string token)
+    {
+        if (string.IsNullOrEmpty(token)) return BadRequest("Token required");
+
+        var playlist = await _context.Playlists
+            .Where(p => p.ShareToken == token)
+            .Include(p => p.PlaylistSongs)
+            .ThenInclude(ps => ps.MediaFile)
+            .FirstOrDefaultAsync();
+
+        if (playlist == null) return NotFound("Shared playlist not found or link expired");
+
+        var songs = playlist.PlaylistSongs
+            .Where(ps => ps.MediaFile != null)
+            .OrderBy(ps => ps.AddedAt)
+            .Select(ps => new
+            {
+                id = ps.MediaFile!.Id,
+                title = ps.MediaFile.Title,
+                artist = ps.MediaFile.Artist,
+                album = ps.MediaFile.Album,
+                duration = ps.MediaFile.Duration.TotalSeconds
+            });
+
+        return Ok(new
+        {
+            playlist.Name,
+            coverArt = playlist.CoverArt,
+            shareToken = token,
+            songs
+        });
+    }
 }
 
 public class CreatePlaylistDto
@@ -211,3 +353,10 @@ public class UpdatePlaylistDto
     public string? Name { get; set; }
     public string? CoverArt { get; set; }
 }
+
+public class SharePlaylistDto
+{
+    public string? Name { get; set; }
+    public List<int>? SongIds { get; set; }
+}
+
