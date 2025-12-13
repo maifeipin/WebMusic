@@ -98,6 +98,27 @@ public class MediaController : ControllerBase
         return Ok(new { total, page, pageSize, files });
     }
 
+    [HttpPost("list/ids")]
+    public async Task<ActionResult<List<object>>> GetSongsByIds([FromBody] List<int> ids)
+    {
+        if (ids == null || ids.Count == 0) return Ok(new List<object>());
+
+        var songs = await _context.MediaFiles
+            .Where(m => ids.Contains(m.Id))
+            .Select(m => new { 
+                m.Id, m.Title, m.Artist, m.Album, m.Genre, duration = m.Duration.TotalSeconds, m.Year, m.FilePath 
+            })
+            .ToListAsync();
+
+        // Reorder to match input IDs
+        var orderedSongs = ids
+            .Select(id => songs.FirstOrDefault(s => s.Id == id))
+            .Where(s => s != null)
+            .ToList();
+
+        return Ok(orderedSongs);
+    }
+
     [HttpGet("groups")]
     public async Task<IActionResult> GetGroups([FromQuery] string groupBy)
     {

@@ -6,7 +6,10 @@ import AddToPlaylistModal from './AddToPlaylistModal';
 import EditSongModal from './EditSongModal';
 
 export default function GlobalPlayer() {
-    const { currentSong, isPlaying, togglePlay, showTranscodePrompt, confirmTranscode, transcodeMode, nextSong, prevSong, isFavorite, toggleLike, updateCurrentSong } = usePlayer();
+    const {
+        currentSong, isPlaying, togglePlay, showTranscodePrompt, confirmTranscode, transcodeMode, nextSong, prevSong,
+        isFavorite, toggleLike, updateCurrentSong, restoredTime, saveProgress
+    } = usePlayer();
     const { token } = useAuth();
     const audioRef = useRef<HTMLAudioElement>(null);
     const [isMinimized, setIsMinimized] = useState(false);
@@ -16,12 +19,42 @@ export default function GlobalPlayer() {
     const [showPlaylistModal, setShowPlaylistModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
 
+    // Resume Time
+    useEffect(() => {
+        if (restoredTime > 0 && audioRef.current && currentSong && !transcodeMode) {
+            // Apply restored time simply
+            audioRef.current.currentTime = restoredTime;
+            setCurrentTime(restoredTime);
+        }
+    }, [restoredTime, currentSong, transcodeMode]); // Only when restoredTime is set (on player load)
+
     // Reset state on song change
     useEffect(() => {
         setSeekOffset(0);
-        setCurrentTime(0);
+        // Only reset time if it's not a resume action (checked by ensuring restoredTime is 0)
+        // But restoredTime effect handles the set above. This runs parallel.
+        // Actually, if restoredTime > 0, we shouldn't reset to 0 here.
+        // But restoredTime will be 0 on manual Next/Prev.
+        // It's tricky. Simplest: if (restoredTime === 0) setCurrentTime(0);
+        if (restoredTime === 0) setCurrentTime(0);
         setDuration(currentSong?.duration || 0);
-    }, [currentSong?.id, currentSong?.duration]);
+    }, [currentSong?.id, currentSong?.duration]); // we rely on id change
+
+    // Save Progress Interval
+    useEffect(() => {
+        if (!isPlaying || !currentSong) return;
+
+        // Save every 5 seconds or upon unmount/pause
+        const interval = setInterval(() => {
+            saveProgress(audioRef.current?.currentTime || 0);
+        }, 5000); // 5s
+
+        return () => {
+            clearInterval(interval);
+            // Save on unmount or pause (cleanup)
+            saveProgress(audioRef.current?.currentTime || 0);
+        };
+    }, [isPlaying, currentSong?.id]);
 
     // Media Session API for lock screen / notification bar controls
     useEffect(() => {

@@ -16,6 +16,7 @@ export const login = (username: string, password: string) => api.post('/auth/log
 export const changePassword = (data: any) => api.post('/auth/change-password', data);
 export const getStats = () => api.get('/media/stats');
 export const getFiles = (params: any) => api.get('/media', { params });
+export const getSongsByIds = (ids: number[]) => api.post('/media/list/ids', ids);
 export const updateMedia = (id: number, data: { title?: string; artist?: string; album?: string; genre?: string }) => api.put(`/media/${id}`, data);
 export const getSources = () => api.get('/scan/sources');
 export const addSource = (data: any, force = false) => api.post(`/scan/sources?force=${force}`, data);

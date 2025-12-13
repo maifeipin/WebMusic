@@ -36,6 +36,10 @@ interface PlayerContextType {
     toggleLike: (id: number) => Promise<void>;
     // Song Update
     updateCurrentSong: (updates: Partial<Song>) => void;
+
+    // Persistence
+    restoredTime: number;
+    saveProgress: (time: number) => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
@@ -55,8 +59,81 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const [pendingSong, setPendingSong] = useState<Song | null>(null);
     const [transcodeMode, setTranscodeMode] = useState(false);
     const [favorites, setFavorites] = useState<Set<number>>(new Set());
+    const [restoredTime, setRestoredTime] = useState(0);
 
-    // Load Favorites
+    // Initial Restore
+    useEffect(() => {
+        const init = async () => {
+            // 1. Device ID
+            let deviceId = localStorage.getItem('webmusic_device_id');
+            if (!deviceId) {
+                deviceId = crypto.randomUUID();
+                localStorage.setItem('webmusic_device_id', deviceId);
+            }
+
+            // 2. Restore State
+            const raw = localStorage.getItem('webmusic_player_state');
+            if (raw) {
+                try {
+                    const state = JSON.parse(raw);
+                    if (state.songIds && state.songIds.length > 0) {
+                        // Fetch full song details
+                        const res = await api.getSongsByIds(state.songIds);
+                        if (res.data && res.data.length > 0) {
+                            setQueue(res.data);
+                            // Restore index and time
+                            if (state.currentSongId) {
+                                const idx = res.data.findIndex((s: Song) => s.id === state.currentSongId);
+                                if (idx !== -1) {
+                                    setCurrentIndex(idx);
+                                    setCurrentSong(res.data[idx]);
+                                    setRestoredTime(state.currentTime || 0);
+                                    // Do NOT auto play
+                                    setIsPlaying(false);
+                                }
+                            } else {
+                                setCurrentIndex(0);
+                                setCurrentSong(res.data[0]);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to restore player state", e);
+                }
+            }
+        };
+        init();
+    }, []);
+
+    // Save State on Change
+    useEffect(() => {
+        if (queue.length === 0) return;
+
+        const state = {
+            version: 1,
+            songIds: queue.map(s => s.id),
+            currentSongId: currentSong?.id,
+            currentTime: 0, // Gets updated by GlobalPlayer separately or we assume 0 here
+            deviceId: localStorage.getItem('webmusic_device_id'),
+            lastUpdated: Date.now()
+        };
+        // We only save structure here. Time saving needs to be triggered by audio events.
+        localStorage.setItem('webmusic_player_state', JSON.stringify(state));
+    }, [queue, currentSong]);
+
+    // Helper to update just the time in local storage (called by GlobalPlayer)
+    const saveProgress = (time: number) => {
+        const raw = localStorage.getItem('webmusic_player_state');
+        if (raw) {
+            const state = JSON.parse(raw);
+            state.currentTime = time;
+            state.lastUpdated = Date.now();
+            localStorage.setItem('webmusic_player_state', JSON.stringify(state));
+        }
+    };
+
+    // ... existing loadFavorites ...
+
     useEffect(() => {
         const loadFavorites = async () => {
             try {
@@ -71,12 +148,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     // Record History on Song Change
     useEffect(() => {
-        if (currentSong) {
-            // Debounce? Or just log.
-            // Ideally should check if played > 5s? For now log start.
+        if (currentSong && isPlaying) { // Only record if playing
             api.addToHistory(currentSong.id).catch(err => console.error("History log failed", err));
         }
-    }, [currentSong]);
+    }, [currentSong?.id]); // Only on ID change
 
     const isFavorite = (id: number) => favorites.has(id);
 
@@ -97,10 +172,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
 
     const playSong = (song: Song) => {
+        setRestoredTime(0); // Reset restore time on manual play
         playQueue([song], 0);
     };
 
     const playQueue = (songs: Song[], startIndex: number = 0) => {
+        setRestoredTime(0);
         setQueue(songs);
         setCurrentIndex(startIndex);
         loadSong(songs[startIndex]);
@@ -154,6 +231,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const nextSong = () => {
         if (currentIndex < queue.length - 1) {
             const nextIdx = currentIndex + 1;
+            setRestoredTime(0);
             setCurrentIndex(nextIdx);
             loadSong(queue[nextIdx]);
         }
@@ -162,6 +240,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const prevSong = () => {
         if (currentIndex > 0) {
             const prevIdx = currentIndex - 1;
+            setRestoredTime(0);
             setCurrentIndex(prevIdx);
             loadSong(queue[prevIdx]);
         }
@@ -186,7 +265,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             addToQueue,
             isFavorite,
             toggleLike,
-            updateCurrentSong
+            updateCurrentSong,
+            restoredTime, // Exposed for GlobalPlayer
+            saveProgress  // Exposed for GlobalPlayer
         }}>
             {children}
         </PlayerContext.Provider>
