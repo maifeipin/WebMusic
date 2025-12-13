@@ -32,7 +32,8 @@ public class MediaController : ControllerBase
         [FromQuery] string? filterBy = null,
         [FromQuery] string? filterValue = null,
         [FromQuery] string? path = null,
-        [FromQuery] bool recursive = false)
+        [FromQuery] bool recursive = false,
+        [FromQuery] List<string>? criteria = null)
     {
         var query = _context.MediaFiles.AsQueryable();
 
@@ -75,13 +76,55 @@ public class MediaController : ControllerBase
                 m.Album.ToLower().Contains(search));
         }
 
+        // Advanced Criteria Filtering
+        // Format: "Field:Operator:Value"
+        if (criteria != null && criteria.Count > 0)
+        {
+            foreach (var c in criteria)
+            {
+                var parts = c.Split(':', 3);
+                if (parts.Length < 2) continue;
+                
+                var field = parts[0].ToLower();
+                var op = parts[1].ToLower();
+                var val = parts.Length > 2 ? parts[2].ToLower() : "";
+
+                switch (field)
+                {
+                    case "artist":
+                        if (op == "isempty") query = query.Where(m => m.Artist == null || m.Artist == "" || m.Artist == "Unknown" || m.Artist == "Unknown Artist");
+                        else if (op == "contains") query = query.Where(m => m.Artist != null && m.Artist.ToLower().Contains(val));
+                        else if (op == "is") query = query.Where(m => m.Artist.ToLower() == val);
+                        break;
+                    case "album":
+                        if (op == "isempty") query = query.Where(m => m.Album == null || m.Album == "" || m.Album == "Unknown" || m.Album == "Unknown Album");
+                        else if (op == "contains") query = query.Where(m => m.Album != null && m.Album.ToLower().Contains(val));
+                        break;
+                    case "genre":
+                        if (op == "isempty") query = query.Where(m => m.Genre == null || m.Genre == "" || m.Genre == "Unknown");
+                        else if (op == "contains") query = query.Where(m => m.Genre != null && m.Genre.ToLower().Contains(val));
+                        break;
+                    case "title":
+                        if (op == "contains") query = query.Where(m => m.Title != null && m.Title.ToLower().Contains(val));
+                        else if (op == "startswith") query = query.Where(m => m.Title != null && m.Title.ToLower().StartsWith(val));
+                        break;
+                    case "filename":
+                         // FilePath match
+                         if (op == "contains") query = query.Where(m => m.FilePath.ToLower().Contains(val));
+                         break;
+                }
+            }
+        }
+
+        // Legacy Filter Support (keep backward compatibility if needed)
         if (!string.IsNullOrEmpty(filterBy) && !string.IsNullOrEmpty(filterValue))
         {
+            var val = filterValue.ToLower();
             switch (filterBy.ToLower())
             {
-                case "artist": query = query.Where(m => m.Artist == filterValue); break;
-                case "album": query = query.Where(m => m.Album == filterValue); break;
-                case "genre": query = query.Where(m => m.Genre == filterValue); break;
+                case "artist": query = query.Where(m => m.Artist.ToLower() == val); break;
+                case "album": query = query.Where(m => m.Album.ToLower() == val); break;
+                case "genre": query = query.Where(m => m.Genre.ToLower() == val); break;
             }
         }
 

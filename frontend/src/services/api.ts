@@ -59,5 +59,9 @@ export const revokePlaylistShare = (id: number) => api.delete(`/playlist/${id}/s
 export const getSharedPlaylist = (token: string, password?: string) =>
     axios.get(`/api/playlist/shared/${token}${password ? `?password=${encodeURIComponent(password)}` : ''}`);
 
+// Tags
+export const suggestTags = (songIds: number[], prompt: string, model = 'gemini-2.0-flash-exp') => api.post('/tags/suggest', { songIds, prompt, model });
+export const applyTags = (updates: any[]) => api.post('/tags/apply', updates);
+
 export default api;
 

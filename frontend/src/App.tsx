@@ -10,6 +10,7 @@ import HistoryPage from './pages/HistoryPage';
 import PlaylistsPage from './pages/PlaylistsPage';
 import PlaylistDetailPage from './pages/PlaylistDetailPage';
 import BackupPage from './pages/BackupPage';
+import TagManagerPage from './pages/TagManagerPage';
 import SharedPlaylistPage from './pages/SharedPlaylistPage';
 import { Layout } from './components/Layout';
 
@@ -39,6 +40,7 @@ function App() {
                 <Route path="/playlists" element={<PlaylistsPage />} />
                 <Route path="/playlists/:id" element={<PlaylistDetailPage />} />
                 <Route path="/backup" element={<BackupPage />} />
+                <Route path="/tags" element={<TagManagerPage />} />
               </Route>
             </Routes>
           </div>

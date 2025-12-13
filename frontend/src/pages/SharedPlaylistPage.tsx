@@ -333,12 +333,12 @@ export default function SharedPlaylistPage() {
 
             <div className="bg-gradient-to-b from-blue-900/50 to-transparent pt-12 pb-8 px-6">
                 <div className="max-w-4xl mx-auto flex flex-col md:flex-row items-center gap-6">
-                    <div className="w-48 h-48 bg-gradient-to-br from-blue-600 to-purple-700 rounded-2xl shadow-2xl flex items-center justify-center">
-                        <Music size={64} className="text-white/50" />
+                    <div className="w-32 h-32 bg-gradient-to-br from-blue-600 to-purple-700 rounded-2xl shadow-2xl flex items-center justify-center">
+                        <Music size={48} className="text-white/50" />
                     </div>
                     <div className="text-center md:text-left">
                         <p className="text-sm text-blue-400 uppercase tracking-wider mb-2">Shared Playlist</p>
-                        <h1 className="text-4xl font-bold mb-4">{playlist.name}</h1>
+                        <h1 className="text-2xl md:text-3xl font-bold mb-4">{playlist.name}</h1>
                         <p className="text-gray-400 mb-4">{playlist.songs.length} songs</p>
                         <div className="flex gap-3 justify-center md:justify-start">
                             <button
