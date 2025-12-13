@@ -146,11 +146,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         const loadFavorites = async () => {
+            // Assuming api.getToken() exists or a similar check for user authentication
+            // If not, 'token' would need to be passed or derived from context/state.
+            // For now, we'll assume a placeholder for checking if a user is logged in.
+            // If there's no user token, we don't attempt to load favorites.
+            const token = localStorage.getItem('webmusic_auth_token'); // Example placeholder
+            if (!token) return;
+
             try {
                 const res = await api.getFavoriteIds();
                 setFavorites(new Set(res.data));
-            } catch (e) {
-                console.error("Failed to load favorites", e);
+            } catch (e: any) {
+                // Suppress 401 (Unauthorized) errors which are expected for non-logged-in users
+                if (e.response?.status !== 401) {
+                    console.warn("Failed to load favorites", e);
+                }
             }
         };
         loadFavorites();
