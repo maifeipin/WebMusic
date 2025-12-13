@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { usePlayer } from '../context/PlayerContext';
-import { getFiles, getGroups } from '../services/api';
+import { getFiles, getGroups, getSongsByIds } from '../services/api';
 import { Play, Music, Folder, List, Grid, ChevronRight, ChevronDown, ArrowUp, ArrowDown, CheckSquare, Square, X, ListPlus } from 'lucide-react';
 import DirectoryTree from '../components/DirectoryTree';
 import AddToPlaylistModal from '../components/AddToPlaylistModal';
@@ -42,6 +42,11 @@ export default function Library() {
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
     const [selectedIds, setSelectedIds] = useState<number[]>([]);
+    const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
+    const [selectedPathCounts, setSelectedPathCounts] = useState<Record<string, number>>({});
+    const [resolvingSelection, setResolvingSelection] = useState(false);
+    const [defaultPlaylistName, setDefaultPlaylistName] = useState('');
+    const [resolvedIds, setResolvedIds] = useState<number[]>([]);
 
     const [activeFilter, setActiveFilter] = useState<ActiveFilter | null>(null);
 
@@ -55,6 +60,10 @@ export default function Library() {
     const { playSong, playQueue } = usePlayer();
 
     useEffect(() => {
+        setSelectedIds([]);
+        setSelectedPaths([]);
+        setSelectedPathCounts({});
+
         if (viewMode === 'flat') fetchSongs();
         else if (viewMode === 'group') {
             if (groupBy !== 'directory') fetchGroups();
@@ -178,6 +187,27 @@ export default function Library() {
         );
     };
 
+    const toggleSelectPath = (path: string, count?: number) => {
+        setSelectedPaths(prev => {
+            const isSelected = prev.includes(path);
+            if (isSelected) {
+                if (count !== undefined) {
+                    setSelectedPathCounts(c => {
+                        const copy = { ...c };
+                        delete copy[path];
+                        return copy;
+                    });
+                }
+                return prev.filter(x => x !== path);
+            } else {
+                if (count !== undefined) {
+                    setSelectedPathCounts(c => ({ ...c, [path]: count }));
+                }
+                return [...prev, path];
+            }
+        });
+    };
+
     const toggleSelectAll = () => {
         if (selectedIds.length === sortedSongs.length) {
             setSelectedIds([]);
@@ -186,11 +216,60 @@ export default function Library() {
         }
     };
 
-    const handlePlaySelected = () => {
-        const selected = sortedSongs.filter(s => selectedIds.includes(s.id));
-        if (selected.length > 0) {
-            playQueue(selected, 0);
+    const resolveSelection = async (): Promise<number[]> => {
+        let allIds = [...selectedIds];
+        if (selectedPaths.length > 0) {
+            setResolvingSelection(true);
+            try {
+                const promises = selectedPaths.map(path => getFiles({ path, recursive: true, pageSize: 20000 }));
+                const results = await Promise.all(promises);
+                results.forEach(res => {
+                    if (res.data && res.data.files) {
+                        const ids = res.data.files.map((f: any) => f.id);
+                        allIds = [...allIds, ...ids];
+                    }
+                });
+            } catch (e) {
+                console.error("Failed to resolve selection", e);
+            } finally {
+                setResolvingSelection(false);
+            }
         }
+        return Array.from(new Set(allIds));
+    };
+
+    const handlePlaySelected = async () => {
+        // Fast path for flat view
+        if (viewMode === 'flat' && selectedPaths.length === 0) {
+            const selected = sortedSongs.filter(s => selectedIds.includes(s.id));
+            if (selected.length > 0) playQueue(selected, 0);
+            return;
+        }
+
+        // Resolve for mixed selection
+        const ids = await resolveSelection();
+        if (ids.length > 0) {
+            try {
+                const res = await getSongsByIds(ids);
+                playQueue(res.data, 0);
+            } catch (e) { console.error(e); }
+        }
+    };
+
+    const handleAddToPlaylistClick = async () => {
+        setResolvingSelection(true);
+        const ids = await resolveSelection();
+        setResolvedIds(ids);
+
+        let name = '';
+        if (selectedPaths.length === 1 && selectedIds.length === 0) {
+            const parts = selectedPaths[0].split(/[/\\]/);
+            name = parts[parts.length - 1] || parts[parts.length - 2] || 'New Playlist';
+        }
+        setDefaultPlaylistName(name);
+
+        setResolvingSelection(false);
+        setShowAddToPlaylist(true);
     };
 
     // Extract directory path from full file path
@@ -244,6 +323,9 @@ export default function Library() {
         </th>
     );
 
+    const selectionCount = selectedIds.length + Object.values(selectedPathCounts).reduce((a, b) => a + (b || 0), 0);
+    const hasSelection = selectedIds.length > 0 || selectedPaths.length > 0;
+
     return (
         <div className="flex flex-col h-full bg-black text-white">
             <div className="p-8 flex-1 overflow-auto mb-24">
@@ -258,21 +340,29 @@ export default function Library() {
                         </div>
 
                         {/* Action Buttons for Selected Items */}
-                        {viewMode === 'flat' && selectedIds.length > 0 && (
+                        {hasSelection && (
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={handlePlaySelected}
-                                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium transition shadow-lg shadow-blue-900/30"
+                                    disabled={resolvingSelection}
+                                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg font-medium transition shadow-lg shadow-blue-900/30"
                                 >
-                                    <Play size={18} fill="currentColor" />
-                                    Play ({selectedIds.length})
+                                    {resolvingSelection ? (
+                                        <span className="animate-pulse">Loading...</span>
+                                    ) : (
+                                        <>
+                                            <Play size={18} fill="currentColor" />
+                                            Play ({selectionCount})
+                                        </>
+                                    )}
                                 </button>
                                 <button
-                                    onClick={() => setShowAddToPlaylist(true)}
-                                    className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg font-medium transition shadow-lg shadow-green-900/30"
+                                    onClick={handleAddToPlaylistClick}
+                                    disabled={resolvingSelection}
+                                    className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white rounded-lg font-medium transition shadow-lg shadow-green-900/30"
                                 >
                                     <ListPlus size={18} />
-                                    Add to Playlist
+                                    Add to Playlist ({selectionCount})
                                 </button>
                             </div>
                         )}
@@ -402,6 +492,10 @@ export default function Library() {
                                 handlePlay({ id, title, artist, album, genre: '', year: 0, duration: 0, filePath: '' });
                             }}
                             onPlayFolder={(path) => handlePlayFolder(path)}
+                            selectedPaths={selectedPaths}
+                            selectedFileIds={selectedIds}
+                            onTogglePath={toggleSelectPath}
+                            onToggleFile={toggleSelect}
                         />
                     </div>
                 )}
@@ -467,6 +561,10 @@ export default function Library() {
                                 handlePlay({ id, title, artist, album, genre: '', year: 0, duration: 0, filePath: '' });
                             }}
                             onPlayFolder={(path) => handlePlayFolder(path)}
+                            selectedPaths={selectedPaths}
+                            selectedFileIds={selectedIds}
+                            onTogglePath={toggleSelectPath}
+                            onToggleFile={toggleSelect}
                         />
                     </div>
                 )}
@@ -476,8 +574,10 @@ export default function Library() {
             <AddToPlaylistModal
                 isOpen={showAddToPlaylist}
                 onClose={() => setShowAddToPlaylist(false)}
-                songIds={selectedIds}
+                songIds={resolvedIds}
+                defaultNewPlaylistName={defaultPlaylistName}
             />
         </div>
     );
+
 }

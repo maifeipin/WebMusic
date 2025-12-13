@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getDirectory } from '../services/api';
-import { ChevronRight, ChevronDown, Folder, Music, Play } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, Music, Play, Square, CheckSquare } from 'lucide-react';
 
 export interface DirectoryItem {
     type: 'Folder' | 'File';
@@ -9,15 +9,27 @@ export interface DirectoryItem {
     path?: string; // Full Path for navigation
     artist?: string;
     album?: string;
-    count?: number;
+    count?: number; // Number of songs in folder
 }
 
 interface DirectoryTreeProps {
     onPlayFile: (id: number, title: string, artist: string, album: string) => void;
     onPlayFolder: (path: string) => void;
+    // Selection Props
+    selectedPaths: string[];
+    selectedFileIds: number[];
+    onTogglePath: (path: string, count?: number) => void;
+    onToggleFile: (id: number) => void;
 }
 
-export default function DirectoryTree({ onPlayFile, onPlayFolder }: DirectoryTreeProps) {
+export default function DirectoryTree({
+    onPlayFile,
+    onPlayFolder,
+    selectedPaths,
+    selectedFileIds,
+    onTogglePath,
+    onToggleFile
+}: DirectoryTreeProps) {
     const [rootItems, setRootItems] = useState<DirectoryItem[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -27,17 +39,15 @@ export default function DirectoryTree({ onPlayFile, onPlayFolder }: DirectoryTre
 
     const loadRoot = async () => {
         try {
+            setLoading(true);
             const res = await getDirectory("");
             setRootItems(res.data);
         } catch (e) {
             console.error(e);
-            setLoading(false);
         } finally {
             setLoading(false);
         }
     };
-
-    if (loading) return <div className="text-gray-500 p-4">Loading directory structure...</div>;
 
     return (
         <div className="select-none text-sm">
@@ -47,6 +57,10 @@ export default function DirectoryTree({ onPlayFile, onPlayFolder }: DirectoryTre
                     item={item}
                     onPlayFile={onPlayFile}
                     onPlayFolder={onPlayFolder}
+                    selectedPaths={selectedPaths}
+                    selectedFileIds={selectedFileIds}
+                    onTogglePath={onTogglePath}
+                    onToggleFile={onToggleFile}
                 />
             ))}
             {rootItems.length === 0 && <div className="text-gray-500">No items found.</div>}
@@ -58,55 +72,90 @@ interface TreeNodeProps {
     item: DirectoryItem;
     onPlayFile: (id: number, title: string, artist: string, album: string) => void;
     onPlayFolder: (path: string) => void;
+    selectedPaths: string[];
+    selectedFileIds: number[];
+    onTogglePath: (path: string, count?: number) => void;
+    onToggleFile: (id: number) => void;
 }
 
-function TreeNode({ item, onPlayFile, onPlayFolder }: TreeNodeProps) {
+function TreeNode({
+    item,
+    onPlayFile,
+    onPlayFolder,
+    selectedPaths,
+    selectedFileIds,
+    onTogglePath,
+    onToggleFile
+}: TreeNodeProps) {
     const [expanded, setExpanded] = useState(false);
     const [children, setChildren] = useState<DirectoryItem[]>([]);
     const [loading, setLoading] = useState(false);
-    const [hasLoaded, setHasLoaded] = useState(false);
 
-    // Use Backend provided Path, or fallback to name (should rely on Path)
+    // Use Backend provided Path, or fallback to name
     const currentPath = item.path || item.name;
+
+    // Selection State
+    const isFolderSelected = item.type === 'Folder' && selectedPaths.includes(currentPath);
+    const isFileSelected = item.type === 'File' && selectedFileIds.includes(item.id);
 
     const handleExpand = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (item.type === 'File') return;
+        if (item.type !== 'Folder') return;
 
-        if (!expanded && !hasLoaded) {
-            setLoading(true);
+        const nextState = !expanded;
+        setExpanded(nextState);
+
+        if (nextState && children.length === 0) {
             try {
+                setLoading(true);
                 const res = await getDirectory(currentPath);
                 setChildren(res.data);
-                setHasLoaded(true);
-            } catch (error) {
-                console.error("Failed to load directory", error);
+            } catch (e) {
+                console.error(e);
             } finally {
                 setLoading(false);
             }
         }
-        setExpanded(!expanded);
     };
 
     const handlePlayClick = (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (item.type === 'Folder') {
-            onPlayFolder(currentPath);
-        } else {
+        if (item.type === 'File') {
             onPlayFile(item.id, item.name, item.artist || '', item.album || '');
+        } else {
+            onPlayFolder(currentPath);
+        }
+    };
+
+    const handleToggle = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (item.type === 'Folder') {
+            onTogglePath(currentPath, item.count);
+        } else {
+            onToggleFile(item.id);
         }
     };
 
     return (
         <div className="pl-4">
             <div
-                className={`group flex items-center gap-2 py-1 px-2 rounded cursor-pointer transition ${item.type === 'Folder' ? 'hover:bg-gray-800 text-gray-200' : 'hover:bg-gray-800/50 text-gray-400'
+                className={`group flex items-center gap-2 py-1 px-2 rounded cursor-pointer transition ${isFolderSelected || isFileSelected ? 'bg-blue-900/30' : 'hover:bg-gray-800'
                     }`}
-                onClick={(e) => {
+                onClick={handleExpand}
+                onDoubleClick={(e) => {
                     if (item.type === 'File') handlePlayClick(e);
                     else handleExpand(e);
                 }}
             >
+                {/* Checkbox */}
+                <button
+                    onClick={handleToggle}
+                    className={`p-0.5 rounded transition ${isFolderSelected || isFileSelected ? 'text-blue-500' : 'text-gray-600 hover:text-gray-400'
+                        }`}
+                >
+                    {(isFolderSelected || isFileSelected) ? <CheckSquare size={16} /> : <Square size={16} />}
+                </button>
+
                 {/* Icon & Expander */}
                 <div className="flex items-center gap-1 min-w-[24px]">
                     {item.type === 'Folder' && (
@@ -118,25 +167,26 @@ function TreeNode({ item, onPlayFile, onPlayFolder }: TreeNodeProps) {
 
                 {/* Type Icon */}
                 {item.type === 'Folder' ? (
-                    <Folder size={16} className="text-blue-500" fill="currentColor" fillOpacity={0.2} />
+                    <Folder size={16} className={isFolderSelected ? 'text-blue-400' : 'text-yellow-500'} />
                 ) : (
-                    <Music size={16} />
+                    <Music size={16} className={isFileSelected ? 'text-blue-400' : 'text-gray-400'} />
                 )}
 
-                {/* Name & Count */}
-                <span className="flex-1 truncate flex items-center gap-2">
-                    <span>{item.name}</span>
-                    {item.type === 'Folder' && item.count !== undefined && (
-                        <span className="text-xs text-gray-600">({item.count})</span>
+                {/* Name */}
+                <div className="flex-1 truncate">
+                    <span className={isFolderSelected || isFileSelected ? 'text-blue-100' : 'text-gray-300'}>
+                        {item.name}
+                    </span>
+                    {item.count !== undefined && item.type === 'Folder' && (
+                        <span className="ml-2 text-xs text-gray-500">({item.count})</span>
                     )}
-                    {item.type === 'File' && item.artist && <span className="text-gray-600">- {item.artist}</span>}
-                </span>
+                </div>
 
-                {/* Play Button (Hover, always visible for Folder) */}
+                {/* Play Button (Hover) */}
                 <button
                     onClick={handlePlayClick}
-                    className={`p-1 hover:text-blue-400 text-gray-500 transition-opacity ${item.type === 'Folder' ? '' : 'opacity-0 group-hover:opacity-100'}`}
-                    title={item.type === 'Folder' ? "Play All in Folder" : "Play Song"}
+                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/10 rounded text-gray-300 hover:text-white transition"
+                    title="Play"
                 >
                     <Play size={14} fill="currentColor" />
                 </button>
@@ -152,6 +202,10 @@ function TreeNode({ item, onPlayFile, onPlayFolder }: TreeNodeProps) {
                             item={child}
                             onPlayFile={onPlayFile}
                             onPlayFolder={onPlayFolder}
+                            selectedPaths={selectedPaths}
+                            selectedFileIds={selectedFileIds}
+                            onTogglePath={onTogglePath}
+                            onToggleFile={onToggleFile}
                         />
                     ))}
                     {!loading && children.length === 0 && (

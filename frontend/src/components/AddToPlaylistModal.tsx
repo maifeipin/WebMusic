@@ -6,6 +6,7 @@ interface AddToPlaylistModalProps {
     isOpen: boolean;
     onClose: () => void;
     songIds: number[]; // Support multiple songs
+    defaultNewPlaylistName?: string;
 }
 
 interface SimplePlaylist {
@@ -14,7 +15,7 @@ interface SimplePlaylist {
     count: number;
 }
 
-export default function AddToPlaylistModal({ isOpen, onClose, songIds }: AddToPlaylistModalProps) {
+export default function AddToPlaylistModal({ isOpen, onClose, songIds, defaultNewPlaylistName }: AddToPlaylistModalProps) {
     const [playlists, setPlaylists] = useState<SimplePlaylist[]>([]);
     const [loading, setLoading] = useState(true);
     const [showNewPlaylist, setShowNewPlaylist] = useState(false);
@@ -24,10 +25,15 @@ export default function AddToPlaylistModal({ isOpen, onClose, songIds }: AddToPl
     useEffect(() => {
         if (isOpen) {
             loadPlaylists();
-            setShowNewPlaylist(false);
-            setNewPlaylistName('');
+            if (defaultNewPlaylistName) {
+                setShowNewPlaylist(true);
+                setNewPlaylistName(defaultNewPlaylistName);
+            } else {
+                setShowNewPlaylist(false);
+                setNewPlaylistName('');
+            }
         }
-    }, [isOpen]);
+    }, [isOpen, defaultNewPlaylistName]);
 
     const loadPlaylists = async () => {
         try {
