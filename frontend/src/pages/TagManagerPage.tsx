@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { Tag, Wand2, ArrowRightLeft, Save, Loader2, AlertTriangle, FilePenLine } from 'lucide-react';
+import { Tag } from 'lucide-react';
 // import { getSongsByIds, updateMedia } from '../services/api'; // We'll implement batch update later
 import BatchProcessor from './tagmanager/BatchProcessor';
 
