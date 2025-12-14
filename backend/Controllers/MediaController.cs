@@ -136,6 +136,28 @@ public class MediaController : ControllerBase
                          // FilePath match
                          if (op == "contains") query = query.Where(m => m.FilePath.ToLower().Contains(val));
                          break;
+                    case "encoding":
+                        if (op == "is" && val == "mojibake")
+                        {
+                            // Heuristic: Search for common Latin-1 Supplement characters (0xA1-0xFF) 
+                            // that appear when GBK/Big5 is misinterpreted as Latin-1.
+                            // We check for a subset of the most frequent "lead byte" mappings.
+                            var badChars = new[] { "À", "Á", "Â", "Ã", "Ä", "Å", "Æ", "Ç", "È", "É", "Ê", "Ë", "Ì", "Í", "Î", "Ï", "Ð", "Ñ", "Ò", "Ó", "Ô", "Õ", "Ö", "×", "Ø", "Ù", "Ú", "Û", "Ü", "Ý", "Þ", "ß", "à", "á", "â", "ã", "ä", "å", "æ", "ç", "è", "é", "ê", "ë", "ì", "í", "î", "ï", "ð", "ñ", "ò", "ó", "ô", "õ", "ö", "÷", "ø", "ù", "ú", "û", "ü", "ý", "þ", "ÿ", "°", "±", "²", "³", "´", "µ", "¶", "·", "¸", "¹", "º", "»", "¼", "½", "¾", "¿" };
+                            
+                            // Optimization: Check for just the most reliable indicators to avoid massive SQL
+                            // "º" (0xBA), "»" (0xBB), "¼" (0xBC), "½" (0xBD), "¾" (0xBE), "¿" (0xBF) are very common in GBK 
+                            // "À" (0xC0) - "Ï" (0xCF) are also very common.
+                            query = query.Where(m => 
+                                m.Title.Contains("º") || m.Title.Contains("»") || m.Title.Contains("¼") || 
+                                m.Title.Contains("½") || m.Title.Contains("¾") || m.Title.Contains("¿") ||
+                                m.Title.Contains("À") || m.Title.Contains("Á") || m.Title.Contains("Â") || 
+                                m.Title.Contains("Ã") || m.Title.Contains("Ä") || m.Title.Contains("Å") || 
+                                m.Title.Contains("Æ") || m.Title.Contains("Ç") || m.Title.Contains("È") ||
+                                m.Artist.Contains("º") || m.Artist.Contains("»") || m.Artist.Contains("¾") ||
+                                m.Artist.Contains("À") || m.Artist.Contains("Á") || m.Artist.Contains("Ã")
+                            );
+                        }
+                        break;
                 }
             }
         }

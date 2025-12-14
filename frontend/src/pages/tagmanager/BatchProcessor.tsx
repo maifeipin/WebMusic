@@ -27,7 +27,7 @@ const PROMPT_TEMPLATES: Record<string, string> = {
 1. Remove junk suffixes / prefixes like [mqms2], www.xxx.com, (Official Audio), etc.
 2. If filename starts with a number (e.g. "01. Song"), remove the number prefix.
 3. Common format is "Artist - Title". If separation is unclear, prioritize Title.`,
-    'Fix Encoding': 'The metadata likely has encoding issues (GBK/Shift-JIS decoded as UTF-8). Try to fix the garbled characters in Title and Artist.',
+    'Fix Encoding': 'The metadata contains Mojibake (garbled text), likely GBK/GB2312 or Shift-JIS bytes interpreted as ISO-8859-1. Example: "º£À«Ìì¿Õ" corresponds to "海阔天空". Please recover the original correct characters (usually Chinese or Japanese) for Title, Artist, and Album.',
     'Genre Classifier': 'Based on the Artist and Album, predict the most appropriate Genre for these songs. Simplify to standard genres like Pop, Rock, Jazz, Classic, etc.'
 };
 
@@ -244,6 +244,7 @@ export default function BatchProcessor() {
                         <button onClick={() => addCriteria('album:isempty')} className="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-gray-300 border border-gray-600">+ No Album</button>
                         <button onClick={() => addCriteria('genre:isempty')} className="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-gray-300 border border-gray-600">+ No Genre</button>
                         <button onClick={() => addCriteria('title:contains:track')} className="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-gray-300 border border-gray-600">+ "Track"</button>
+                        <button onClick={() => addCriteria('encoding:is:mojibake')} className="text-xs bg-red-900/40 hover:bg-red-800/40 px-2 py-1 rounded text-red-300 border border-red-800/50" title="Find common encoding errors">+ 乱码 (Mojibake)</button>
                     </div>
 
                     {/* Active Chips */}
