@@ -42,3 +42,4 @@ backend/appsettings.json
 Test/backup/backups/
 *.sql
 
+AI/Lyrics/.venv
