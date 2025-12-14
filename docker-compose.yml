@@ -18,6 +18,7 @@ services:
       # AI API Keys (Supports up to 2 keys from env)
       - Gemini__ApiKeys__0=${GEMINI_API_KEY_1}
       - Gemini__ApiKeys__1=${GEMINI_API_KEY_2}
+      - Gemini__ApiKeys__2=${GEMINI_API_KEY_3}
       # Mount the database directory volume to persist data
     volumes:
       - ./data:/app/data
