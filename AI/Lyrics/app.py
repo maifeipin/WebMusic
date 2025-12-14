@@ -44,7 +44,10 @@ def transcribe_audio(req: TranscriptionRequest):
     if not model:
         raise HTTPException(status_code=503, detail="Model not initialized")
     
+    logger.info(f"Received request for file: '{req.file_path}'")
+    
     if not os.path.exists(req.file_path):
+        logger.error(f"File NOT found at: '{req.file_path}'")
         raise HTTPException(status_code=404, detail=f"File not found: {req.file_path}")
 
     logger.info(f"Transcribing: {req.file_path}")

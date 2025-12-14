@@ -7,10 +7,10 @@ if [ -z "$LOCAL_IP" ]; then
 fi
 
 # Kill any existing processes on ports
-echo "🧹 Cleaning up ports 5098 (backend) and 5173 (frontend)..."
-lsof -ti:5098 | xargs kill -9 2>/dev/null
-lsof -ti:5173 | xargs kill -9 2>/dev/null
-lsof -ti:8090 | xargs kill -9 2>/dev/null
+# echo "🧹 Cleaning up ports 5098 (backend) and 5173 (frontend)..."
+# lsof -n -ti:5098 | xargs kill -9 2>/dev/null
+# lsof -n -ti:5173 | xargs kill -9 2>/dev/null
+# lsof -n -ti:8090 | xargs kill -9 2>/dev/null
 
 echo "🚀 Starting WebMusic v2 Development Environment..."
 

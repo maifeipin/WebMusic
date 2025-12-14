@@ -62,7 +62,49 @@ public class LyricsService
         // So we need to convert the DB path (which might be /app/data/...) to match.
 
         // Assume DB path is like /app/data/music/song.mp3 or valid SMB path
-        var requestBody = new { file_path = media.FilePath };
+        
+        // FIX: If running locally on Mac, DB path might be absolute Mac path or SMB path.
+        // Docker container sees /app/data or /app/music. We need to map it.
+        var containerPath = media.FilePath;
+
+        // Case 1: Local Data Folder (e.g. Test/Dev)
+        if (containerPath.Contains("/data/"))
+        {
+             // e.g. /Users/lilee/.../data/music/song.mp3 -> /app/data/music/song.mp3
+             var relativePart = containerPath.Substring(containerPath.IndexOf("/data/")); 
+             containerPath = "/app" + relativePart;
+        }
+        // Case 2: SMB/Volume Paths
+        else if (containerPath.StartsWith("/Volumes/"))
+        {
+             // e.g. /Volumes/PT/music.mp3 -> /app/PT/music.mp3
+             containerPath = containerPath.Replace("/Volumes/", "/app/");
+        }
+        else if (containerPath.StartsWith("smb://"))
+        {
+             // e.g. smb://DSM918/DataSync/sharedata/... -> /app/DataSync/sharedata/...
+             // Remove scheme
+             var noScheme = containerPath.Substring(6); // DSM918/DataSync/...
+             var firstSlash = noScheme.IndexOf('/');
+             if (firstSlash > 0)
+             {
+                 var pathPart = noScheme.Substring(firstSlash); // /DataSync/sharedata/...
+                 containerPath = "/app" + pathPart;
+             }
+        }
+        // Case 3: Relative paths in DB (e.g. "sharedata/...")
+        else if (!containerPath.StartsWith("/") && !containerPath.Contains("://"))
+        {
+             // HACK: Map relative paths starting with "sharedata" to DataSync volume
+             if (containerPath.StartsWith("sharedata"))
+             {
+                 containerPath = "/app/DataSync/" + containerPath;
+             }
+        }
+
+        _logger.LogInformation($"Generating Lyrics: Original Path='{media.FilePath}', Container Path='{containerPath}'");
+
+        var requestBody = new { file_path = containerPath };
         
         var client = _httpClientFactory.CreateClient();
         client.Timeout = TimeSpan.FromMinutes(10); // Whisper takes time

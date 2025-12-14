@@ -103,6 +103,7 @@ builder.Services.AddScoped<WebMusic.Backend.Services.TagService>();
 builder.Services.AddSingleton<WebMusic.Backend.Services.PathResolver>(); // Centralized path resolution
 builder.Services.AddScoped<WebMusic.Backend.Services.DataManagementService>();
 builder.Services.AddScoped<WebMusic.Backend.Services.LyricsService>();
+builder.Services.AddHttpClient(); // Required for IHttpClientFactory
 builder.Services.AddHostedService<WebMusic.Backend.Services.JobWorker>();
 
 var app = builder.Build();

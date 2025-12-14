@@ -24,6 +24,10 @@ services:
       # Mount the database directory volume to persist data
     volumes:
       - ./data:/app/data
+      # Map likely Mac Volumes to Container
+      - /Volumes/PT:/app/PT
+      - /Volumes/DataSync:/app/DataSync
+      - /Volumes/Download:/app/Download
     depends_on:
       - postgres
 
@@ -66,8 +70,10 @@ services:
     volumes:
       # MUST mount the same music data path as backend so it can read files
       - ./data:/app/data
-      # If using Mac Volumes for SMB, map them here too
-      # - /Volumes:/Volumes 
+      # Map likely Mac Volumes to Container
+      - /Volumes/PT:/app/PT
+      - /Volumes/DataSync:/app/DataSync
+      - /Volumes/Download:/app/Download 
     profiles: 
       - ai  # Only start if explicitly requested via --profile ai
 
