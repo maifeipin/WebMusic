@@ -7,6 +7,8 @@ A modern, web-based music player and library manager designed for NAS (Network A
 ## Features
 
 ### Core Integration
+### Core Integration
+- **Database Agnostic**: Support for both **PostgreSQL** (Production) and **SQLite** (Development/Portable). Zero-config setup.
 - **SMB Integration**: Directly connect to Windows Shares / SMB servers to scan and stream music.
   
   ![Connection Manager](docs/screenshots/sources.png)
@@ -15,7 +17,7 @@ A modern, web-based music player and library manager designed for NAS (Network A
 
 ### AI Tag Manager 🤖
 - **Intelligent Metadata Cleanup**: Use **Google Gemini AI** models (Flash 2.0/1.5) to automatically analyze filenames and suggest accurate Artist/Title tags.
-- **Batch Processing**: Filter songs by folder or metadata criteria (e.g., "No Artist") and process them in bulk.
+- **Background Batch Processing**: Select whole folders or playlists to process in the background. The server handles rate-limiting and updates automatically.
 - **Diff View**: Preview changes side-by-side before applying them to your database.
 - **Smart Prompts**: Built-in templates for common tasks like "Fix Encoding" or "Genre Classification".
 
@@ -48,7 +50,7 @@ A modern, web-based music player and library manager designed for NAS (Network A
 
 ### Backend
 - **Framework**: ASP.NET Core 8 Web API
-- **Database**: SQLite with Entity Framework Core
+- **Database**: PostgreSQL (Containerized) / SQLite
 - **AI Integration**: Google Gemini API for intelligent tagging.
 - **Architecture**:
   - `BackgroundService` for async scanning.
@@ -61,15 +63,67 @@ A modern, web-based music player and library manager designed for NAS (Network A
 - **State**: Context API (Auth, Player)
 - **HTTP**: Axios with centralized API service.
 
-## Configuration
+## Installation
 
-To enable AI features, you must configure your Gemini API Key.
-1. Copy `backend/appsettings.template.json` to `backend/appsettings.json`.
-2. Enter your API key(s) in the `Gemini:ApiKeys` array.
+### Option A: Docker Deployment (Recommended)
+You don't need to clone the code. Just create a `docker-compose.yml` file:
 
-## Deployment (Docker)
+```yaml
+version: '3.8'
 
-Recommended for production usage.
+services:
+  backend:
+    image: maifeipin/webmusic-backend:latest
+    container_name: webmusic-backend
+    restart: unless-stopped
+    ports:
+      - "5080:8080"
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - DatabaseProvider=Postgres
+      - ConnectionStrings__Postgres=Host=postgres;Database=webmusic;Username=postgres;Password=password
+      # Change this!
+      - Jwt__Key=ReplaceWithSuperSecureKey1234567890
+      - Gemini__ApiKeys__0=YOUR_GEMINI_API_KEY
+    depends_on:
+      - postgres
+    volumes:
+      - ./data:/app/data
+
+  frontend:
+    image: maifeipin/webmusic-frontend:latest
+    container_name: webmusic-frontend
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+    depends_on:
+      - backend
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: webmusic-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: webmusic
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+volumes:
+  postgres-data:
+```
+
+2. **Start the server**:
+   ```bash
+   docker-compose up -d
+   ```
+3. **Login**:
+   - URL: `http://localhost:8090`
+   - Default: `admin` / `admin`
+
+### Option B: Build from Source
+Recommended for developers.
 
 1. **Clone the repository**:
    ```bash
@@ -78,18 +132,31 @@ Recommended for production usage.
    ```
 
 2. **Configure Secrets**:
-   Ensure `backend/appsettings.json` is created with your keys (see Configuration above).
+   Ensure `docker-compose.yml` environment variables are set correctly.
 
 3. **Start with Docker Compose**:
    ```bash
    docker-compose up -d --build
    ```
-   - **Frontend**: `http://localhost:8090`
-   - **Backend**: `http://localhost:5080` (Internal use)
 
-4. **Login**:
-   - Default credentials: `admin` / `admin`
-   - **IMPORTANT**: Go to **Profile** (bottom left) and change your password immediately.
+## Migration (SQLite to PostgreSQL)
+
+If you are upgrading from an older version using SQLite, you can use the provided script to migrate your data (Users, Playlists, Play History, etc.) to the new PostgreSQL database.
+
+1. **Ensure Prerequisites**:
+   - Python 3 installed.
+   - `webmusic-postgres` container is running.
+   - Your existing SQLite database is at `data/webmusic.db` (or updated path in script).
+
+2. **Run Migration**:
+   ```bash
+   # Install dependency
+   pip install psycopg2-binary
+
+   # Run the script
+   python3 Test/migration/migrate_sqlite_to_pg.py
+   ```
+   *Note: This script will automatically create the necessary table schema in PostgreSQL if it doesn't exist.*
 
 ## Local Development
 
