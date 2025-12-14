@@ -7,7 +7,12 @@ services:
     restart: always
     environment:
       - ASPNETCORE_URLS=http://+:8080
-      - ConnectionStrings__DefaultConnection=Data Source=data/webmusic.db
+      # Default: Sqlite
+      - DatabaseProvider=Sqlite
+      - ConnectionStrings__Sqlite=Data Source=data/webmusic.db
+      # To use Postgres, uncomment below and comment out Sqlite lines:
+      # - DatabaseProvider=Postgres
+      # - ConnectionStrings__Postgres=Host=postgres;Database=webmusic;Username=postgres;Password=password
       - Jwt__Key=ChangeThisSecretKeyInProductionToSomethingSecureLongAndRandom
       # Mount the database directory volume to persist data
     volumes:
@@ -27,5 +32,19 @@ services:
     depends_on:
       - backend
 
-# We might want to use host networking for simpler Tailscale access if needed,
-# but standard bridge + SMB IP usually works.
+  postgres:
+    image: postgres:15-alpine
+    container_name: webmusic-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: webmusic
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:
+

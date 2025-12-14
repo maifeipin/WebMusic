@@ -1,0 +1,149 @@
+import sqlite3
+import psycopg2
+import os
+import sys
+
+# Configuration
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+SQLITE_DB_PATH = os.path.join(BASE_DIR, 'data', 'webmusic.db')
+PG_HOST = 'localhost'
+PG_PORT = '5432'
+PG_DB = 'webmusic'
+PG_USER = 'postgres'
+PG_PASS = 'password'
+
+def connect_sqlite():
+    if not os.path.exists(SQLITE_DB_PATH):
+        print(f"Error: SQLite database not found at {SQLITE_DB_PATH}")
+        sys.exit(1)
+    return sqlite3.connect(SQLITE_DB_PATH)
+
+def connect_pg():
+    try:
+        return psycopg2.connect(
+            host=PG_HOST,
+            port=PG_PORT,
+            dbname=PG_DB,
+            user=PG_USER,
+            password=PG_PASS
+        )
+    except Exception as e:
+        print(f"Error connecting to PostgreSQL: {e}")
+        print("Ensure the docker container is running: docker-compose up -d postgres")
+        sys.exit(1)
+
+def migrate_table(sqlite_cursor, pg_cursor, pg_conn, table_name, columns):
+    print(f"Migrating table: {table_name}...")
+    
+    # 1. Clear PostgreSQL table (Cascading to clean up relationships if re-running)
+    # Be careful with CASCADE in production, but for migration it's usually desired to start fresh
+    try:
+        pg_cursor.execute(f'TRUNCATE TABLE "{table_name}" CASCADE;')
+    except Exception as e:
+        print(f"Warning truncating {table_name}: {e}")
+        pg_conn.rollback()
+    
+    # 2. Read from SQLite
+    try:
+        # Quote explicit column names to handle reserved words or case sensitivity
+        cols_sql = ", ".join([f'"{c}"' for c in columns])
+        sqlite_cursor.execute(f'SELECT {cols_sql} FROM "{table_name}"')
+        rows = sqlite_cursor.fetchall()
+    except sqlite3.OperationalError as e:
+        print(f"Skipping {table_name} (Source table error): {e}")
+        return
+
+    if not rows:
+        print(f"  No data in {table_name}.")
+        return
+
+    # 3. Write to PostgreSQL
+    # Construct INSERT statement
+    placeholders = ",".join(["%s"] * len(columns))
+    cols_pg = ", ".join([f'"{c}"' for c in columns])
+    insert_sql = f'INSERT INTO "{table_name}" ({cols_pg}) VALUES ({placeholders})'
+
+    try:
+        pg_cursor.executemany(insert_sql, rows)
+        pg_conn.commit()
+        print(f"  Transferred {len(rows)} rows.")
+        
+        # 4. Update Sequence (Auto-increment ID)
+        # Usually named "TableName_Id_seq" in PG created by EF Core
+        if 'Id' in columns:
+            res = pg_cursor.execute(f"""
+                SELECT setval(pg_get_serial_sequence('"{table_name}"', 'Id'), coalesce(max("Id"),0) + 1, false) FROM "{table_name}";
+            """)
+    except Exception as e:
+        pg_conn.rollback()
+        print(f"  Error inserting into {table_name}: {e}")
+        sys.exit(1)
+
+def main():
+    print("=== Starting Migration: SQLite -> PostgreSQL ===")
+    
+    s_conn = connect_sqlite()
+    s_cur = s_conn.cursor()
+    
+    p_conn = connect_pg()
+    p_cur = p_conn.cursor()
+
+    # Migration Order (Handling Foreign Keys)
+    # 1. Independent Tables
+    # Note: Column names must match EF Core definition (PascalCase usually)
+    
+    # Users
+    # Schema: Id, Username, PasswordHash (No Role/CreatedAt in v2 model)
+    migrate_table(s_cur, p_cur, p_conn, 'Users', 
+                  ['Id', 'Username', 'PasswordHash'])
+
+    # StorageCredentials
+    # Schema: Id, Name, ProviderType, Host, AuthData
+    migrate_table(s_cur, p_cur, p_conn, 'StorageCredentials', 
+                  ['Id', 'Name', 'ProviderType', 'Host', 'AuthData'])
+
+    # ScanSources (Depends on StorageCredentials)
+    # Schema: Id, Name, Path, Type, StorageCredentialId (No ScanInterval/LastScan)
+    migrate_table(s_cur, p_cur, p_conn, 'ScanSources', 
+                  ['Id', 'Name', 'Path', 'Type', 'StorageCredentialId'])
+
+    # MediaFiles (Depends on ScanSources)
+    # Schema: Id, FilePath, ParentPath, Title, Artist, Album, Genre, Year, 
+    #         Duration, SizeBytes, FileHash, AddedAt, ScanSourceId 
+    #         (No Bitrate/FileSize which were legacy/v1)
+    migrate_table(s_cur, p_cur, p_conn, 'MediaFiles', 
+                  ['Id', 'FilePath', 'ParentPath', 'Title', 'Artist', 'Album', 'Genre', 'Year', 
+                   'Duration', 'SizeBytes', 'FileHash', 'AddedAt', 'ScanSourceId'])
+
+    # Playlists (Depends on Users)
+    migrate_table(s_cur, p_cur, p_conn, 'Playlists', 
+                  ['Id', 'Name', 'CreatedAt', 'UserId', 'CoverArt', 'Type', 'ShareToken', 'ShareExpiresAt', 'SharePassword'])
+
+    # PlaylistSongs (Depends on Playlists, MediaFiles)
+    # Schema: Id, PlaylistId, MediaFileId, AddedAt (No 'Order' field in Entities.cs, usually implicit or AddedAt used)
+    # Checking Entities.cs: PlaylistSong has Id, PlaylistId, MediaFileId, AddedAt. No Order.
+    migrate_table(s_cur, p_cur, p_conn, 'PlaylistSongs', 
+                  ['Id', 'PlaylistId', 'MediaFileId', 'AddedAt'])
+
+    # PlayHistories (Depends on Users, MediaFiles)
+    migrate_table(s_cur, p_cur, p_conn, 'PlayHistories', 
+                  ['Id', 'MediaFileId', 'PlayedAt', 'UserId'])
+
+    # Favorites (Depends on Users, MediaFiles)
+    migrate_table(s_cur, p_cur, p_conn, 'Favorites', 
+                  ['Id', 'MediaFileId', 'CreatedAt', 'UserId'])
+
+    print("\n=== Migration Complete Successfully! ===")
+    
+    s_conn.close()
+    p_conn.close()
+
+if __name__ == '__main__':
+    try:
+        import psycopg2
+    except ImportError:
+        print("Missing dependency 'psycopg2'. Please run:")
+        print("pip install psycopg2-binary")
+        sys.exit(1)
+    
+    main()
