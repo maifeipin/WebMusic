@@ -36,3 +36,4 @@ appsettings.Development.json
 *.db-wal
 *.db
 backend/appsettings.json
+.env

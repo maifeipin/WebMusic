@@ -7,13 +7,17 @@ services:
     restart: always
     environment:
       - ASPNETCORE_URLS=http://+:8080
-      # Default: Sqlite
-      - DatabaseProvider=Sqlite
-      - ConnectionStrings__Sqlite=Data Source=data/webmusic.db
-      # To use Postgres, uncomment below and comment out Sqlite lines:
-      # - DatabaseProvider=Postgres
-      # - ConnectionStrings__Postgres=Host=postgres;Database=webmusic;Username=postgres;Password=password
-      - Jwt__Key=ChangeThisSecretKeyInProductionToSomethingSecureLongAndRandom
+      # Default: Postgres (Controlled by env vars)
+      - DatabaseProvider=${DATABASE_PROVIDER:-Postgres}
+      # Connection String constructed from env vars
+      - ConnectionStrings__Postgres=Host=${POSTGRES_HOST:-postgres};Database=${POSTGRES_DB:-webmusic};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-password}
+      # Security
+      - Jwt__Key=${JWT_KEY:-ChangeThisSecretKeyInProductionToSomethingSecureLongAndRandom}
+      - Jwt__Issuer=WebMusic
+      - Jwt__Audience=WebMusicUser
+      # AI API Keys (Supports up to 2 keys from env)
+      - Gemini__ApiKeys__0=${GEMINI_API_KEY_1}
+      - Gemini__ApiKeys__1=${GEMINI_API_KEY_2}
       # Mount the database directory volume to persist data
     volumes:
       - ./data:/app/data
