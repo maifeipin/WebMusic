@@ -21,14 +21,10 @@ services:
       - Gemini__ApiKeys__0=${GEMINI_API_KEY_1}
       - Gemini__ApiKeys__1=${GEMINI_API_KEY_2}
       - Gemini__ApiKeys__2=${GEMINI_API_KEY_3}
-      # Mount the database directory volume to persist data
+      # Internal or External AI Service URL
+      - AiLyricsUrl=${AI_LYRICS_URL:-http://webmusic-ai-lyrics:5001}
     volumes:
       - ./data:/app/data
-      # Map likely Mac Volumes to Container
-      # Cross-platform configurable mounts via .env
-      - ${MOUNT_PT:-/Volumes/PT}:/app/PT
-      - ${MOUNT_DATASYNC:-/Volumes/DataSync}:/app/DataSync
-      - ${MOUNT_DOWNLOAD:-/Volumes/Download}:/app/Download
     depends_on:
       - postgres
 
@@ -68,14 +64,6 @@ services:
       - "5001:5001"
     environment:
       - WHISPER_MODEL=tiny
-    volumes:
-      # MUST mount the same music data path as backend so it can read files
-      - ./data:/app/data
-      # Map likely Mac Volumes to Container
-      # Cross-platform configurable mounts via .env
-      - ${MOUNT_PT:-/Volumes/PT}:/app/PT
-      - ${MOUNT_DATASYNC:-/Volumes/DataSync}:/app/DataSync
-      - ${MOUNT_DOWNLOAD:-/Volumes/Download}:/app/Download 
     profiles: 
       - ai  # Only start if explicitly requested via --profile ai
 

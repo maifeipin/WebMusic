@@ -12,13 +12,15 @@ public class LyricsService
     private readonly ILogger<LyricsService> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
+    private readonly ISmbService _smbService;
 
-    public LyricsService(AppDbContext context, ILogger<LyricsService> logger, IHttpClientFactory httpClientFactory, IConfiguration configuration)
+    public LyricsService(AppDbContext context, ILogger<LyricsService> logger, IHttpClientFactory httpClientFactory, IConfiguration configuration, ISmbService smbService)
     {
         _context = context;
         _logger = logger;
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
+        _smbService = smbService;
     }
 
     public async Task<Lyric?> GetLyricsAsync(int mediaId)
@@ -46,8 +48,11 @@ public class LyricsService
 
     public async Task<Lyric> GenerateLyricsAsync(int mediaId, string language = null, string prompt = null)
     {
-        // 1. Get MediaFile
-        var media = await _context.MediaFiles.FindAsync(mediaId);
+        var media = await _context.MediaFiles
+            .Include(m => m.ScanSource)
+                .ThenInclude(s => s.StorageCredential)
+            .FirstOrDefaultAsync(m => m.Id == mediaId);
+            
         if (media == null) return null;
 
         // Health check
@@ -57,46 +62,76 @@ public class LyricsService
             return null;
         }
 
-        // 2. Call Python AI Service
         var aiServiceUrl = _configuration["AiLyricsUrl"] ?? "http://webmusic-ai-lyrics:5001";
-        
-        // Path mapping logic matches existing implementation...
-        var containerPath = media.FilePath;
 
-        // Case 1: Local Data Folder
-        if (containerPath.Contains("/data/"))
+        // 2. Prepare SMB Config for AI Service
+        object smbConfig = null;
+
+        if (media.ScanSource != null && !string.IsNullOrEmpty(media.ScanSource.Path))
         {
-             var relativePart = containerPath.Substring(containerPath.IndexOf("/data/")); 
-             containerPath = "/app" + relativePart;
+            // Parse Creds
+            string username = "";
+            string password = "";
+            try 
+            {
+                using var doc = JsonDocument.Parse(media.ScanSource.StorageCredential?.AuthData ?? "{}");
+                if (doc.RootElement.TryGetProperty("username", out var u)) username = u.GetString() ?? "";
+                if (doc.RootElement.TryGetProperty("password", out var p)) password = p.GetString() ?? "";
+            } catch {}
+
+            // Parse Host/Share
+            string host = media.ScanSource.StorageCredential?.Host ?? "";
+            if (host.StartsWith("smb://")) host = new Uri(host).Host;
+            
+            // Guess Share Name from Source Path or Media Path?
+            // Usually Source Path is "smb://host/share/folder"
+            string share = "";
+            string relativePath = media.FilePath; // Assume DB path is relative to Share? Or Absolute?
+            
+            // Logic to verify path relativity
+            // If Source.Path is "smb://1.2.3.4/DataSync", Share is "DataSync".
+            // If Source.Path is "sharedata", Share is ???
+            
+            try {
+                if (media.ScanSource.Path.StartsWith("smb://")) {
+                     var uri = new Uri(media.ScanSource.Path);
+                     if (uri.Segments.Length > 1) share = uri.Segments[1].Trim('/');
+                } else {
+                     // Assume first part of path is share if simple string?
+                     // Or fallback to 'sharedata' logic?
+                     // Let's rely on robust user config.
+                     var parts = media.ScanSource.Path.Split(new[]{'/', '\\'}, StringSplitOptions.RemoveEmptyEntries);
+                     if (parts.Length > 0) share = parts[0];
+                }
+            } catch {}
+
+            // Fix legacy relative paths (e.g. "sharedata/...")
+            // If path starts with "sharedata/" and share is "DataSync", we assume "sharedata" is folder INSIDE DataSync.
+            // Pass the literal path string from DB to AI. AI will try Open(tree, path).
+            
+            smbConfig = new 
+            {
+                host = host,
+                share = share,
+                username = username,
+                password = password,
+                file_path = media.FilePath
+            };
         }
-        // Case 2: SMB/Volume Paths
-        else if (containerPath.StartsWith("/Volumes/"))
+        else
         {
-             containerPath = containerPath.Replace("/Volumes/", "/app/");
-        }
-        else if (containerPath.StartsWith("smb://"))
-        {
-             var noScheme = containerPath.Substring(6); 
-             var firstSlash = noScheme.IndexOf('/');
-             if (firstSlash > 0)
-             {
-                 containerPath = "/app" + noScheme.Substring(firstSlash);
-             }
-        }
-        // Case 3: Relative paths (sharedata hack)
-        else if (!containerPath.StartsWith("/") && !containerPath.Contains("://"))
-        {
-             if (containerPath.StartsWith("sharedata"))
-             {
-                 containerPath = "/app/DataSync/" + containerPath;
-             }
+            // Attempt fallback or error
+            _logger.LogWarning($"Media {mediaId} has no ScanSource. AI cannot fetch file via SMB.");
+            // If we are strictly "No Mount", and no source, we fail.
+            // Exception: If user entered path manually without scan source? Unlikely.
+             throw new InvalidOperationException("Media Source Not Found. Rescan Library as SMB Source required.");
         }
 
-        _logger.LogInformation($"Generating Lyrics: Original Path='{media.FilePath}', Container Path='{containerPath}', Lang='{language}', Prompt='{prompt}'");
+        _logger.LogInformation($"Requesting AI Transcription via SMB Handoff: Host='{((dynamic)smbConfig).host}', Share='{((dynamic)smbConfig).share}', Path='{media.FilePath}'");
 
         var requestBody = new 
         { 
-            file_path = containerPath,
+            smb_config = smbConfig,
             language = language,
             initial_prompt = prompt
         };
@@ -106,9 +141,15 @@ public class LyricsService
 
         try 
         {
+            // Use JSON POST
             var response = await client.PostAsync($"{aiServiceUrl}/transcribe", 
                 new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json"));
             
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorDetails = await response.Content.ReadAsStringAsync();
+                _logger.LogError($"AI Service returned error: {response.StatusCode}. Details: {errorDetails}");
+            }
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
@@ -133,7 +174,7 @@ public class LyricsService
             var lrcContent = sb.ToString();
             var detectedLang = root.GetProperty("language").GetString() ?? "unknown";
 
-            // 4. Save to DB
+            // 5. Save to DB
             var lyric = new Lyric
             {
                 MediaFileId = media.Id,
@@ -154,6 +195,7 @@ public class LyricsService
             _logger.LogError(ex, "Failed to generate lyrics for {MediaId}", mediaId);
             throw;
         }
+
     }
 
     // FUTURE: Implement Gemini correction

@@ -2,7 +2,7 @@ import os
 import uvicorn
 import time
 from typing import Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from faster_whisper import WhisperModel
 from datetime import timedelta
@@ -26,11 +26,7 @@ except Exception as e:
     logger.error(f"Failed to load model: {e}")
     model = None
 
-class TranscriptionRequest(BaseModel):
-    file_path: str
-    language: Optional[str] = None
-    initial_prompt: Optional[str] = None
-
+# Added back helper functions
 def format_timestamp(seconds):
     td = timedelta(seconds=seconds)
     minutes, remaining_seconds = divmod(td.seconds, 60)
@@ -43,23 +39,87 @@ def health_check():
         raise HTTPException(status_code=503, detail="Model not loaded")
     return {"status": "ok", "model": MODEL_SIZE}
 
+import uuid
+import tempfile
+import os
+from smbprotocol.connection import Connection
+from smbprotocol.session import Session
+from smbprotocol.tree import TreeConnect
+from smbprotocol.open import Open, CreateDisposition, FilePipePrinterAccessMask, FileAttributes, ShareAccess, CreateOptions, ImpersonationLevel
+from smbprotocol.exceptions import SMBResponseException
+
+class SmbConfig(BaseModel):
+    host: str
+    share: str
+    username: str
+    password: str
+    file_path: str
+
+class TranscriptionRequest(BaseModel):
+    smb_config: Optional[SmbConfig] = None
+    language: Optional[str] = None
+    initial_prompt: Optional[str] = None
+
+# ... helper functions ...
+
+def download_smb_file(cfg: SmbConfig, local_path: str):
+    logger.info(f"Connecting to SMB: {cfg.host}, Share: {cfg.share}, Path: {cfg.file_path}")
+    connection = Connection(uuid.uuid4(), cfg.host, 445)
+    try:
+        connection.connect()
+        session = Session(connection, cfg.username, cfg.password)
+        session.connect()
+        tree = TreeConnect(session, f"\\\\{cfg.host}\\{cfg.share}")
+        tree.connect()
+        
+        file_open = Open(tree, cfg.file_path.replace('/', '\\'))
+        file_open.create(ImpersonationLevel.Impersonation,
+                         FilePipePrinterAccessMask.GENERIC_READ, 
+                         FileAttributes.FILE_ATTRIBUTE_NORMAL, 
+                         ShareAccess.FILE_SHARE_READ,
+                         CreateDisposition.FILE_OPEN, 
+                         CreateOptions.FILE_NON_DIRECTORY_FILE)
+        try:
+            with open(local_path, 'wb') as f:
+                offset = 0
+                while True:
+                    try:
+                        # Read 64KB chunks
+                        data = file_open.read(offset, 65536)
+                        if not data:
+                            break
+                        f.write(data)
+                        offset += len(data)
+                    except SMBResponseException as e:
+                        # Check for STATUS_END_OF_FILE (0xC0000011) which equals 3221225489 unsigned
+                        if e.status == 0xC0000011:
+                            break
+                        raise e
+        finally:
+            file_open.close()
+    finally:
+        connection.disconnect()
+
 @app.post("/transcribe")
 def transcribe_audio(req: TranscriptionRequest):
     if not model:
         raise HTTPException(status_code=503, detail="Model not initialized")
     
-    logger.info(f"Received request for file: '{req.file_path}', Lang: {req.language}, Prompt: {req.initial_prompt}")
-    
-    if not os.path.exists(req.file_path):
-        logger.error(f"File NOT found at: '{req.file_path}'")
-        raise HTTPException(status_code=404, detail=f"File not found: {req.file_path}")
+    if not req.smb_config:
+         raise HTTPException(status_code=400, detail="SMB Config required (Local files not supported in this mode)")
 
-    logger.info(f"Transcribing: {req.file_path}")
-    start_time = time.time()
-    
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+    tmp_path = tmp_file.name
+    tmp_file.close()
+
     try:
+        # Download Audio from SMB
+        download_smb_file(req.smb_config, tmp_path)
+        
+        logger.info(f"Transcribing downloaded file: {tmp_path} (Lang: {req.language})")
+        
         segments, info = model.transcribe(
-            req.file_path, 
+            tmp_path, 
             beam_size=5,
             language=req.language,
             initial_prompt=req.initial_prompt
@@ -77,17 +137,20 @@ def transcribe_audio(req: TranscriptionRequest):
             })
             full_text.append(text)
         
-        # Return structured data (C# backend can format it as LRC)
         return {
             "language": info.language,
             "language_prob": info.language_probability,
             "segments": lines,
             "full_text": " ".join(full_text)
         }
-
     except Exception as e:
-        logger.error(f"Transcription failed: {e}")
+        logger.error(f"Transcription failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=5001)
