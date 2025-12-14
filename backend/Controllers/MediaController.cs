@@ -397,54 +397,7 @@ public class MediaController : ControllerBase
 
         if (transcode)
         {
-            try 
-            {
-                 // Construct args
-                 // -ss before -i for input seeking (read-discard for pipe)
-                 string seekArg = startTime > 0 ? $"-ss {startTime} " : "";
-                 
-                 var process = new System.Diagnostics.Process
-                 {
-                     StartInfo = new System.Diagnostics.ProcessStartInfo
-                     {
-                         FileName = "ffmpeg",
-                         Arguments = $"{seekArg}-i pipe:0 -f mp3 -ab 192k -", 
-                         RedirectStandardInput = true,
-                         RedirectStandardOutput = true,
-                         UseShellExecute = false,
-                         CreateNoWindow = true
-                     }
-                 };
-                 
-                 process.Start();
-                 
-                 // Copy SMB stream to FFMpeg Stdin in background
-                 _ = Task.Run(async () => 
-                 {
-                     try 
-                     {
-                         await stream.CopyToAsync(process.StandardInput.BaseStream);
-                         process.StandardInput.Close();
-                     } 
-                     catch(Exception ex) 
-                     {
-                         Console.WriteLine($"Transcode Input Error: {ex.Message}");
-                     }
-                     finally
-                     {
-                         stream.Dispose(); // SMB stream
-                     }
-                 });
-                 
-                 // Return FFMpeg Stdout as the file stream
-                 // Note: Does not support Range processing (seeking) easily.
-                 return File(process.StandardOutput.BaseStream, "audio/mpeg", enableRangeProcessing: false);
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"FFempg Error: {ex.Message}");
-                return BadRequest("Transcoding failed. Is FFmpeg installed?");
-            }
+            return StartTranscode(stream, startTime);
         }
         
         return File(stream, contentType, enableRangeProcessing: true);
@@ -500,50 +453,111 @@ public class MediaController : ControllerBase
 
         if (transcode)
         {
-            try
-            {
-                var process = new System.Diagnostics.Process
-                {
-                    StartInfo = new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = "ffmpeg",
-                        Arguments = "-i pipe:0 -f mp3 -ab 192k -",
-                        RedirectStandardInput = true,
-                        RedirectStandardOutput = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    }
-                };
-
-                process.Start();
-
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await stream.CopyToAsync(process.StandardInput.BaseStream);
-                        process.StandardInput.Close();
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Shared Transcode Error: {ex.Message}");
-                    }
-                    finally
-                    {
-                        stream.Dispose();
-                    }
-                });
-
-                return File(process.StandardOutput.BaseStream, "audio/mpeg", enableRangeProcessing: false);
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"Shared Stream FFmpeg Error: {ex.Message}");
-                return BadRequest("Transcoding failed");
-            }
+            return StartTranscode(stream);
         }
 
         return File(stream, contentType, enableRangeProcessing: true);
+    }
+
+    private IActionResult StartTranscode(Stream inputStream, double startTime = 0)
+    {
+        try 
+        {
+             // Construct args
+             string seekArg = startTime > 0 ? $"-ss {startTime} " : "";
+             
+             var process = new System.Diagnostics.Process
+             {
+                 StartInfo = new System.Diagnostics.ProcessStartInfo
+                 {
+                     FileName = "ffmpeg",
+                     Arguments = $"{seekArg}-i pipe:0 -f mp3 -ab 192k -", 
+                     RedirectStandardInput = true,
+                     RedirectStandardOutput = true,
+                     UseShellExecute = false,
+                     CreateNoWindow = true
+                 }
+             };
+             
+             process.Start();
+             
+             // Background Task: Pump data from SMB Stream -> FFmpeg Stdin
+             _ = Task.Run(async () => 
+             {
+                 using (inputStream) // Ensure SMB resources are freed
+                 {
+                     try 
+                     {
+                         await inputStream.CopyToAsync(process.StandardInput.BaseStream);
+                         process.StandardInput.Close(); // Signal EOF to FFmpeg
+                     } 
+                     catch(Exception ex) 
+                     {
+                         Console.WriteLine($"Transcode Input Error: {ex.Message}");
+                         // If writing fails (e.g. ffmpeg died), we just stop.
+                         try { process.Kill(); } catch {} 
+                     }
+                 }
+             });
+             
+             // Wrap the stdout in a custom stream that Kills the process when Disposed/Closed
+             // This ensures that if the HTTP Client disconnects, we clean up the process.
+             var wrapperStream = new ProcessCleanupStream(process.StandardOutput.BaseStream, process);
+             
+             return File(wrapperStream, "audio/mpeg", enableRangeProcessing: false);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"FFmpeg Start Error: {ex.Message}");
+            inputStream.Dispose();
+            return BadRequest("Transcoding failed. Is FFmpeg installed?");
+        }
+    }
+
+    // Helper Class to ensure Process is killed when the Response Stream is closed
+    public class ProcessCleanupStream : Stream
+    {
+        private readonly Stream _baseStream;
+        private readonly System.Diagnostics.Process _process;
+        private bool _disposed;
+
+        public ProcessCleanupStream(Stream baseStream, System.Diagnostics.Process process)
+        {
+            _baseStream = baseStream;
+            _process = process;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => _baseStream.Read(buffer, offset, count);
+        public override void Write(byte[] buffer, int offset, int count) => _baseStream.Write(buffer, offset, count);
+        public override bool CanRead => _baseStream.CanRead;
+        public override bool CanSeek => _baseStream.CanSeek;
+        public override bool CanWrite => _baseStream.CanWrite;
+        public override long Length => _baseStream.Length;
+        public override long Position { get => _baseStream.Position; set => _baseStream.Position = value; }
+        public override void Flush() => _baseStream.Flush();
+
+        public override long Seek(long offset, SeekOrigin origin) => _baseStream.Seek(offset, origin);
+        public override void SetLength(long value) => _baseStream.SetLength(value);
+
+        protected override void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                _disposed = true;
+                _baseStream.Dispose();
+                try 
+                {
+                    if (!_process.HasExited) 
+                    {
+                        Console.WriteLine("Killing FFmpeg process (Stream Disposed)");
+                        _process.Kill(); 
+                    }
+                    _process.Dispose();
+                } 
+                catch {}
+            }
+            base.Dispose(disposing);
+        }
     }
     
     [HttpGet("stats")]
