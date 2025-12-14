@@ -62,6 +62,8 @@ public class LyricsController : ControllerBase
         {
             return StatusCode(500, new { message = "AI Generation failed", error = ex.Message });
         }
+    }
+
     [HttpPost("batch/start")]
     public IActionResult StartBatch([FromBody] BatchLyricsRequest request)
     {
