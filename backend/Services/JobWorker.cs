@@ -37,6 +37,10 @@ public class JobWorker : BackgroundService
                 {
                     await ProcessAiBatchJob(scope, aiJob, stoppingToken);
                 }
+                else if (job is LyricsBatchJob lyricsJob)
+                {
+                    await ProcessLyricsBatchJob(scope, lyricsJob, stoppingToken);
+                }
             }
             catch (Exception ex)
             {
@@ -65,6 +69,7 @@ public class JobWorker : BackgroundService
 
     private async Task ProcessAiBatchJob(IServiceScope scope, AiBatchJob job, CancellationToken ct)
     {
+        // ... (existing code for Gemini tags)
         var tagService = scope.ServiceProvider.GetRequiredService<TagService>();
         var dbContext = scope.ServiceProvider.GetRequiredService<WebMusic.Backend.Data.AppDbContext>();
         
@@ -142,5 +147,56 @@ public class JobWorker : BackgroundService
 
         _queue.UpdateAiStatus(job.BatchId, processed, success, failed, "Completed");
         _logger.LogInformation($"AI Batch {job.BatchId} Finished.");
+    }
+
+    private async Task ProcessLyricsBatchJob(IServiceScope scope, LyricsBatchJob job, CancellationToken ct)
+    {
+        var lyricsService = scope.ServiceProvider.GetRequiredService<LyricsService>();
+        var dbContext = scope.ServiceProvider.GetRequiredService<WebMusic.Backend.Data.AppDbContext>();
+        
+        _logger.LogInformation($"Starting Lyrics Batch {job.BatchId} with {job.SongIds.Count} songs.");
+        _queue.UpdateAiStatus(job.BatchId, 0, 0, 0, "Processing");
+
+        int processed = 0;
+        int success = 0;
+        int failed = 0;
+
+        foreach (var songId in job.SongIds)
+        {
+            if (ct.IsCancellationRequested) break;
+            
+            try
+            {
+                // Check if exists first? Or just try generate
+                if (!job.Force)
+                {
+                    var existing = await dbContext.Lyrics.AnyAsync(l => l.MediaFileId == songId);
+                    if (existing) 
+                    {
+                        success++; // Already done
+                        processed++;
+                        _queue.UpdateAiStatus(job.BatchId, processed, success, failed, "Processing");
+                        continue;
+                    }
+                }
+
+                await lyricsService.GenerateLyricsAsync(songId);
+                success++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Lyrics generation failed for song {songId}");
+                failed++;
+            }
+
+            processed++;
+            _queue.UpdateAiStatus(job.BatchId, processed, success, failed, "Processing");
+            
+            // Wait 2s between songs to avoid overloading CPU/ASR
+            await Task.Delay(2000, ct);
+        }
+
+        _queue.UpdateAiStatus(job.BatchId, processed, success, failed, "Completed");
+        _logger.LogInformation($"Lyrics Batch {job.BatchId} Finished.");
     }
 }

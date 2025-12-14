@@ -15,6 +15,12 @@ public record AiBatchJob(
     string Model
 ) : IJobPayload;
 
+public record LyricsBatchJob(
+    string BatchId, 
+    List<int> SongIds, 
+    bool Force
+) : IJobPayload;
+
 public class BackgroundTaskQueue
 {
     private readonly Channel<IJobPayload> _queue;
@@ -38,6 +44,15 @@ public class BackgroundTaskQueue
             { 
                 BatchId = aiJob.BatchId, 
                 Total = aiJob.SongIds.Count,
+                Status = "Queued" 
+            };
+        }
+        else if (job is LyricsBatchJob lyricsJob)
+        {
+            _aiJobStatus[lyricsJob.BatchId] = new AiJobStatus 
+            { 
+                BatchId = lyricsJob.BatchId, 
+                Total = lyricsJob.SongIds.Count,
                 Status = "Queued" 
             };
         }

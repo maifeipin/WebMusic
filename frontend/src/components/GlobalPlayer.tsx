@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePlayer } from '../context/PlayerContext';
 import { useAuth } from '../context/AuthContext';
-import { Play, Pause, Music, SkipBack, SkipForward, AlertTriangle, Minimize2, Maximize2, Heart, ListPlus, Edit2, ListOrdered } from 'lucide-react';
+import { Play, Pause, Music, SkipBack, SkipForward, AlertTriangle, Minimize2, Maximize2, Heart, ListPlus, Edit2, ListOrdered, Mic2 } from 'lucide-react';
+import { LyricsPanel } from './LyricsPanel';
 import AddToPlaylistModal from './AddToPlaylistModal';
 import EditSongModal from './EditSongModal';
 
@@ -19,6 +20,7 @@ export default function GlobalPlayer() {
     const [showPlaylistModal, setShowPlaylistModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [showQueue, setShowQueue] = useState(false);
+    const [showLyrics, setShowLyrics] = useState(false);
 
     // Resume Time
     useEffect(() => {
@@ -282,6 +284,14 @@ export default function GlobalPlayer() {
                                                 >
                                                     <Edit2 size={18} />
                                                 </button>
+                                                <button
+                                                    onClick={() => setShowLyrics(!showLyrics)}
+                                                    className={`hover:scale-110 transition active:scale-95 flex-shrink-0 ${showLyrics ? 'text-purple-400' : 'text-gray-400 hover:text-purple-400'}`}
+                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                    title="Lyrics"
+                                                >
+                                                    <Mic2 size={18} />
+                                                </button>
                                             </div>
                                             <p className="text-gray-400 text-sm truncate mt-0.5 select-none">{currentSong.artist}</p>
                                         </div>
@@ -434,5 +444,13 @@ export default function GlobalPlayer() {
                     updateCurrentSong(updated);
                 }}
             />
+
+            {showLyrics && currentSong && (
+                <LyricsPanel
+                    mediaId={currentSong.id}
+                    currentTime={displayTime}
+                    onClose={() => setShowLyrics(false)}
+                />
+            )}
         </>);
 }

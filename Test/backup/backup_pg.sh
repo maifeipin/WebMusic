@@ -33,12 +33,24 @@ if docker ps | grep -q "webmusic-postgres"; then
     docker exec -t webmusic-postgres pg_dump -U $POSTGRES_USER $POSTGRES_DB > $FILENAME
 else
     echo "Method: pg_dump (Remote/Local Binary)"
-    # Check if pg_dump exists
-    if ! command -v pg_dump &> /dev/null; then
-        echo "Error: pg_dump could not be found and no local docker container running."
-        exit 1
+    # Check if pg_dump exists locally
+    if command -v pg_dump &> /dev/null; then
+        PGPASSWORD=$POSTGRES_PASSWORD pg_dump -h $POSTGRES_HOST -U $POSTGRES_USER $POSTGRES_DB > $FILENAME
+    else
+        echo "Method: Docker Run (Ephemeral Container)"
+        # Use a temporary postgres container to run pg_dump against the remote host
+        # We mount the current directory to /backup to save the file
+        
+        # Determine current absolute directory for mounting (Handles relative paths)
+        ABS_BACKUP_DIR=$(cd "$BACKUP_DIR" && pwd)
+        BACKUP_FILE_NAME=$(basename "$FILENAME")
+
+        docker run --rm \
+            -v "$ABS_BACKUP_DIR:/backup_out" \
+            -e PGPASSWORD=$POSTGRES_PASSWORD \
+            postgres:15-alpine \
+            pg_dump -h $POSTGRES_HOST -U $POSTGRES_USER $POSTGRES_DB -f "/backup_out/$BACKUP_FILE_NAME"
     fi
-    PGPASSWORD=$POSTGRES_PASSWORD pg_dump -h $POSTGRES_HOST -U $POSTGRES_USER $POSTGRES_DB > $FILENAME
 fi
 
 if [ $? -eq 0 ]; then

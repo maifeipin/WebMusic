@@ -43,3 +43,9 @@ Test/backup/backups/
 *.sql
 
 AI/Lyrics/.venv
+data/
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+backend.log

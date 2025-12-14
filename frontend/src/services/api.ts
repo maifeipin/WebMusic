@@ -68,7 +68,21 @@ export const getSharedPlaylist = (token: string, password?: string) =>
 export const suggestTags = (songIds: number[], prompt: string, model = 'gemini-2.0-flash-exp') => api.post('/tags/suggest', { songIds, prompt, model });
 export const startBatch = (songIds: number[], prompt: string, model = 'gemini-2.0-flash-lite-preview-02-05') => api.post('/tags/batch/start', { songIds, prompt, model });
 export const getBatchStatus = (batchId: string) => api.get(`/tags/batch/${batchId}`);
+
+export interface Lyric {
+    id: number;
+    content: string; // LRC
+    language: string;
+    source: string;
+    version: string;
+}
+
+// Lyrics
+export const getAiStatus = () => api.get<{ available: boolean }>('/lyrics/status').then(r => r.data);
+export const getLyrics = (mediaId: number) => api.get<Lyric>(`/lyrics/${mediaId}`).then(r => r.data);
+export const generateLyrics = (mediaId: number) => api.post<Lyric>(`/lyrics/${mediaId}/generate`).then(r => r.data);
+export const startLyricsBatch = (songIds: number[], force = false) => api.post<{ batchId: string }>('/lyrics/batch/start', { songIds, force }).then(r => r.data);
+
 export const applyTags = (updates: any[]) => api.post('/tags/apply', updates);
 
 export default api;
-

@@ -1,10 +1,30 @@
 import psycopg2
 import os
+import sys
 
 # Load env vars
 script_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(script_dir)) # Test/migrations -> Test -> v2
 env_file = os.path.join(project_root, ".env")
+
+if os.path.exists(env_file):
+    print(f"Loading env from: {env_file}")
+    with open(env_file) as f:
+        for line in f:
+            if line.strip() and not line.startswith('#'):
+                parts = line.strip().split('=', 1)
+                if len(parts) == 2:
+                    key, val = parts
+                    os.environ[key] = val
+                    # Debug sensitive keys by hiding value
+                    if "PASSWORD" in key or "KEY" in key:
+                        print(f"  Loaded {key}=***")
+                    else:
+                        print(f"  Loaded {key}={val}")
+
+else:
+    print(f"File not found: {env_file}")
+    sys.exit(1)
 
 if os.path.exists(env_file):
     with open(env_file) as f:

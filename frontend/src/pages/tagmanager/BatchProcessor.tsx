@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Filter, Save, Trash2, X, Folder, CheckSquare, Square, RefreshCw, Zap, Sparkles, RotateCcw } from 'lucide-react';
-import { api, suggestTags, applyTags, deleteMedia, startBatch, getBatchStatus } from '../../services/api';
+import { Filter, Save, Trash2, X, Folder, CheckSquare, Square, RefreshCw, Zap, Sparkles, RotateCcw, Mic } from 'lucide-react';
+import { api, suggestTags, applyTags, deleteMedia, startBatch, getBatchStatus, startLyricsBatch } from '../../services/api';
 
 interface Song {
     id: number;
@@ -159,6 +159,20 @@ export default function BatchProcessor() {
         } catch (e: any) {
             if (e.response && e.response.data) alert(e.response.data);
             else alert("Failed to start batch.");
+        }
+    };
+
+    const handleLyricsBatch = async () => {
+        if (selectedIds.size === 0) return;
+        if (!confirm(`Generate lyrics for ${selectedIds.size} songs?\nWARNING: This is slow (approx 10-30s per song).`)) return;
+
+        try {
+            const res = await startLyricsBatch(Array.from(selectedIds), false);
+            setBatchId(res.batchId);
+            setBatchProgress({ processed: 0, total: selectedIds.size, success: 0, failed: 0, status: 'Queued' });
+        } catch (e: any) {
+            alert("Failed to start lyrics batch.");
+            console.error(e);
         }
     };
 
@@ -402,7 +416,15 @@ export default function BatchProcessor() {
                                 className="w-24 h-8 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-lg font-bold flex items-center justify-center gap-1 transition text-xs"
                                 title="Auto-process in background (Up to 1000 items)"
                             >
-                                <Zap size={14} /> Auto Batch
+                                <Zap size={14} /> Auto Tag
+                            </button>
+                            <button
+                                onClick={handleLyricsBatch}
+                                disabled={selectedIds.size === 0 || processing}
+                                className="w-24 h-8 bg-pink-600 hover:bg-pink-500 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-lg font-bold flex items-center justify-center gap-1 transition text-xs"
+                                title="Generate Lyrics for selected files (Slow)"
+                            >
+                                <Mic size={14} /> Scan Lyrics
                             </button>
                         </div>
                     </div>

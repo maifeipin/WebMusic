@@ -10,7 +10,7 @@ PG_HOST = 'localhost'
 PG_PORT = '5432'
 PG_DB = 'webmusic'
 PG_USER = 'postgres'
-PG_PASS = 'password'
+PG_PASS = 'xxxx'
 
 def connect_sqlite():
     if not os.path.exists(SQLITE_DB_PATH):
