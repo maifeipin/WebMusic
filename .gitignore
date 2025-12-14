@@ -37,3 +37,8 @@ appsettings.Development.json
 *.db
 backend/appsettings.json
 .env
+
+# Backups
+Test/backup/backups/
+*.sql
+
