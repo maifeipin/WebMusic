@@ -47,11 +47,11 @@ public class LyricsController : ControllerBase
     }
 
     [HttpPost("{mediaId}/generate")]
-    public async Task<IActionResult> GenerateLyrics(int mediaId)
+    public async Task<IActionResult> GenerateLyrics(int mediaId, [FromQuery] string lang = null, [FromQuery] string prompt = null)
     {
         try
         {
-            var lyrics = await _lyricsService.GenerateLyricsAsync(mediaId);
+            var lyrics = await _lyricsService.GenerateLyricsAsync(mediaId, lang, prompt);
             return Ok(lyrics);
         }
         catch (KeyNotFoundException)

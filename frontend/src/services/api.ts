@@ -80,7 +80,7 @@ export interface Lyric {
 // Lyrics
 export const getAiStatus = () => api.get<{ available: boolean }>('/lyrics/status').then(r => r.data);
 export const getLyrics = (mediaId: number) => api.get<Lyric>(`/lyrics/${mediaId}`).then(r => r.data);
-export const generateLyrics = (mediaId: number) => api.post<Lyric>(`/lyrics/${mediaId}/generate`).then(r => r.data);
+export const generateLyrics = (mediaId: number, lang?: string, prompt?: string) => api.post<Lyric>(`/lyrics/${mediaId}/generate`, {}, { params: { lang, prompt } }).then(r => r.data);
 export const startLyricsBatch = (songIds: number[], force = false) => api.post<{ batchId: string }>('/lyrics/batch/start', { songIds, force }).then(r => r.data);
 
 export const applyTags = (updates: any[]) => api.post('/tags/apply', updates);

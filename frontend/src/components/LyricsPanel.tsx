@@ -39,6 +39,10 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
     const [aiAvailable, setAiAvailable] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // AI Options
+    const [lang, setLang] = useState('');
+    const [customPrompt, setCustomPrompt] = useState('');
+
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const activeLineRef = useRef<HTMLDivElement>(null);
 
@@ -55,6 +59,7 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
         }
     }, [lyricData]);
 
+    // ... (Scroll effect skipped) ...
     // Auto-scroll to active line
     useEffect(() => {
         if (activeLineRef.current && scrollContainerRef.current) {
@@ -63,16 +68,16 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
                 block: 'center',
             });
         }
-    }, [currentTime]); // Scroll whenever time updates (optimized by scroll logic)
+    }, [currentTime]);
 
     const loadLyrics = async () => {
+        // ... (Skipped)
         setLoading(true);
         setError(null);
         try {
             const data = await getLyrics(mediaId);
             setLyricData(data);
         } catch (err: any) {
-            // 404 is normal
             setLyricData(null);
         } finally {
             setLoading(false);
@@ -80,6 +85,7 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
     };
 
     const checkAi = async () => {
+        // ... (Skipped)
         try {
             const status = await getAiStatus();
             setAiAvailable(status.available);
@@ -92,7 +98,8 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
         setGenerating(true);
         setError(null);
         try {
-            const data = await generateLyrics(mediaId);
+            // Pass lang and prompt
+            const data = await generateLyrics(mediaId, lang, customPrompt);
             setLyricData(data);
         } catch (err: any) {
             setError("Failed to generate lyrics. Is the server busy?");
@@ -159,12 +166,38 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
                                 <span className="text-sm text-purple-400 animate-pulse">AI is listening... (this takes ~30s)</span>
                             </div>
                         ) : aiAvailable ? (
-                            <button
-                                onClick={handleGenerate}
-                                className="px-6 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg transition shadow-lg shadow-purple-900/50 flex items-center gap-2"
-                            >
-                                ✨ AI Generate (Whisper)
-                            </button>
+                            <div className="flex flex-col items-center gap-3 w-full px-8">
+                                <div className="grid grid-cols-2 gap-2 w-full">
+                                    <select
+                                        className="bg-gray-800 border border-gray-700 text-white text-xs rounded p-2 focus:ring-2 focus:ring-purple-500 outline-none"
+                                        value={lang}
+                                        onChange={(e) => setLang(e.target.value)}
+                                    >
+                                        <option value="">Auto Language</option>
+                                        <option value="zh">Chinese (zh)</option>
+                                        <option value="en">English (en)</option>
+                                        <option value="ja">Japanese (ja)</option>
+                                        <option value="ko">Korean (ko)</option>
+                                    </select>
+                                    <input
+                                        type="text"
+                                        className="bg-gray-800 border border-gray-700 text-white text-xs rounded p-2 focus:ring-2 focus:ring-purple-500 outline-none"
+                                        placeholder="Prompt (e.g. 繁體中文)"
+                                        value={customPrompt}
+                                        onChange={(e) => setCustomPrompt(e.target.value)}
+                                    />
+                                </div>
+
+                                <button
+                                    onClick={handleGenerate}
+                                    className="w-full px-6 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-lg transition shadow-lg shadow-purple-900/30 flex items-center justify-center gap-2 font-medium"
+                                >
+                                    ✨ AI Generate
+                                </button>
+                                <p className="text-[10px] text-gray-500">
+                                    Use 'zh' + Prompt '繁體中文' for Traditional Chinese.
+                                </p>
+                            </div>
                         ) : (
                             <div className="text-xs text-red-400 bg-red-900/20 px-3 py-1 rounded">
                                 AI Service Offline

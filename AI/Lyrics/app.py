@@ -1,5 +1,7 @@
 import os
 import uvicorn
+import time
+from typing import Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from faster_whisper import WhisperModel
@@ -25,7 +27,9 @@ except Exception as e:
     model = None
 
 class TranscriptionRequest(BaseModel):
-    file_path: str  # Absolute path to the audio file (mapped via Docker volume or SMB)
+    file_path: str
+    language: Optional[str] = None
+    initial_prompt: Optional[str] = None
 
 def format_timestamp(seconds):
     td = timedelta(seconds=seconds)
@@ -44,16 +48,22 @@ def transcribe_audio(req: TranscriptionRequest):
     if not model:
         raise HTTPException(status_code=503, detail="Model not initialized")
     
-    logger.info(f"Received request for file: '{req.file_path}'")
+    logger.info(f"Received request for file: '{req.file_path}', Lang: {req.language}, Prompt: {req.initial_prompt}")
     
     if not os.path.exists(req.file_path):
         logger.error(f"File NOT found at: '{req.file_path}'")
         raise HTTPException(status_code=404, detail=f"File not found: {req.file_path}")
 
     logger.info(f"Transcribing: {req.file_path}")
+    start_time = time.time()
     
     try:
-        segments, info = model.transcribe(req.file_path, beam_size=5)
+        segments, info = model.transcribe(
+            req.file_path, 
+            beam_size=5,
+            language=req.language,
+            initial_prompt=req.initial_prompt
+        )
         
         lines = []
         full_text = []

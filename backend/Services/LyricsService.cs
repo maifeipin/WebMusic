@@ -44,70 +44,65 @@ public class LyricsService
         }
     }
 
-    public async Task<Lyric> GenerateLyricsAsync(int mediaId)
+    public async Task<Lyric> GenerateLyricsAsync(int mediaId, string language = null, string prompt = null)
     {
         // 1. Get MediaFile
         var media = await _context.MediaFiles.FindAsync(mediaId);
-        if (media == null) throw new KeyNotFoundException("Media file not found");
+        if (media == null) return null;
+
+        // Health check
+        if (!await CheckAiServiceHealthAsync())
+        {
+            _logger.LogWarning("AI Service is not healthy or AI Url not configured.");
+            return null;
+        }
 
         // 2. Call Python AI Service
-        // AI Service URL from config or default to internal docker name
         var aiServiceUrl = _configuration["AiLyricsUrl"] ?? "http://webmusic-ai-lyrics:5001";
         
-        // For local Mac development (outside docker), we might need localhost
-        // If running in container -> use service name. If running locally -> use localhost.
-        // But the FilePath must be accessible to the AI container!
-        // This is tricky: Local C# -> Local Python Container.
-        // The Python container needs the file path. Both mount ./data to /app/data.
-        // So we need to convert the DB path (which might be /app/data/...) to match.
-
-        // Assume DB path is like /app/data/music/song.mp3 or valid SMB path
-        
-        // FIX: If running locally on Mac, DB path might be absolute Mac path or SMB path.
-        // Docker container sees /app/data or /app/music. We need to map it.
+        // Path mapping logic matches existing implementation...
         var containerPath = media.FilePath;
 
-        // Case 1: Local Data Folder (e.g. Test/Dev)
+        // Case 1: Local Data Folder
         if (containerPath.Contains("/data/"))
         {
-             // e.g. /Users/lilee/.../data/music/song.mp3 -> /app/data/music/song.mp3
              var relativePart = containerPath.Substring(containerPath.IndexOf("/data/")); 
              containerPath = "/app" + relativePart;
         }
         // Case 2: SMB/Volume Paths
         else if (containerPath.StartsWith("/Volumes/"))
         {
-             // e.g. /Volumes/PT/music.mp3 -> /app/PT/music.mp3
              containerPath = containerPath.Replace("/Volumes/", "/app/");
         }
         else if (containerPath.StartsWith("smb://"))
         {
-             // e.g. smb://DSM918/DataSync/sharedata/... -> /app/DataSync/sharedata/...
-             // Remove scheme
-             var noScheme = containerPath.Substring(6); // DSM918/DataSync/...
+             var noScheme = containerPath.Substring(6); 
              var firstSlash = noScheme.IndexOf('/');
              if (firstSlash > 0)
              {
-                 var pathPart = noScheme.Substring(firstSlash); // /DataSync/sharedata/...
-                 containerPath = "/app" + pathPart;
+                 containerPath = "/app" + noScheme.Substring(firstSlash);
              }
         }
-        // Case 3: Relative paths in DB (e.g. "sharedata/...")
+        // Case 3: Relative paths (sharedata hack)
         else if (!containerPath.StartsWith("/") && !containerPath.Contains("://"))
         {
-             // HACK: Map relative paths starting with "sharedata" to DataSync volume
              if (containerPath.StartsWith("sharedata"))
              {
                  containerPath = "/app/DataSync/" + containerPath;
              }
         }
 
-        _logger.LogInformation($"Generating Lyrics: Original Path='{media.FilePath}', Container Path='{containerPath}'");
+        _logger.LogInformation($"Generating Lyrics: Original Path='{media.FilePath}', Container Path='{containerPath}', Lang='{language}', Prompt='{prompt}'");
 
-        var requestBody = new { file_path = containerPath };
+        var requestBody = new 
+        { 
+            file_path = containerPath,
+            language = language,
+            initial_prompt = prompt
+        };
         
         var client = _httpClientFactory.CreateClient();
-        client.Timeout = TimeSpan.FromMinutes(10); // Whisper takes time
+        client.Timeout = TimeSpan.FromMinutes(10); 
 
         try 
         {
@@ -136,14 +131,14 @@ public class LyricsService
             }
 
             var lrcContent = sb.ToString();
-            var language = root.GetProperty("language").GetString() ?? "unknown";
+            var detectedLang = root.GetProperty("language").GetString() ?? "unknown";
 
             // 4. Save to DB
             var lyric = new Lyric
             {
                 MediaFileId = media.Id,
                 Content = lrcContent,
-                Language = language,
+                Language = detectedLang,
                 Source = "AI (Whisper-Tiny)",
                 Version = "v1",
                 CreatedAt = DateTime.UtcNow
