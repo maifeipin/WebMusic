@@ -49,6 +49,9 @@ export default function BatchProcessor() {
     const [batchId, setBatchId] = useState<string | null>(null);
     const [batchProgress, setBatchProgress] = useState<{ processed: number; total: number; success: number; failed: number; status: string } | null>(null);
 
+    // Lyrics State
+    const [lyricsLang, setLyricsLang] = useState('en');
+
     // Polling for Batch
     useEffect(() => {
         if (!batchId) return;
@@ -162,12 +165,13 @@ export default function BatchProcessor() {
         }
     };
 
+    // Update handleLyricsBatch to use state
     const handleLyricsBatch = async () => {
         if (selectedIds.size === 0) return;
-        if (!confirm(`Generate lyrics for ${selectedIds.size} songs?\nWARNING: This is slow (approx 10-30s per song).`)) return;
+        if (!confirm(`Generate lyrics for ${selectedIds.size} songs in [${lyricsLang.toUpperCase()}]?\nWARNING: This is slow (approx 10-30s per song).`)) return;
 
         try {
-            const res = await startLyricsBatch(Array.from(selectedIds), false);
+            const res = await startLyricsBatch(Array.from(selectedIds), false, lyricsLang);
             setBatchId(res.batchId);
             setBatchProgress({ processed: 0, total: selectedIds.size, success: 0, failed: 0, status: 'Queued' });
         } catch (e: any) {
@@ -175,6 +179,8 @@ export default function BatchProcessor() {
             console.error(e);
         }
     };
+
+
 
     const handleApply = async () => {
         if (results.length === 0) return;
@@ -400,11 +406,11 @@ export default function BatchProcessor() {
                             value={prompt}
                             onChange={(e) => setPrompt(e.target.value)}
                         />
-                        <div className="flex flex-col gap-2">
+                        <div className="flex flex-col gap-2 w-24">
                             <button
                                 onClick={handleGenerate}
                                 disabled={selectedIds.size === 0 || selectedIds.size > 50 || processing}
-                                className="w-24 flex-1 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-lg font-bold flex flex-col items-center justify-center gap-1 transition text-xs disabled:cursor-not-allowed group/preview"
+                                className="flex-1 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-lg font-bold flex flex-col items-center justify-center gap-1 transition text-xs disabled:cursor-not-allowed group/preview"
                                 title={selectedIds.size > 50 ? "Limit 50 for preview. Use Auto Batch for more." : "Preview changes (Diff View)"}
                             >
                                 {processing ? <div className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" /> : <Sparkles size={20} />}
@@ -413,20 +419,44 @@ export default function BatchProcessor() {
                             <button
                                 onClick={handleStartBatch}
                                 disabled={selectedIds.size === 0 || processing}
-                                className="w-24 h-8 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-lg font-bold flex items-center justify-center gap-1 transition text-xs"
+                                className="h-8 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-lg font-bold flex items-center justify-center gap-1 transition text-xs"
                                 title="Auto-process in background (Up to 1000 items)"
                             >
                                 <Zap size={14} /> Auto Tag
                             </button>
-                            <button
-                                onClick={handleLyricsBatch}
-                                disabled={selectedIds.size === 0 || processing}
-                                className="w-24 h-8 bg-pink-600 hover:bg-pink-500 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-lg font-bold flex items-center justify-center gap-1 transition text-xs"
-                                title="Generate Lyrics for selected files (Slow)"
-                            >
-                                <Mic size={14} /> Scan Lyrics
-                            </button>
                         </div>
+                    </div>
+
+                    {/* Lyrics Section Separator */}
+                    <div className="mt-3 pt-3 border-t border-gray-800 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <Mic size={16} className="text-pink-500" />
+                            <span className="text-sm font-semibold text-gray-300">Lyrics Gen</span>
+
+                            <select
+                                value={lyricsLang}
+                                onChange={(e) => setLyricsLang(e.target.value)}
+                                className="ml-2 bg-black/40 border border-gray-700 rounded text-xs px-2 py-1 text-gray-300 focus:outline-none focus:border-pink-500"
+                            >
+                                <option value="en">English (en)</option>
+                                <option value="zh">Chinese (zh)</option>
+                                <option value="ja">Japanese (ja)</option>
+                                <option value="ko">Korean (ko)</option>
+                                <option value="fr">French (fr)</option>
+                                <option value="de">German (de)</option>
+                                <option value="es">Spanish (es)</option>
+                                <option value="ru">Russian (ru)</option>
+                            </select>
+                        </div>
+
+                        <button
+                            onClick={handleLyricsBatch}
+                            disabled={selectedIds.size === 0 || processing}
+                            className="w-24 h-8 bg-pink-600 hover:bg-pink-500 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-lg font-bold flex items-center justify-center gap-1 transition text-xs"
+                            title="Generate Lyrics via Whisper"
+                        >
+                            <Mic size={14} /> Scan
+                        </button>
                     </div>
                     {selectedIds.size > 50 && (
                         <div className="text-right text-xs text-orange-400 mt-1">

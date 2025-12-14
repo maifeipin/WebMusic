@@ -180,7 +180,7 @@ public class JobWorker : BackgroundService
                     }
                 }
 
-                await lyricsService.GenerateLyricsAsync(songId);
+                await lyricsService.GenerateLyricsAsync(songId, job.Language);
                 success++;
             }
             catch (Exception ex)

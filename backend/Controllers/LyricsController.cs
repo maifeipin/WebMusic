@@ -68,7 +68,7 @@ public class LyricsController : ControllerBase
     public IActionResult StartBatch([FromBody] BatchLyricsRequest request)
     {
         var batchId = Guid.NewGuid().ToString();
-        _queue.Enqueue(new LyricsBatchJob(batchId, request.SongIds, request.Force));
+        _queue.Enqueue(new LyricsBatchJob(batchId, request.SongIds, request.Force, request.Language));
         return Ok(new { batchId });
     }
 }
@@ -77,4 +77,5 @@ public class BatchLyricsRequest
 {
     public List<int> SongIds { get; set; } = new();
     public bool Force { get; set; } = false;
+    public string Language { get; set; } = "en";
 }

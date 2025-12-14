@@ -18,7 +18,8 @@ public record AiBatchJob(
 public record LyricsBatchJob(
     string BatchId, 
     List<int> SongIds, 
-    bool Force
+    bool Force,
+    string Language // Added language
 ) : IJobPayload;
 
 public class BackgroundTaskQueue
