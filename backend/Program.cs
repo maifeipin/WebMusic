@@ -76,12 +76,12 @@ builder.Services.AddCors(options =>
 // Services
 builder.Services.AddScoped<WebMusic.Backend.Services.ISmbService, WebMusic.Backend.Services.SmbService>();
 builder.Services.AddScoped<WebMusic.Backend.Services.ScannerService>();
-builder.Services.AddSingleton<WebMusic.Backend.Services.BackgroundQueue>();
+builder.Services.AddSingleton<WebMusic.Backend.Services.BackgroundTaskQueue>();
 builder.Services.AddSingleton<WebMusic.Backend.Services.ScanStateService>();
 builder.Services.AddScoped<WebMusic.Backend.Services.TagService>();
 builder.Services.AddSingleton<WebMusic.Backend.Services.PathResolver>(); // Centralized path resolution
 builder.Services.AddScoped<WebMusic.Backend.Services.DataManagementService>();
-builder.Services.AddHostedService<WebMusic.Backend.Services.ScanWorker>();
+builder.Services.AddHostedService<WebMusic.Backend.Services.JobWorker>();
 
 var app = builder.Build();
 

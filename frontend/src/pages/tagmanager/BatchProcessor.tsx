@@ -1,21 +1,30 @@
 import { useState, useEffect } from 'react';
-import { Sparkles, Table, CheckSquare, Square, Save, X, RotateCcw, Filter, Folder, Trash2 } from 'lucide-react';
-import { api, suggestTags, applyTags, deleteMedia } from '../../services/api';
+import { Filter, Save, Trash2, X, Folder, CheckSquare, Square, RefreshCw, Zap, Sparkles, RotateCcw } from 'lucide-react';
+import { api, suggestTags, applyTags, deleteMedia, startBatch, getBatchStatus } from '../../services/api';
 
-interface MediaItem {
+interface Song {
+    id: number;
+    title: string;
+    artist: string;
+    album: string;
+    filePath: string;
+    genre?: string;
+    year?: number;
+}
+
+interface TagUpdate {
     id: number;
     title: string;
     artist: string;
     album: string;
     genre: string;
     year: number;
-    filePath: string;
 }
 
 const PROMPT_TEMPLATES: Record<string, string> = {
     'Auto Magic': 'Analyze the filename and existing metadata. intelligently fix missing fields, correct capitalization, and remove garbage characters. Guess the Artist and Title if missing.',
     'From Filename': `Strictly extract Artist and Title from the filename.
-1. Remove junk suffixes/prefixes like [mqms2], www.xxx.com, (Official Audio), etc.
+1. Remove junk suffixes / prefixes like [mqms2], www.xxx.com, (Official Audio), etc.
 2. If filename starts with a number (e.g. "01. Song"), remove the number prefix.
 3. Common format is "Artist - Title". If separation is unclear, prioritize Title.`,
     'Fix Encoding': 'The metadata likely has encoding issues (GBK/Shift-JIS decoded as UTF-8). Try to fix the garbled characters in Title and Artist.',
@@ -23,29 +32,65 @@ const PROMPT_TEMPLATES: Record<string, string> = {
 };
 
 export default function BatchProcessor() {
-    // 1. Selection Phase
-    const [searchQuery, setSearchQuery] = useState('');
-    const [criteria, setCriteria] = useState<string[]>([]);
-    const [candidates, setCandidates] = useState<MediaItem[]>([]);
+    const [candidates, setCandidates] = useState<Song[]>([]);
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+    const [criteria, setCriteria] = useState<string[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
     const [loading, setLoading] = useState(false);
+    const [pageSize, setPageSize] = useState(50);
 
-    // 2. AI Phase
-    const [model, setModel] = useState('gemini-2.0-flash-exp');
-    const [prompt, setPrompt] = useState('Cleanup artist and title from filename.');
-    const [aiResults, setAiResults] = useState<any[]>([]); // Diff
+    // AI State
+    const [prompt, setPrompt] = useState(PROMPT_TEMPLATES['Auto Magic']);
+    const [model, setModel] = useState('gemini-2.0-flash-lite-preview-02-05');
+    const [results, setResults] = useState<TagUpdate[]>([]);
     const [processing, setProcessing] = useState(false);
+
+    // Batch State
+    const [batchId, setBatchId] = useState<string | null>(null);
+    const [batchProgress, setBatchProgress] = useState<{ processed: number; total: number; success: number; failed: number; status: string } | null>(null);
+
+    // Polling for Batch
+    useEffect(() => {
+        if (!batchId) return;
+        const interval = setInterval(async () => {
+            try {
+                const res = await getBatchStatus(batchId);
+                setBatchProgress(res.data);
+                if (res.data.status === 'Completed' || res.data.status === 'Failed') {
+                    clearInterval(interval);
+
+                    if (res.data.status === 'Completed') {
+                        setTimeout(() => {
+                            alert(`Batch Job Finished!\nUpdated: ${res.data.success}\nFailed: ${res.data.failed}`);
+                            setBatchId(null);
+                            handleSearch();
+                            setResults([]);
+                            setSelectedIds(new Set());
+                        }, 500);
+                    } else {
+                        setBatchId(null);
+                        alert("Batch Job Failed");
+                    }
+                }
+            } catch (e) {
+                console.error("Polling error", e);
+            }
+        }, 1500);
+        return () => clearInterval(interval);
+    }, [batchId]);
+
 
     const handleSearch = async () => {
         setLoading(true);
         try {
-            // Manual criteria params building for .NET compatibility (repeat keys)
             const params = new URLSearchParams();
             if (searchQuery) params.append('search', searchQuery);
             criteria.forEach(c => params.append('criteria', c));
-            params.append('pageSize', '50');
+            params.append('pageSize', pageSize.toString());
 
             const res = await api.get('/media', { params: params });
+            // Map backend MediaFile to Song interface if needed, or use directly
+            // Backend returns: id, title, artist, album, filePath...
             setCandidates(res.data.files);
         } catch (e) {
             console.error(e);
@@ -54,10 +99,12 @@ export default function BatchProcessor() {
         }
     };
 
+    useEffect(() => {
+        handleSearch();
+    }, [pageSize]);
+
     const addCriteria = (c: string) => {
-        if (!criteria.includes(c)) {
-            setCriteria([...criteria, c]);
-        }
+        if (!criteria.includes(c)) setCriteria([...criteria, c]);
     };
 
     const removeCriteria = (c: string) => {
@@ -65,17 +112,13 @@ export default function BatchProcessor() {
     };
 
     const filterByPath = (filePath: string) => {
-        // Extract parent directory
         const parts = filePath.split(/[\\/]/);
-        parts.pop(); // Remove filename
+        parts.pop();
         const parentDir = parts.join('/');
-
-        // Add path criteria
-        // Ensure we handle Windows/Unix path diffs roughly by just searching string
         addCriteria(`filename:contains:${parentDir}`);
     };
 
-    // Auto-Select Template based on Criteria
+    // Auto Template Logic
     useEffect(() => {
         if (criteria.some(c => c.includes('artist:isempty'))) {
             setPrompt(PROMPT_TEMPLATES['From Filename']);
@@ -94,27 +137,40 @@ export default function BatchProcessor() {
     const handleGenerate = async () => {
         if (selectedIds.size === 0) return;
         setProcessing(true);
-        setAiResults([]);
+        setResults([]);
         try {
             const res = await suggestTags(Array.from(selectedIds), prompt, model);
-            setAiResults(res.data);
+            setResults(res.data);
         } catch (e) {
             alert("AI processing failed. Check console.");
-            console.error(e);
         } finally {
             setProcessing(false);
         }
     };
 
+    const handleStartBatch = async () => {
+        if (selectedIds.size === 0) return;
+        if (!confirm(`Start background batch processing for ${selectedIds.size} songs?\nThis will automatically apply changes.`)) return;
+
+        try {
+            const res = await startBatch(Array.from(selectedIds), prompt, model);
+            setBatchId(res.data.batchId);
+            setBatchProgress({ processed: 0, total: selectedIds.size, success: 0, failed: 0, status: 'Queued' });
+        } catch (e: any) {
+            if (e.response && e.response.data) alert(e.response.data);
+            else alert("Failed to start batch.");
+        }
+    };
+
     const handleApply = async () => {
-        if (aiResults.length === 0) return;
-        if (!confirm(`Apply changes to ${aiResults.length} songs?`)) return;
+        if (results.length === 0) return;
+        if (!confirm(`Apply changes to ${results.length} songs?`)) return;
 
         setProcessing(true);
         try {
-            const res = await applyTags(aiResults);
+            const res = await applyTags(results);
             alert(`Successfully updated ${res.data.applied} songs!`);
-            setAiResults([]);
+            setResults([]);
             handleSearch(); // Refresh list
         } catch (e) {
             alert("Update failed");
@@ -124,7 +180,7 @@ export default function BatchProcessor() {
     };
 
     const discardResult = (id: number) => {
-        setAiResults(prev => prev.filter(r => r.id !== id));
+        setResults(prev => prev.filter(r => r.id !== id));
     };
 
     const handleDelete = async (id: number, force = false) => {
@@ -132,7 +188,6 @@ export default function BatchProcessor() {
 
         try {
             await deleteMedia(id, force);
-            // Success
             setCandidates(prev => prev.filter(c => c.id !== id));
             setSelectedIds(prev => {
                 const next = new Set(prev);
@@ -143,12 +198,9 @@ export default function BatchProcessor() {
             if (e.response && e.response.status === 409) {
                 const { details } = e.response.data;
                 const msg = `This song is in use:\n- ${details.playlists} Playlists\n- ${details.history} History records\n- ${details.favorites} Favorites\n\nForce delete anyway?`;
-                if (confirm(msg)) {
-                    await handleDelete(id, true);
-                }
+                if (confirm(msg)) await handleDelete(id, true);
             } else {
                 alert("Delete failed");
-                console.error(e);
             }
         }
     };
@@ -172,6 +224,17 @@ export default function BatchProcessor() {
                             onChange={(e) => setSearchQuery(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                         />
+                        <select
+                            value={pageSize}
+                            onChange={(e) => setPageSize(Number(e.target.value))}
+                            className="bg-gray-800 border border-gray-700 rounded-lg px-2 text-white text-xs focus:outline-none focus:border-blue-500"
+                            title="Items to fetch"
+                        >
+                            <option value={50}>50</option>
+                            <option value={100}>100</option>
+                            <option value={500}>500</option>
+                            <option value={1000}>1K</option>
+                        </select>
                         <button onClick={handleSearch} className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-white text-sm font-bold">Search</button>
                     </div>
 
@@ -261,7 +324,28 @@ export default function BatchProcessor() {
             </div>
 
             {/* Right: AI Actions */}
-            <div className="w-full md:w-7/12 flex flex-col p-4 bg-gray-900/50">
+            <div className="w-full md:w-7/12 flex flex-col p-4 bg-gray-900/50 relative">
+                {batchId && batchProgress && (
+                    <div className="absolute inset-0 bg-black/80 z-50 flex items-center justify-center backdrop-blur-sm">
+                        <div className="bg-gray-900 p-8 rounded-2xl border border-gray-700 max-w-md w-full text-center space-y-4">
+                            <RefreshCw size={48} className="mx-auto text-purple-500 animate-spin" />
+                            <h2 className="text-xl font-bold text-white">Batch Processing...</h2>
+                            <p className="text-gray-400 text-sm">Gemini is analyzing and updating your library. <br /> This happens in the background.</p>
+
+                            <div className="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
+                                <div
+                                    className="bg-purple-500 h-full transition-all duration-500"
+                                    style={{ width: `${(batchProgress.processed / batchProgress.total) * 100}%` }}
+                                />
+                            </div>
+                            <div className="flex justify-between text-xs text-gray-500">
+                                <span>Processed: {batchProgress.processed}/{batchProgress.total}</span>
+                                <span>Success: {batchProgress.success}</span>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <div className="mb-4">
                     <div className="flex justify-between items-center mb-2">
                         <h3 className="font-semibold text-gray-300 flex items-center gap-2">
@@ -274,10 +358,9 @@ export default function BatchProcessor() {
                                 onChange={(e) => setModel(e.target.value)}
                                 className="bg-black/40 border border-gray-700 rounded text-xs px-2 py-1 text-gray-300 focus:outline-none focus:border-purple-500"
                             >
-                                <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Exp (Fastest)</option>
+                                <option value="gemini-2.0-flash-lite-preview-02-05">Gemini 2.0 Flash-Lite (Batch)</option>
+                                <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Exp (Fast)</option>
                                 <option value="gemini-2.0-flash">Gemini 2.0 Flash (Stable)</option>
-                                <option value="gemini-2.0-flash-lite-preview-02-05">Gemini 2.0 Flash-Lite (Lightweight)</option>
-                                <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
                             </select>
                         </div>
                     </div>
@@ -302,24 +385,40 @@ export default function BatchProcessor() {
                             value={prompt}
                             onChange={(e) => setPrompt(e.target.value)}
                         />
-                        <button
-                            onClick={handleGenerate}
-                            disabled={selectedIds.size === 0 || processing}
-                            className="w-24 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-lg font-bold flex flex-col items-center justify-center gap-1 transition text-xs"
-                        >
-                            {processing ? <div className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" /> : <Sparkles size={20} />}
-                            {processing ? 'Thinking' : 'Generate'}
-                        </button>
+                        <div className="flex flex-col gap-2">
+                            <button
+                                onClick={handleGenerate}
+                                disabled={selectedIds.size === 0 || selectedIds.size > 50 || processing}
+                                className="w-24 flex-1 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-lg font-bold flex flex-col items-center justify-center gap-1 transition text-xs disabled:cursor-not-allowed group/preview"
+                                title={selectedIds.size > 50 ? "Limit 50 for preview. Use Auto Batch for more." : "Preview changes (Diff View)"}
+                            >
+                                {processing ? <div className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" /> : <Sparkles size={20} />}
+                                {processing ? 'Thinking' : 'Preview'}
+                            </button>
+                            <button
+                                onClick={handleStartBatch}
+                                disabled={selectedIds.size === 0 || processing}
+                                className="w-24 h-8 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-lg font-bold flex items-center justify-center gap-1 transition text-xs"
+                                title="Auto-process in background (Up to 1000 items)"
+                            >
+                                <Zap size={14} /> Auto Batch
+                            </button>
+                        </div>
                     </div>
+                    {selectedIds.size > 50 && (
+                        <div className="text-right text-xs text-orange-400 mt-1">
+                            Selection &gt; 50: Preview disabled. Use Auto Batch.
+                        </div>
+                    )}
                 </div>
 
                 {/* Results Table */}
                 <div className="flex-1 overflow-y-auto min-h-0 border border-gray-800 rounded-xl bg-black/40 relative">
-                    {aiResults.length === 0 ? (
+                    {results.length === 0 ? (
                         <div className="absolute inset-0 flex items-center justify-center text-gray-600">
                             <div className="text-center">
-                                <Table size={48} className="mx-auto mb-2 opacity-20" />
-                                <p>AI Suggestions will appear here</p>
+                                <Sparkles size={48} className="mx-auto mb-2 opacity-20" />
+                                <p>Select songs and click Preview or Auto Batch</p>
                             </div>
                         </div>
                     ) : (
@@ -332,7 +431,7 @@ export default function BatchProcessor() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-800/50">
-                                {aiResults.map(res => {
+                                {results.map(res => {
                                     const original = candidates.find(c => c.id === res.id);
                                     if (!original) return null;
 
@@ -377,10 +476,10 @@ export default function BatchProcessor() {
                 </div>
 
                 {/* Confirm Actions */}
-                {aiResults.length > 0 && (
+                {results.length > 0 && (
                     <div className="mt-4 flex gap-3 justify-end">
                         <button
-                            onClick={() => setAiResults([])}
+                            onClick={() => setResults([])}
                             className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300"
                         >
                             <RotateCcw size={16} className="inline mr-2" /> Discard
@@ -390,7 +489,7 @@ export default function BatchProcessor() {
                             disabled={processing}
                             className="px-6 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg font-bold shadow-lg shadow-green-900/20 flex items-center gap-2"
                         >
-                            <Save size={18} /> Apply {aiResults.length} Changes
+                            <Save size={18} /> Apply {results.length} Changes
                         </button>
                     </div>
                 )}

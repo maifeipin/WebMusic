@@ -13,11 +13,11 @@ namespace WebMusic.Backend.Controllers;
 public class ScanController : ControllerBase
 {
     private readonly AppDbContext _context;
-    private readonly BackgroundQueue _queue;
+    private readonly BackgroundTaskQueue _queue;
     private readonly ScanStateService _scanState;
     private readonly ISmbService _smbService;
 
-    public ScanController(AppDbContext context, BackgroundQueue queue, ScanStateService scanState, ISmbService smbService)
+    public ScanController(AppDbContext context, BackgroundTaskQueue queue, ScanStateService scanState, ISmbService smbService)
     {
         _context = context;
         _queue = queue;

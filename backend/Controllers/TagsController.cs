@@ -15,11 +15,13 @@ public class TagsController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly TagService _tagService;
+    private readonly BackgroundTaskQueue _queue;
 
-    public TagsController(AppDbContext context, TagService tagService)
+    public TagsController(AppDbContext context, TagService tagService, BackgroundTaskQueue queue)
     {
         _context = context;
         _tagService = tagService;
+        _queue = queue;
     }
 
     public class SuggestRequest
@@ -72,6 +74,28 @@ public class TagsController : ControllerBase
         {
             return StatusCode(500, new { message = "AI processing failed", details = ex.Message });
         }
+    }
+
+    [HttpPost("batch/start")]
+    public IActionResult StartBatch([FromBody] SuggestRequest req)
+    {
+        if (req.SongIds.Count == 0) return BadRequest("No songs selected");
+        if (req.SongIds.Count > 1000) return BadRequest("Batch size limit is 1000. Please select fewer songs.");
+        
+        var batchId = Guid.NewGuid().ToString("N");
+        var job = new AiBatchJob(batchId, req.SongIds, req.Prompt, req.Model);
+        
+        _queue.Enqueue(job);
+        
+        return Ok(new { batchId, message = "Batch started" });
+    }
+
+    [HttpGet("batch/{batchId}")]
+    public IActionResult GetBatchStatus(string batchId)
+    {
+        var status = _queue.GetAiStatus(batchId);
+        if (status == null) return NotFound();
+        return Ok(status);
     }
 
     public class SuggestedTag

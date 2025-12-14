@@ -66,6 +66,8 @@ export const getSharedPlaylist = (token: string, password?: string) =>
 
 // Tags
 export const suggestTags = (songIds: number[], prompt: string, model = 'gemini-2.0-flash-exp') => api.post('/tags/suggest', { songIds, prompt, model });
+export const startBatch = (songIds: number[], prompt: string, model = 'gemini-2.0-flash-lite-preview-02-05') => api.post('/tags/batch/start', { songIds, prompt, model });
+export const getBatchStatus = (batchId: string) => api.get(`/tags/batch/${batchId}`);
 export const applyTags = (updates: any[]) => api.post('/tags/apply', updates);
 
 export default api;
