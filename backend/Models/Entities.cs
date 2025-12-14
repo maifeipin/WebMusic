@@ -125,3 +125,21 @@ public class PlaylistSong
     
     public DateTime AddedAt { get; set; } = DateTime.UtcNow;
 }
+
+public class Lyric
+{
+    [Key]
+    public int Id { get; set; }
+    
+    // Linking to MediaFile (Use standard int ID)
+    public int MediaFileId { get; set; }
+    [JsonIgnore]
+    public MediaFile? MediaFile { get; set; }
+
+    public string Content { get; set; } = string.Empty; // LRC format preferred
+    public string Language { get; set; } = "unknown";
+    public string Source { get; set; } = "AI"; // "AI", "Manual", "Gemini"
+    public string Version { get; set; } = "v1"; // e.g. "whisper-tiny"
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+

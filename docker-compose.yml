@@ -1,8 +1,10 @@
-version: '3.3'
+version: '3.8'
+
 services:
   backend:
     build: 
       context: ./backend
+    image: maifeipin/webmusic-backend:latest
     container_name: webmusic-backend
     restart: always
     environment:
@@ -22,18 +24,17 @@ services:
       # Mount the database directory volume to persist data
     volumes:
       - ./data:/app/data
-      # If SMB needs host mounting (optional)
-      # - /mnt/nas:/mnt/nas
-    ports:
-      - "5080:8080" # Distinct from Dev (5098) and AirPlay (5000)
+    depends_on:
+      - postgres
 
   frontend:
-    build:
+    build: 
       context: ./frontend
+    image: maifeipin/webmusic-frontend:latest
     container_name: webmusic-frontend
     restart: always
     ports:
-      - "8090:80" # Distinct from Dev (5173)
+      - "8090:80"
     depends_on:
       - backend
 
@@ -41,15 +42,34 @@ services:
     image: postgres:15-alpine
     container_name: webmusic-postgres
     restart: always
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: webmusic
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+    # Expose port for Compute Nodes (Mac Mini) to connect
     ports:
       - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-webmusic}
+    volumes:
+      - ./data/pgdata:/var/lib/postgresql/data
+
+  # AI Lyrics Service (Python Sidecar)
+  ai-lyrics:
+    build: 
+      context: ./AI/Lyrics
+    image: maifeipin/webmusic-ai-lyrics:latest
+    container_name: webmusic-ai-lyrics
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      - WHISPER_MODEL=tiny
+    volumes:
+      # MUST mount the same music data path as backend so it can read files
+      - ./data:/app/data
+      # If using Mac Volumes for SMB, map them here too
+      # - /Volumes:/Volumes 
+    profiles: 
+      - ai  # Only start if explicitly requested via --profile ai
 
 volumes:
   postgres_data:
-
