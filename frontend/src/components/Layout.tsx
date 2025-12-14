@@ -77,7 +77,6 @@ export const Layout = () => {
                     <NavItem to="/playlists" icon={<ListMusic size={20} />} label="My Playlists" collapsed={isCollapsed} />
                     <NavItem to="/favorites" icon={<Heart size={20} />} label="Favorites" collapsed={isCollapsed} />
                     <NavItem to="/history" icon={<Clock size={20} />} label="History" collapsed={isCollapsed} />
-                    <NavItem to="/history" icon={<Clock size={20} />} label="History" collapsed={isCollapsed} />
                     <NavItem to="/tags" icon={<Tag size={20} />} label="Tag Manager" collapsed={isCollapsed} />
                     <NavItem to="/sources" icon={<Settings size={20} />} label="Sources" collapsed={isCollapsed} />
                 </nav>
