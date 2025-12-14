@@ -16,12 +16,36 @@ public class MediaController : ControllerBase
     private readonly AppDbContext _context;
     private readonly ISmbService _smbService;
     private readonly PathResolver _pathResolver;
+    private readonly DataManagementService _dataService;
 
-    public MediaController(AppDbContext context, ISmbService smbService, PathResolver pathResolver)
+    public MediaController(AppDbContext context, ISmbService smbService, PathResolver pathResolver, DataManagementService dataService)
     {
         _context = context;
         _smbService = smbService;
         _pathResolver = pathResolver;
+        _dataService = dataService;
+    }
+
+    // ... (GetFiles and others remain unchanged, skipping to DeleteMedia)
+
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeleteMedia(int id, [FromQuery] bool force = false)
+    {
+        var (success, details) = await _dataService.DeleteMediaAsync(id, force);
+
+        if (!success && details != null)
+        {
+            return StatusCode(409, new { 
+                message = "This song is currently in use.", 
+                details = details 
+            });
+        }
+        else if (!success)
+        {
+            return NotFound();
+        }
+
+        return Ok(new { id, deleted = true });
     }
 
     [HttpGet]
@@ -598,6 +622,8 @@ public class MediaController : ControllerBase
          var ids = await query.Select(m => m.Id).ToListAsync();
          return Ok(ids);
     }
+
+    // [Deleted duplicate DeleteMedia method]
 
     [HttpPost("cover")]
     public async Task<IActionResult> UploadCover([FromForm] IFormFile file)

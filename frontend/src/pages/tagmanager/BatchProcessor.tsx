@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Sparkles, Table, CheckSquare, Square, Save, X, RotateCcw, Filter, Folder } from 'lucide-react';
-import { api, suggestTags, applyTags } from '../../services/api';
+import { Sparkles, Table, CheckSquare, Square, Save, X, RotateCcw, Filter, Folder, Trash2 } from 'lucide-react';
+import { api, suggestTags, applyTags, deleteMedia } from '../../services/api';
 
 interface MediaItem {
     id: number;
@@ -127,6 +127,32 @@ export default function BatchProcessor() {
         setAiResults(prev => prev.filter(r => r.id !== id));
     };
 
+    const handleDelete = async (id: number, force = false) => {
+        if (!force && !confirm("Delete this song?")) return;
+
+        try {
+            await deleteMedia(id, force);
+            // Success
+            setCandidates(prev => prev.filter(c => c.id !== id));
+            setSelectedIds(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
+        } catch (e: any) {
+            if (e.response && e.response.status === 409) {
+                const { details } = e.response.data;
+                const msg = `This song is in use:\n- ${details.playlists} Playlists\n- ${details.history} History records\n- ${details.favorites} Favorites\n\nForce delete anyway?`;
+                if (confirm(msg)) {
+                    await handleDelete(id, true);
+                }
+            } else {
+                alert("Delete failed");
+                console.error(e);
+            }
+        }
+    };
+
     return (
         <div className="h-full flex flex-col md:flex-row divide-y md:divide-y-0 md:divide-x divide-gray-800">
             {/* Left: Input & Selection */}
@@ -188,13 +214,14 @@ export default function BatchProcessor() {
                                     <th className="p-2">Title</th>
                                     <th className="p-2">Artist</th>
                                     <th className="p-2">Filename</th>
+                                    <th className="p-2 w-10"></th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-800/50">
                                 {candidates.map(song => (
                                     <tr
                                         key={song.id}
-                                        className={`hover:bg-white/5 cursor-pointer ${selectedIds.has(song.id) ? 'bg-blue-500/10' : ''}`}
+                                        className={`hover:bg-white/5 cursor-pointer group ${selectedIds.has(song.id) ? 'bg-blue-500/10' : ''}`}
                                         onClick={() => toggleSelect(song.id)}
                                     >
                                         <td className="p-2 text-center">
@@ -211,6 +238,15 @@ export default function BatchProcessor() {
                                                 <Folder size={14} />
                                             </button>
                                             <span className="truncate">{song.filePath.split(/[\\/]/).pop()}</span>
+                                        </td>
+                                        <td className="p-2 w-10 text-center">
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleDelete(song.id); }}
+                                                className="p-1.5 text-gray-600 hover:bg-red-900/30 hover:text-red-500 rounded transition opacity-0 group-hover:opacity-100"
+                                                title="Delete Song"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
                                         </td>
                                     </tr>
                                 ))}

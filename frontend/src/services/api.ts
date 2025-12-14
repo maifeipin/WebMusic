@@ -18,6 +18,7 @@ export const getStats = () => api.get('/media/stats');
 export const getFiles = (params: any) => api.get('/media', { params });
 export const getSongsByIds = (ids: number[]) => api.post('/media/list/ids', ids);
 export const updateMedia = (id: number, data: { title?: string; artist?: string; album?: string; genre?: string }) => api.put(`/media/${id}`, data);
+export const deleteMedia = (id: number, force = false) => api.delete(`/media/${id}?force=${force}`);
 export const getSources = () => api.get('/scan/sources');
 export const addSource = (data: any, force = false) => api.post(`/scan/sources?force=${force}`, data);
 export const deleteSource = (id: number) => api.delete(`/scan/sources/${id}`);
@@ -41,6 +42,10 @@ export const getFavoriteIds = () => api.get('/user/favorites/ids');
 export const getUserStats = () => api.get('/user/stats');
 export const exportFavorites = () => api.get('/user/favorites/export', { responseType: 'blob' });
 export const importFavorites = (formData: FormData) => api.post('/user/favorites/import', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+
+// Full Data Backup
+export const exportData = () => api.get('/data/export', { responseType: 'blob' });
+export const importData = (formData: FormData, mode: number) => api.post(`/data/import?mode=${mode}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 
 // Playlists
 export const getPlaylists = (type: 'normal' | 'shared' | 'all' = 'normal') => api.get(`/playlist?type=${type}`);

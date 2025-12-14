@@ -35,3 +35,4 @@ appsettings.Development.json
 *.db-shm
 *.db-wal
 *.db
+backend/appsettings.json

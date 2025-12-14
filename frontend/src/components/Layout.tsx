@@ -78,9 +78,8 @@ export const Layout = () => {
                     <NavItem to="/favorites" icon={<Heart size={20} />} label="Favorites" collapsed={isCollapsed} />
                     <NavItem to="/history" icon={<Clock size={20} />} label="History" collapsed={isCollapsed} />
                     <NavItem to="/history" icon={<Clock size={20} />} label="History" collapsed={isCollapsed} />
-                    <NavItem to="/sources" icon={<Settings size={20} />} label="Sources" collapsed={isCollapsed} />
-                    <NavItem to="/backup" icon={<DatabaseBackup size={20} />} label="Backup" collapsed={isCollapsed} />
                     <NavItem to="/tags" icon={<Tag size={20} />} label="Tag Manager" collapsed={isCollapsed} />
+                    <NavItem to="/sources" icon={<Settings size={20} />} label="Sources" collapsed={isCollapsed} />
                 </nav>
 
                 {/* Footer Actions */}
@@ -96,6 +95,17 @@ export const Layout = () => {
                         <User size={20} />
                         {!isCollapsed && <span>Profile</span>}
                     </button>
+
+                    <NavLink
+                        to="/backup"
+                        className={({ isActive }) =>
+                            `flex items-center gap-3 text-gray-400 hover:text-white w-full p-3 rounded-lg transition hover:bg-white/5 ${isCollapsed ? 'justify-center' : ''} ${isActive ? 'bg-white/5 text-white' : ''}`
+                        }
+                        title="Backup"
+                    >
+                        <DatabaseBackup size={20} />
+                        {!isCollapsed && <span>Backup</span>}
+                    </NavLink>
                     <button
                         onClick={handleLogout}
                         className={`flex items-center gap-3 text-gray-400 hover:text-white w-full p-3 rounded-lg transition hover:bg-white/5 ${isCollapsed ? 'justify-center' : ''}`}

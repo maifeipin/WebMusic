@@ -80,6 +80,7 @@ builder.Services.AddSingleton<WebMusic.Backend.Services.BackgroundQueue>();
 builder.Services.AddSingleton<WebMusic.Backend.Services.ScanStateService>();
 builder.Services.AddScoped<WebMusic.Backend.Services.TagService>();
 builder.Services.AddSingleton<WebMusic.Backend.Services.PathResolver>(); // Centralized path resolution
+builder.Services.AddScoped<WebMusic.Backend.Services.DataManagementService>();
 builder.Services.AddHostedService<WebMusic.Backend.Services.ScanWorker>();
 
 var app = builder.Build();
