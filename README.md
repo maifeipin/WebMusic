@@ -13,6 +13,17 @@ A modern, web-based music player and library manager designed for NAS (Network A
 - **Background Scanning**: Asynchronous scanning pipeline with real-time status updates, capable of handling large libraries without timeout.
 - **Deduplication**: Intelligent handling of physical files to prevent duplicate library entries across multiple shares.
 
+### AI Tag Manager 🤖
+- **Intelligent Metadata Cleanup**: Use **Google Gemini AI** models (Flash 2.0/1.5) to automatically analyze filenames and suggest accurate Artist/Title tags.
+- **Batch Processing**: Filter songs by folder or metadata criteria (e.g., "No Artist") and process them in bulk.
+- **Diff View**: Preview changes side-by-side before applying them to your database.
+- **Smart Prompts**: Built-in templates for common tasks like "Fix Encoding" or "Genre Classification".
+
+### Library Management
+- **Shared Playlists**: Create public, shareable links for your playlists with optional passwords and expiration dates.
+- **Backup & Restore**: Full JSON export/import of library metadata and Favorites lists. Supports appending or overwriting data for migration.
+- **Cover Art**: Upload custom cover images or fetch from SMB automatically.
+
 ### Playback & Audio
 - **Global Player**: Persistent playback bar with minimize/maximize support, play queue, and improved seek controls.
 - **Transcoding**: Automatic transcoding (via FFmpeg) for unsupported formats (FLAC/ALAC -> MP3/AAC) with seeking support.
@@ -38,6 +49,7 @@ A modern, web-based music player and library manager designed for NAS (Network A
 ### Backend
 - **Framework**: ASP.NET Core 8 Web API
 - **Database**: SQLite with Entity Framework Core
+- **AI Integration**: Google Gemini API for intelligent tagging.
 - **Architecture**:
   - `BackgroundService` for async scanning.
   - `ISmbService` for file operations.
@@ -49,6 +61,12 @@ A modern, web-based music player and library manager designed for NAS (Network A
 - **State**: Context API (Auth, Player)
 - **HTTP**: Axios with centralized API service.
 
+## Configuration
+
+To enable AI features, you must configure your Gemini API Key.
+1. Copy `backend/appsettings.template.json` to `backend/appsettings.json`.
+2. Enter your API key(s) in the `Gemini:ApiKeys` array.
+
 ## Deployment (Docker)
 
 Recommended for production usage.
@@ -59,14 +77,17 @@ Recommended for production usage.
    cd WebMusic
    ```
 
-2. **Start with Docker Compose**:
+2. **Configure Secrets**:
+   Ensure `backend/appsettings.json` is created with your keys (see Configuration above).
+
+3. **Start with Docker Compose**:
    ```bash
    docker-compose up -d --build
    ```
    - **Frontend**: `http://localhost:8090`
    - **Backend**: `http://localhost:5080` (Internal use)
 
-3. **Login**:
+4. **Login**:
    - Default credentials: `admin` / `admin`
    - **IMPORTANT**: Go to **Profile** (bottom left) and change your password immediately.
 
