@@ -25,9 +25,10 @@ services:
     volumes:
       - ./data:/app/data
       # Map likely Mac Volumes to Container
-      - /Volumes/PT:/app/PT
-      - /Volumes/DataSync:/app/DataSync
-      - /Volumes/Download:/app/Download
+      # Cross-platform configurable mounts via .env
+      - ${MOUNT_PT:-/Volumes/PT}:/app/PT
+      - ${MOUNT_DATASYNC:-/Volumes/DataSync}:/app/DataSync
+      - ${MOUNT_DOWNLOAD:-/Volumes/Download}:/app/Download
     depends_on:
       - postgres
 
@@ -71,9 +72,10 @@ services:
       # MUST mount the same music data path as backend so it can read files
       - ./data:/app/data
       # Map likely Mac Volumes to Container
-      - /Volumes/PT:/app/PT
-      - /Volumes/DataSync:/app/DataSync
-      - /Volumes/Download:/app/Download 
+      # Cross-platform configurable mounts via .env
+      - ${MOUNT_PT:-/Volumes/PT}:/app/PT
+      - ${MOUNT_DATASYNC:-/Volumes/DataSync}:/app/DataSync
+      - ${MOUNT_DOWNLOAD:-/Volumes/Download}:/app/Download 
     profiles: 
       - ai  # Only start if explicitly requested via --profile ai
 
