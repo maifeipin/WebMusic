@@ -50,6 +50,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       # Build & Push Backend
+      # Build & Push Backend
       - name: Build and push Backend
         uses: docker/build-push-action@v4
         with:
@@ -59,5 +60,18 @@ jobs:
           tags: |
              ${{ env.DOCKERHUB_USERNAME }}/${{ env.APP_NAME }}-backend:${{ github.ref_name }}
              ${{ env.DOCKERHUB_USERNAME }}/${{ env.APP_NAME }}-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Build & Push AI Service
+      - name: Build and push AI Lyrics
+        uses: docker/build-push-action@v4
+        with:
+          context: ./AI/Lyrics
+          file: ./AI/Lyrics/Dockerfile
+          push: true
+          tags: |
+             ${{ env.DOCKERHUB_USERNAME }}/${{ env.APP_NAME }}-ai-lyrics:${{ github.ref_name }}
+             ${{ env.DOCKERHUB_USERNAME }}/${{ env.APP_NAME }}-ai-lyrics:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
