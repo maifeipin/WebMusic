@@ -12,7 +12,7 @@ from smbprotocol.tree import TreeConnect
 from smbprotocol.open import Open, CreateDisposition, FilePipePrinterAccessMask, FileAttributes, ShareAccess, CreateOptions, ImpersonationLevel
 
 # Load environment variables
-load_dotenv(os.path.join(os.path.dirname(__file__), '../../.env'))
+load_dotenv(os.path.join(os.path.dirname(__file__), '../.env'))
 
 DB_HOST = os.getenv("POSTGRES_HOST", "localhost")
 DB_USER = os.getenv("POSTGRES_USER", "postgres")
