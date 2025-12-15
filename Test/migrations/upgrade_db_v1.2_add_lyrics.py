@@ -45,25 +45,27 @@ def upgrade_schema():
         conn = psycopg2.connect(host=host, database=dbname, user=user, password=password)
         cur = conn.cursor()
 
-        # Check if table exists
-        cur.execute("SELECT to_regclass('public.\"Lyrics\"');")
-        if cur.fetchone()[0]:
-            print("Table 'Lyrics' already exists. Skipping.")
-        else:
-            print("Creating table 'Lyrics'...")
+            print("Checking/Creating table 'Lyrics'...")
             # Matches C# Entity definition
+            # Use IF NOT EXISTS to be safe
             cur.execute("""
-                CREATE TABLE "Lyrics" (
+                CREATE TABLE IF NOT EXISTS "Lyrics" (
                     "Id" SERIAL PRIMARY KEY,
                     "MediaFileId" INTEGER NOT NULL REFERENCES "MediaFiles"("Id") ON DELETE CASCADE,
                     "Content" TEXT,
-                    "Language" TEXT,
-                    "Source" TEXT,
-                    "Version" TEXT,
+                    "Language" TEXT DEFAULT 'unknown',
+                    "Source" TEXT DEFAULT 'AI',
+                    "Version" TEXT DEFAULT 'v1',
                     "CreatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
-            print("Table 'Lyrics' created successfully!")
+            print("Table 'Lyrics' ensured.")
+
+            print("Ensuring Index on MediaFileId...")
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS "IX_Lyrics_MediaFileId" ON "Lyrics" ("MediaFileId");
+            """)
+            print("Index ensured.")
 
         conn.commit()
         cur.close()
