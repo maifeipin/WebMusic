@@ -12,11 +12,13 @@ public class LyricsController : ControllerBase
 {
     private readonly LyricsService _lyricsService;
     private readonly BackgroundTaskQueue _queue;
+    private readonly TagService _tagService;
 
-    public LyricsController(LyricsService lyricsService, BackgroundTaskQueue queue)
+    public LyricsController(LyricsService lyricsService, BackgroundTaskQueue queue, TagService tagService)
     {
         _lyricsService = lyricsService;
         _queue = queue;
+        _tagService = tagService;
     }
 
     [HttpGet("{mediaId}")]
@@ -70,6 +72,42 @@ public class LyricsController : ControllerBase
         var batchId = Guid.NewGuid().ToString();
         _queue.Enqueue(new LyricsBatchJob(batchId, request.SongIds, request.Force, request.Language));
         return Ok(new { batchId });
+    }
+
+    /// <summary>
+    /// Uses AI (Gemini) to polish/correct LRC text while preserving timestamps.
+    /// </summary>
+    [HttpPost("optimize")]
+
+    public async Task<IActionResult> OptimizeLyrics([FromBody] OptimizeLyricsRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.LrcContent))
+        {
+            return BadRequest("LRC content is required.");
+        }
+
+        try
+        {
+            var optimizedLrc = await _tagService.PolishLyricsAsync(request.LrcContent);
+            
+            // If MediaId provided, Save it!
+            if (request.MediaId.HasValue && request.MediaId.Value > 0)
+            {
+                await _lyricsService.UpdateLyricsAsync(request.MediaId.Value, optimizedLrc, "Gemini (Polished)", "v2-gemini");
+            }
+
+            return Ok(new { content = optimizedLrc });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    public class OptimizeLyricsRequest
+    {
+        public int? MediaId { get; set; }
+        public string LrcContent { get; set; } = string.Empty;
     }
 }
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { getLyrics, generateLyrics, getAiStatus, type Lyric } from '../services/api';
+import { getLyrics, generateLyrics, getAiStatus, optimizeLyrics, type Lyric } from '../services/api';
 
 interface LyricsPanelProps {
     mediaId: number;
@@ -36,6 +36,7 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
     const [parsedLines, setParsedLines] = useState<LrcLine[]>([]);
     const [loading, setLoading] = useState(false);
     const [generating, setGenerating] = useState(false);
+    const [polishing, setPolishing] = useState(false);
     const [aiAvailable, setAiAvailable] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -85,7 +86,6 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
     };
 
     const checkAi = async () => {
-        // ... (Skipped)
         try {
             const status = await getAiStatus();
             setAiAvailable(status.available);
@@ -108,8 +108,20 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
         }
     };
 
+    const handlePolish = async () => {
+        if (!lyricData?.content) return;
+        setPolishing(true);
+        try {
+            const newContent = await optimizeLyrics(lyricData.content, mediaId);
+            setLyricData({ ...lyricData, content: newContent, source: 'Gemini (Polished)' });
+        } catch (err) {
+            setError("Failed to polish lyrics via Gemini.");
+        } finally {
+            setPolishing(false);
+        }
+    };
+
     // Find active line
-    // findLastIndex polyfill:
     let activeIndex = -1;
     for (let i = parsedLines.length - 1; i >= 0; i--) {
         if (parsedLines[i].time <= currentTime) {
@@ -122,7 +134,19 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
         <div className="fixed inset-y-0 right-0 w-80 md:w-96 bg-gray-900/95 backdrop-blur-xl border-l border-white/10 shadow-2xl z-50 flex flex-col transition-all duration-300">
             {/* Header */}
             <div className="p-4 border-b border-white/10 flex justify-between items-center">
-                <h2 className="text-lg font-bold text-white tracking-wide">Lyrics</h2>
+                <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-bold text-white tracking-wide">Lyrics</h2>
+                    {lyricData && (
+                        <button
+                            onClick={handlePolish}
+                            title="AI Polish (Fix Typos/Punctuation)"
+                            disabled={polishing}
+                            className={`p-1.5 rounded-full bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500 hover:text-white transition ${polishing ? 'animate-pulse' : ''}`}
+                        >
+                            {polishing ? '...' : '✨'}
+                        </button>
+                    )}
+                </div>
                 <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition text-gray-400 hover:text-white">
                     ✕
                 </button>

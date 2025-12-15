@@ -198,12 +198,32 @@ public class LyricsService
 
     }
 
-    // FUTURE: Implement Gemini correction
-    public async Task<Lyric> CorrectLyricsWithGeminiAsync(int lyricId)
+
+    public async Task<Lyric> UpdateLyricsAsync(int mediaId, string newContent, string source, string version)
     {
-        // 1. Get existing lyric
-        // 2. Send to Gemini with prompt "Fix typos and align lines better..."
-        // 3. Save as new version (e.g. v2) or overwrite
-        throw new NotImplementedException("Coming in WebMusic v2.5!");
+        var lyric = await _context.Lyrics.FirstOrDefaultAsync(l => l.MediaFileId == mediaId);
+        if (lyric == null)
+        {
+            lyric = new Lyric
+            {
+                MediaFileId = mediaId,
+                Content = newContent,
+                Source = source,
+                Version = version,
+                Language = "unknown",
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.Lyrics.Add(lyric);
+        }
+        else
+        {
+            lyric.Content = newContent;
+            lyric.Source = source;
+            lyric.Version = version;
+            lyric.CreatedAt = DateTime.UtcNow; 
+        }
+
+        await _context.SaveChangesAsync();
+        return lyric;
     }
 }
