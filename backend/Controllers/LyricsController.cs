@@ -24,12 +24,21 @@ public class LyricsController : ControllerBase
     [HttpGet("{mediaId}")]
     public async Task<IActionResult> GetLyrics(int mediaId)
     {
-        var lyrics = await _lyricsService.GetLyricsAsync(mediaId);
-        if (lyrics == null)
+        var lyric = await _lyricsService.GetLyricsAsync(mediaId);
+        if (lyric == null)
         {
             return NotFound(new { message = "Lyrics not found" });
         }
-        return Ok(lyrics);
+        return Ok(new 
+        {
+            lyric.Id,
+            lyric.Content,
+            lyric.Language,
+            lyric.Source,
+            lyric.Version,
+            Title = lyric.MediaFile?.Title ?? "Unknown Title",
+            Artist = lyric.MediaFile?.Artist ?? "Unknown Artist"
+        });
     }
 
 
@@ -88,7 +97,17 @@ public class LyricsController : ControllerBase
 
         try
         {
-            var optimizedLrc = await _tagService.PolishLyricsAsync(request.LrcContent);
+            string contextInfo = "";
+            if (request.MediaId.HasValue && request.MediaId.Value > 0)
+            {
+                var currentLyric = await _lyricsService.GetLyricsAsync(request.MediaId.Value);
+                if (currentLyric?.MediaFile != null)
+                {
+                    contextInfo = $"Song Title: {currentLyric.MediaFile.Title}, Artist: {currentLyric.MediaFile.Artist}, Album: {currentLyric.MediaFile.Album}";
+                }
+            }
+
+            var optimizedLrc = await _tagService.PolishLyricsAsync(request.LrcContent, contextInfo);
             
             // If MediaId provided, Save it!
             if (request.MediaId.HasValue && request.MediaId.Value > 0)

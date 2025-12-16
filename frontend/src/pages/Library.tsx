@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { usePlayer } from '../context/PlayerContext';
 import { getFiles, getGroups, getSongsByIds } from '../services/api';
-import { Play, Music, Folder, List, Grid, ChevronRight, ChevronDown, ArrowUp, ArrowDown, CheckSquare, Square, X, ListPlus } from 'lucide-react';
+import { Play, Music, Folder, List, Grid, ChevronRight, ChevronDown, ArrowUp, ArrowDown, CheckSquare, Square, X, ListPlus, HardDrive } from 'lucide-react';
 import DirectoryTree from '../components/DirectoryTree';
 import AddToPlaylistModal from '../components/AddToPlaylistModal';
+import { FileManager } from '../components/FileManager';
 
 interface Song {
     id: number;
@@ -56,6 +57,8 @@ export default function Library() {
     const [groups, setGroups] = useState<GroupRow[]>([]);
     const [expandedGroups, setExpandedGroups] = useState<Record<string, Song[]>>({});
     const [expandedState, setExpandedState] = useState<Record<string, boolean>>({});
+
+    const [showFileManager, setShowFileManager] = useState(false);
 
     const { playSong, playQueue } = usePlayer();
 
@@ -337,6 +340,8 @@ export default function Library() {
                             <button onClick={() => setViewMode('flat')} className={`p-2 rounded ${viewMode === 'flat' ? 'bg-gray-700 text-white' : 'text-gray-400'}`} title="List View"><List size={18} /></button>
                             <button onClick={() => setViewMode('group')} className={`p-2 rounded ${viewMode === 'group' ? 'bg-gray-700 text-white' : 'text-gray-400'}`} title="Group View"><Grid size={18} /></button>
                             <button onClick={() => setViewMode('directory')} className={`p-2 rounded ${viewMode === 'directory' ? 'bg-gray-700 text-white' : 'text-gray-400'}`} title="Directory View"><Folder size={18} /></button>
+                            <div className="w-px h-6 bg-gray-700 mx-1"></div>
+                            <button onClick={() => setShowFileManager(true)} className="p-2 rounded text-gray-400 hover:text-white hover:bg-gray-700" title="NAS Manager"><HardDrive size={18} /></button>
                         </div>
 
                         {/* Action Buttons for Selected Items */}
@@ -577,6 +582,11 @@ export default function Library() {
                 songIds={resolvedIds}
                 defaultNewPlaylistName={defaultPlaylistName}
             />
+
+            {/* File Manager Modal */}
+            {showFileManager && (
+                <FileManager onClose={() => setShowFileManager(false)} />
+            )}
         </div>
     );
 

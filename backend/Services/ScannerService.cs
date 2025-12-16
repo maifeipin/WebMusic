@@ -56,53 +56,20 @@ public class ScannerService
 
                 try
                 {
-                    // Optimization: Read metadata directly from SMB stream without downloading full file.
-                    using var stream = _smbService.OpenFile(source, path);
-                    if (stream == null) continue;
-
-                    // custom StreamFileAbstraction
-                    var fileAbstraction = new StreamFileAbstraction(path, stream);
-                    using var tfile = TagLib.File.Create(fileAbstraction);
-                    
-                    var tag = tfile.Tag;
-
-                    // Normalize path to ensure GetDirectoryName works on non-Windows hosts
-                    // SmbService now returns forwards slashes, but we double-ensure here.
-                    string normalizedPath = path.Replace('\\', '/');
-                    string parentPath = Path.GetDirectoryName(normalizedPath) ?? "";
-                    
-                    // Fast Hash: Size + Title + Duration? Or reading first 4k? 
-                    // Let's do Size + Filename for now to allow MVP speed, or implement real partial hash later.
-                    // Actually user asked for HASH. Let's try to read first 4KB.
-                    string fileHash = await ComputePartialHash(stream);
-
-                    var media = new MediaFile
+                    // Call newly extracted method
+                    bool added = await ScanFileAsync(source, path, existingPaths);
+                    if (added)
                     {
-                        FilePath = path,
-                        ParentPath = parentPath,
-                        FileHash = fileHash,
-                        Title = tag.Title ?? Path.GetFileNameWithoutExtension(path),
-                        Artist = tag.FirstPerformer ?? "Unknown Artist",
-                        Album = tag.Album ?? "Unknown Album",
-                        Genre = tag.FirstGenre ?? "Unknown Genre",
-                        Year = (int)tag.Year,
-                        Duration = tfile.Properties.Duration,
-                        SizeBytes = stream.Length, 
-                        ScanSourceId = sourceId,
-                        AddedAt = DateTime.UtcNow
-                    };
-
-                    _context.MediaFiles.Add(media);
-                    count++;
-                    
-                    if (count % 20 == 0) 
-                    {
-                        try { 
-                            await _context.SaveChangesAsync();
-                            _scanState.UpdateProgress(count); // Report progress
-                        }
-                        catch (Exception dbEx) {
-                             _logger.LogError(dbEx, $"DB Batch Save Failed: {dbEx.InnerException?.Message ?? dbEx.Message}");
+                        count++;
+                        if (count % 20 == 0) 
+                        {
+                            try { 
+                                await _context.SaveChangesAsync();
+                                _scanState.UpdateProgress(count); 
+                            }
+                            catch (Exception dbEx) {
+                                 _logger.LogError(dbEx, $"DB Batch Save Failed: {dbEx.InnerException?.Message ?? dbEx.Message}");
+                            }
                         }
                     }
                 }
@@ -126,6 +93,62 @@ public class ScannerService
             return 0;
         }
     }
+
+    public async Task<bool> ScanFileAsync(ScanSource source, string path, HashSet<string>? existingPaths = null)
+    {
+         if (existingPaths != null && existingPaths.Contains(path)) return false;
+
+         // Optimization: Read metadata directly from SMB stream without downloading full file.
+         using var stream = _smbService.OpenFile(source, path);
+         if (stream == null) return false;
+
+         // custom StreamFileAbstraction
+         var fileAbstraction = new StreamFileAbstraction(path, stream);
+         using var tfile = TagLib.File.Create(fileAbstraction);
+         
+         var tag = tfile.Tag;
+
+         string normalizedPath = path.Replace('\\', '/');
+         string parentPath = Path.GetDirectoryName(normalizedPath) ?? "";
+         
+         string fileHash = await ComputePartialHash(stream);
+
+         var media = new MediaFile
+         {
+             FilePath = path,
+             ParentPath = parentPath,
+             FileHash = fileHash,
+             Title = tag.Title ?? Path.GetFileNameWithoutExtension(path),
+             Artist = tag.FirstPerformer ?? "Unknown Artist",
+             Album = tag.Album ?? "Unknown Album",
+             Genre = tag.FirstGenre ?? "Unknown Genre",
+             Year = (int)tag.Year,
+             Duration = tfile.Properties.Duration,
+             SizeBytes = stream.Length, 
+             ScanSourceId = source.Id,
+             AddedAt = DateTime.UtcNow
+         };
+
+         _context.MediaFiles.Add(media);
+         // Note: SaveChanges is not called here for batch performance, 
+         // BUT for single file upload we might want it.
+         // If called from Upload Loop, caller handles save.
+         // If called individually... caller should save.
+         return true;
+    }
+
+    // Overload for single file save (called by Controller)
+    public async Task IndexSingleFileAsync(int sourceId, string path)
+    {
+        var source = await _context.ScanSources
+            .Include(s => s.StorageCredential)
+            .FirstOrDefaultAsync(s => s.Id == sourceId);
+        if (source == null) return;
+        
+        bool added = await ScanFileAsync(source, path);
+        if (added) await _context.SaveChangesAsync();
+    }
+
 
     private async Task<string> ComputePartialHash(Stream stream)
     {

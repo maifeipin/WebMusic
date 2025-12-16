@@ -114,11 +114,12 @@ DO NOT output markdown code blocks, just the raw JSON array.
         return await ExecuteGeminiRequest(requestBody, model);
     }
 
-    public async Task<string> PolishLyricsAsync(string lrcContent, string model = "gemini-2.0-flash-exp")
+    public async Task<string> PolishLyricsAsync(string lrcContent, string contextInfo = "", string model = "gemini-2.0-flash-exp")
     {
-        var systemPrompt = @"
+        var systemPrompt = $@"
 You are a professional lyrics editor.
 Your task is to fix typos, capitalization, punctuation, and remove internal hallucination tags (like 'Subtitles by...') from the provided LRC lyrics.
+[Context]: {contextInfo}
 RULES:
 1. STRICTLY PRESERVE all [mm:ss.xx] timestamps. Do not change the timing.
 2. Maintain the exact line count if possible (only merge lines if they are broken sentences).

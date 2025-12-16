@@ -74,6 +74,8 @@ export interface Lyric {
     content: string; // LRC
     language: string;
     source: string;
+    Title?: string;
+    Artist?: string;
     version: string;
 }
 

@@ -12,6 +12,8 @@ public interface ISmbService
     IEnumerable<string> ListFiles(ScanSource source, string relativePath);
     List<BrowsableItem> ListContents(StorageCredential credential, string path);
     Stream? OpenFile(ScanSource source, string filePath);
+    Stream? OpenWriteFile(ScanSource source, string filePath);
+    bool CreateDirectory(ScanSource source, string dirPath);
     bool TestCredentials(StorageCredential credential);
 }
 
@@ -429,6 +431,51 @@ public class SmbService : ISmbService
         }
         return null;
     }
+
+    public Stream? OpenWriteFile(ScanSource source, string filePath)
+    {
+        if (Connect(source, out var client, out var fileStore))
+        {
+             try 
+             {
+                 return new SmbFileStream(client, fileStore, filePath.Replace('/', '\\'), FileAccess.Write);
+             }
+             catch
+             {
+                 client.Disconnect();
+                 return null;
+             }
+        }
+        return null;
+    }
+
+    public bool CreateDirectory(ScanSource source, string dirPath)
+    {
+        if (Connect(source, out var client, out var fileStore))
+        {
+            try
+            {
+                object handle;
+                string path = dirPath.Replace('/', '\\');
+                var status = fileStore.CreateFile(out handle, out _, path, AccessMask.GENERIC_WRITE, SMBLibrary.FileAttributes.Directory, ShareAccess.None, CreateDisposition.FILE_CREATE, CreateOptions.FILE_DIRECTORY_FILE, null);
+                
+                if (status == NTStatus.STATUS_SUCCESS)
+                {
+                    fileStore.CloseFile(handle);
+                    return true;
+                }
+                // Handle success if exists?
+                if (status == NTStatus.STATUS_OBJECT_NAME_COLLISION) return true;
+                
+                return false;
+            }
+            finally
+            {
+                client.Disconnect();
+            }
+        }
+        return false;
+    }
 }
 
 public class BrowsableItem
@@ -447,23 +494,32 @@ public class SmbFileStream : Stream
     private long _position;
     private long _length;
 
-    public SmbFileStream(ISMBClient client, SMB2FileStore store, string path)
+    private readonly FileAccess _access;
+
+    public SmbFileStream(ISMBClient client, SMB2FileStore store, string path, FileAccess access = FileAccess.Read)
     {
         _client = client;
         _store = store;
-        var status = _store.CreateFile(out _handle, out _, path, AccessMask.GENERIC_READ, SMBLibrary.FileAttributes.Normal, ShareAccess.Read, CreateDisposition.FILE_OPEN, CreateOptions.FILE_NON_DIRECTORY_FILE, null);
-        if (status != NTStatus.STATUS_SUCCESS) throw new FileNotFoundException("SMB CreateFile failed: " + status);
+        _access = access;
         
-        // Get Size
-        // Signature: NTStatus GetFileInformation(out FileInformation result, object handle, FileInformationClass informationClass);
-        _store.GetFileInformation(out FileInformation result, _handle, FileInformationClass.FileStandardInformation);
-        _length = ((FileStandardInformation)result).EndOfFile; 
+        AccessMask am = (access == FileAccess.Read) ? AccessMask.GENERIC_READ : AccessMask.GENERIC_WRITE;
+        CreateDisposition cd = (access == FileAccess.Read) ? CreateDisposition.FILE_OPEN : CreateDisposition.FILE_OVERWRITE_IF;
+
+        var status = _store.CreateFile(out _handle, out _, path, am, SMBLibrary.FileAttributes.Normal, ShareAccess.None, cd, CreateOptions.FILE_NON_DIRECTORY_FILE, null);
+        
+        if (status != NTStatus.STATUS_SUCCESS) throw new FileNotFoundException($"SMB CreateFile failed ({access}): " + status);
+        
+        if (access == FileAccess.Read)
+        {
+            _store.GetFileInformation(out FileInformation result, _handle, FileInformationClass.FileStandardInformation);
+            _length = ((FileStandardInformation)result).EndOfFile; 
+        }
         _position = 0;
     }
 
-    public override bool CanRead => true;
+    public override bool CanRead => _access == FileAccess.Read;
     public override bool CanSeek => true;
-    public override bool CanWrite => false;
+    public override bool CanWrite => _access == FileAccess.Write;
     public override long Length => _length;
 
     public override long Position
@@ -505,7 +561,24 @@ public class SmbFileStream : Stream
     }
 
     public override void SetLength(long value) => throw new NotSupportedException();
-    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    
+    public override void Write(byte[] buffer, int offset, int count) 
+    {
+        if (_access != FileAccess.Write) throw new NotSupportedException("Stream is ReadOnly");
+
+        // Prepare buffer slice if offset > 0
+        byte[] dataToWrite = buffer;
+        if (offset != 0 || count != buffer.Length)
+        {
+             dataToWrite = new byte[count];
+             Array.Copy(buffer, offset, dataToWrite, 0, count);
+        }
+
+        var status = _store.WriteFile(out int written, _handle, _position, dataToWrite);
+        if (status != NTStatus.STATUS_SUCCESS) throw new IOException("SMB Write failed: " + status);
+
+        _position += written;
+    }
 
     protected override void Dispose(bool disposing)
     {

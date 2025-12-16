@@ -26,6 +26,7 @@ public class LyricsService
     public async Task<Lyric?> GetLyricsAsync(int mediaId)
     {
         return await _context.Lyrics
+            .Include(l => l.MediaFile)
             .FirstOrDefaultAsync(l => l.MediaFileId == mediaId);
     }
 

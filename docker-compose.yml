@@ -63,6 +63,6 @@ services:
     ports:
       - "5001:5001"
     environment:
-      - WHISPER_MODEL=tiny
+      - WHISPER_MODEL=${WHISPER_MODEL:-tiny}
     profiles: 
       - ai  # Only start if explicitly requested via --profile ai

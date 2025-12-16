@@ -133,9 +133,15 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
     return (
         <div className="fixed inset-y-0 right-0 w-80 md:w-96 bg-gray-900/95 backdrop-blur-xl border-l border-white/10 shadow-2xl z-50 flex flex-col transition-all duration-300">
             {/* Header */}
-            <div className="p-4 border-b border-white/10 flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-bold text-white tracking-wide">Lyrics</h2>
+            <div className="p-3 border-b border-white/10 flex justify-between items-start bg-gray-900/50">
+                <div className="flex flex-col gap-0.5 overflow-hidden">
+                    <h2 className="text-sm font-bold text-white truncate pr-2">
+                        {lyricData?.Title || 'Lyrics'}
+                    </h2>
+                    {lyricData?.Artist && <span className="text-xs text-gray-400 truncate">{lyricData.Artist}</span>}
+                </div>
+
+                <div className="flex items-center gap-2 flex-shrink-0">
                     {lyricData && (
                         <button
                             onClick={handlePolish}
@@ -146,20 +152,20 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
                             {polishing ? '...' : '✨'}
                         </button>
                     )}
+                    <button onClick={onClose} className="p-1.5 hover:bg-white/10 rounded-full transition text-gray-400 hover:text-white">
+                        ✕
+                    </button>
                 </div>
-                <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition text-gray-400 hover:text-white">
-                    ✕
-                </button>
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4 relative" ref={scrollContainerRef}>
+            <div className="flex-1 overflow-y-auto relative" ref={scrollContainerRef}>
                 {loading ? (
-                    <div className="flex justify-center items-center h-full text-gray-400 animate-pulse">
-                        Checking for lyrics...
+                    <div className="flex justify-center items-center h-full text-gray-400 animate-pulse text-sm">
+                        Loading...
                     </div>
                 ) : lyricData ? (
-                    <div className="space-y-6 py-10">
+                    <div className="space-y-6 py-4 px-2">
                         {parsedLines.length > 0 ? parsedLines.map((line, idx) => (
                             <div
                                 key={idx}
