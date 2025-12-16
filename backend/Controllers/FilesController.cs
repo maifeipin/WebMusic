@@ -91,6 +91,44 @@ public class FilesController : ControllerBase
         }
     }
 
+    [HttpGet("download")]
+    public async Task<IActionResult> Download([FromQuery] int sourceId, [FromQuery] string path)
+    {
+        var source = await _context.ScanSources
+            .Include(s => s.StorageCredential)
+            .FirstOrDefaultAsync(s => s.Id == sourceId);
+        if (source == null) return NotFound("Source not found");
+
+        try
+        {
+            _logger.LogInformation($"Download Request - Source: {source.Name}, Path: {path}");
+            
+            string properPath = GetRelativePathToShare(source, path);
+            var stream = _smbService.OpenFile(source, properPath);
+            
+            if (stream == null) return NotFound("File not found or access denied");
+
+            string fileName = Path.GetFileName(path);
+            string contentType = "application/octet-stream";
+            
+            // Simple Mime guess
+            string ext = Path.GetExtension(fileName).ToLower();
+            if (ext == ".mp3") contentType = "audio/mpeg";
+            else if (ext == ".m4a") contentType = "audio/mp4";
+            else if (ext == ".flac") contentType = "audio/flac";
+            else if (ext == ".jpg") contentType = "image/jpeg";
+            else if (ext == ".png") contentType = "image/png";
+            else if (ext == ".txt" || ext == ".lrc") contentType = "text/plain";
+
+            return File(stream, contentType, fileName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Download Failed");
+            return StatusCode(500, ex.Message);
+        }
+    }
+
     [HttpPost("delete")]
     public async Task<IActionResult> Delete([FromBody] FileOpRequest request)
     {

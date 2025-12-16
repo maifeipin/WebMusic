@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { browseFiles, createDirectory, uploadFile, deleteFile, type FileItem } from '../services/files';
-import { X, Folder, FileText, HardDrive, ArrowLeft, Upload, Plus, Trash2 } from 'lucide-react';
+import { X, Folder, FileText, HardDrive, ArrowLeft, Upload, Plus, Trash2, Download } from 'lucide-react';
 
 interface FileManagerProps {
     onClose: () => void;
 }
 
 export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
-
-
     const [currentPath, setCurrentPath] = useState('');
     const [currentSourceId, setCurrentSourceId] = useState<number | undefined>(undefined);
     const [items, setItems] = useState<FileItem[]>([]);
@@ -23,24 +21,6 @@ export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
     const [history, setHistory] = useState<{ sid: number | undefined, path: string, basePath: string }[]>([]);
 
     const loadRef = useRef(false);
-
-    const handleDelete = async (e: React.MouseEvent, item: FileItem) => {
-        e.stopPropagation(); // Prevent navigation
-        if (!currentSourceId) return;
-
-        const confirmMsg = `Are you sure you want to delete ${item.type} "${item.name}"? This cannot be undone.`;
-        if (window.confirm(confirmMsg)) {
-            try {
-                // item.path is relative to Source Root (returned by backend listing)
-                await deleteFile(currentSourceId, item.path, item.type === 'Directory');
-                // alert("Deleted successfully"); // Optional, maybe too noisy? User asked for confirmation interaction. window.confirm handles the "Ask".
-                loadFiles(currentSourceId, currentPath);
-            } catch (err: any) {
-                console.error(err);
-                alert("Failed to delete item: " + (err.response?.data || err.message));
-            }
-        }
-    };
 
     const loadFiles = async (sid?: number, path: string = '') => {
         setLoading(true);
@@ -75,7 +55,6 @@ export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
             loadFiles(item.sourceId, '');
         } else {
             // Directory
-            // Use path provided by backend which should be relative to Source Root
             loadFiles(currentSourceId, item.path);
         }
     };
@@ -112,15 +91,7 @@ export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
         if (!newFolderName || !currentSourceId) return;
 
         try {
-            // Path logic: currentPath is relative to Source Root.
-            // Mkdir expects path relative to Share (handled by backend now via BaseDir prepending).
-            // But API needs Relative Path (Frontend State).
-            // Actually API needs whatever browse passed?
-            // "path" param in browse is relative to Source.
-            // So mkdir expects relative to Source.
-
             const newPath = currentPath ? `${currentPath}/${newFolderName}` : newFolderName;
-
             await createDirectory(currentSourceId, newPath);
             setNewFolderName('');
             setShowNewFolderInput(false);
@@ -129,6 +100,42 @@ export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
             console.error(err);
             alert("Failed to create folder");
         }
+    };
+
+    const handleDelete = async (e: React.MouseEvent, item: FileItem) => {
+        e.stopPropagation(); // Prevent navigation
+        if (!currentSourceId) return;
+
+        const confirmMsg = `Are you sure you want to delete ${item.type} "${item.name}"? This cannot be undone.`;
+        if (window.confirm(confirmMsg)) {
+            try {
+                await deleteFile(currentSourceId, item.path, item.type === 'Directory');
+                loadFiles(currentSourceId, currentPath);
+            } catch (err: any) {
+                console.error(err);
+                alert("Failed to delete item: " + (err.response?.data || err.message));
+            }
+        }
+    };
+
+    const handleDownload = (e: React.MouseEvent, item: FileItem) => {
+        e.stopPropagation();
+        if (!currentSourceId) return;
+
+        // Construct URL
+        const params = new URLSearchParams();
+        params.append('sourceId', currentSourceId.toString());
+        params.append('path', item.path);
+
+        const url = `/api/files/download?${params.toString()}`;
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = item.name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        link.remove();
     };
 
     return (
@@ -234,14 +241,26 @@ export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
                                         {item.name}
                                     </span>
 
+                                    {/* Action Buttons (Download/Delete) */}
                                     {item.type !== 'Source' && (
-                                        <button
-                                            onClick={(e) => handleDelete(e, item)}
-                                            className="absolute top-2 right-2 p-1.5 bg-red-600/80 hover:bg-red-500 rounded-full text-white opacity-0 group-hover:opacity-100 transition-all scale-90 hover:scale-100 shadow-lg"
-                                            title="Delete"
-                                        >
-                                            <Trash2 size={14} />
-                                        </button>
+                                        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                            {item.type === 'File' && (
+                                                <button
+                                                    onClick={(e) => handleDownload(e, item)}
+                                                    className="p-1.5 bg-blue-600/80 hover:bg-blue-500 rounded-full text-white shadow-lg transform scale-90 hover:scale-100 transition"
+                                                    title="Download"
+                                                >
+                                                    <Download size={14} />
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={(e) => handleDelete(e, item)}
+                                                className="p-1.5 bg-red-600/80 hover:bg-red-500 rounded-full text-white shadow-lg transform scale-90 hover:scale-100 transition"
+                                                title="Delete"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
                             ))}
