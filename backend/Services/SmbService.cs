@@ -423,8 +423,9 @@ public class SmbService : ISmbService
                  // Convert to backslash for SMB
                  return new SmbFileStream(client, fileStore, filePath.Replace('/', '\\'));
              }
-             catch
+             catch (Exception ex)
              {
+                 _logger.LogError($"OpenFile Exception: {ex.Message}");
                  client.Disconnect();
                  return null;
              }
@@ -440,8 +441,9 @@ public class SmbService : ISmbService
              {
                  return new SmbFileStream(client, fileStore, filePath.Replace('/', '\\'), FileAccess.Write);
              }
-             catch
+             catch (Exception ex)
              {
+                 _logger.LogError($"OpenWriteFile Exception: {ex.Message}");
                  client.Disconnect();
                  return null;
              }
@@ -455,19 +457,54 @@ public class SmbService : ISmbService
         {
             try
             {
-                object handle;
+
                 string path = dirPath.Replace('/', '\\');
-                var status = fileStore.CreateFile(out handle, out _, path, AccessMask.GENERIC_WRITE, SMBLibrary.FileAttributes.Directory, ShareAccess.None, CreateDisposition.FILE_CREATE, CreateOptions.FILE_DIRECTORY_FILE, null);
-                
-                if (status == NTStatus.STATUS_SUCCESS)
+                ParseSourcePath(source, out string server, out string share, out _);
+                string basePath = $"smb://{server}/{share}/";
+
+                var parts = path.Split('\\', StringSplitOptions.RemoveEmptyEntries);
+                string currentPath = "";
+
+                foreach (var part in parts)
                 {
-                    fileStore.CloseFile(handle);
-                    return true;
+                    currentPath = string.IsNullOrEmpty(currentPath) ? part : currentPath + "\\" + part;
+                    
+                    object handle;
+                    // First try to OPEN (to check existence). If we use FILE_OPEN_IF, we don't know if we created it.
+                    // But we want to ensure it works. 
+                    // Let's use GENERIC_ALL to ensure we have rights.
+                    
+                    // Try Open First
+                    var status = fileStore.CreateFile(out handle, out _, currentPath, AccessMask.GENERIC_READ, SMBLibrary.FileAttributes.Directory, ShareAccess.Read, CreateDisposition.FILE_OPEN, CreateOptions.FILE_DIRECTORY_FILE, null);
+                    
+                    if (status == NTStatus.STATUS_SUCCESS)
+                    {
+                        // Exists
+                        _logger.LogInformation($"Directory Exists: {basePath}{currentPath}");
+                        fileStore.CloseFile(handle);
+                        continue;
+                    }
+                    
+                    // Not exists (or other error). Try Create.
+                    status = fileStore.CreateFile(out handle, out _, currentPath, AccessMask.GENERIC_ALL, SMBLibrary.FileAttributes.Directory, ShareAccess.None, CreateDisposition.FILE_CREATE, CreateOptions.FILE_DIRECTORY_FILE, null);
+                    
+                    if (status != NTStatus.STATUS_SUCCESS)
+                    {
+                        if (status == NTStatus.STATUS_OBJECT_NAME_COLLISION)
+                        {
+                             _logger.LogInformation($"Directory Exists (Collision): {basePath}{currentPath}");
+                             continue;
+                        }
+                         _logger.LogError($"CreateDirectory Recursive Failed at: {basePath}{currentPath} - Status: {status}");
+                         return false;
+                    }
+                    else
+                    {
+                         _logger.LogInformation($"Directory Created: {basePath}{currentPath}");
+                         fileStore.CloseFile(handle);
+                    }
                 }
-                // Handle success if exists?
-                if (status == NTStatus.STATUS_OBJECT_NAME_COLLISION) return true;
-                
-                return false;
+                return true;
             }
             finally
             {

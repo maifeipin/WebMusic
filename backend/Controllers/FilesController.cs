@@ -35,7 +35,7 @@ public class FilesController : ControllerBase
             var items = sources.Select(s => new {
                 Name = s.Name,
                 Type = "Source",
-                Path = "", // Root
+                Path = s.Path, // Return actual Source Path for display
                 SourceId = s.Id
             }).ToList();
             return Ok(items);
@@ -118,8 +118,10 @@ public class FilesController : ControllerBase
             // Connect(source) parses Source.Path -> updates share.
             // The `dirPath` arg passed to CreateFile is passed AS IS.
             // So we need to pass BaseDir + RequestPath.
+            _logger.LogInformation($"Mkdir Request - Source: {source.Name}, RawPath: {source.Path}, RequestPath: {request.Path}");
             
             string properPath = GetRelativePathToShare(source, request.Path);
+            _logger.LogInformation($"Computed Relative Path to Share: {properPath}");
             
             if (_smbService.CreateDirectory(source, properPath)) return Ok();
             return BadRequest("Failed to create directory");
@@ -152,11 +154,25 @@ public class FilesController : ControllerBase
         _logger.LogInformation($"Uploading to {filePath}...");
 
         using var smbStream = _smbService.OpenWriteFile(source, filePath);
-        if (smbStream == null) return StatusCode(500, "Failed to open SMB stream");
+        if (smbStream == null) 
+        {
+             _logger.LogError($"OpenWriteFile returned null for {filePath}");
+             return StatusCode(500, "Failed to open SMB stream (Null)");
+        }
 
-        // Copy
-        await file.CopyToAsync(smbStream);
-        smbStream.Close();
+        try {
+            // Copy
+            await file.CopyToAsync(smbStream);
+        }
+        catch (Exception ex)
+        {
+             _logger.LogError(ex, $"Upload CopyToAsync Failed: {ex.Message}");
+             return StatusCode(500, $"Upload Failed: {ex.Message}");
+        }
+        finally
+        {
+            smbStream.Close();
+        }
         
         // Smart Indexing
         if (IsMusicFile(file.FileName))
@@ -185,15 +201,22 @@ public class FilesController : ControllerBase
     {
         // For ListContents (Raw SMB)
         string baseUri = source.Path;
-        if (baseUri.StartsWith("smb://")) baseUri = baseUri.Substring(6); // server/share/base
-        
-        // We need share/base/relative
-        var parts = baseUri.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-        // parts[0] is server. 
-        // We need Share/...
-        string sharePath = string.Join("/", parts.Skip(1)); // share/base
-        
-        string full = sharePath;
+        if (baseUri.StartsWith("smb://")) {
+             baseUri = baseUri.Substring(6); // server/share/base
+             var parts = baseUri.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+             // parts[0] is server. 
+             // We need Share/...
+             string sharePath = string.Join("/", parts.Skip(1)); // share/base
+             baseUri = sharePath;
+        }
+        else 
+        {
+             // If "Download", it is share. return as is.
+             // If "Download/Sub", return as is.
+             baseUri = baseUri.Replace('\\', '/');
+        }
+
+        string full = baseUri;
         if (!string.IsNullOrEmpty(relativePath))
         {
              full = string.IsNullOrEmpty(full) ? relativePath : $"{full}/{relativePath}";
@@ -209,6 +232,7 @@ public class FilesController : ControllerBase
         
         string raw = source.Path;
         string baseDir = "";
+        
         if (raw.StartsWith("smb://"))
         {
              var uri = new Uri(raw);
@@ -217,11 +241,23 @@ public class FilesController : ControllerBase
                  baseDir = string.Join("", uri.Segments.Skip(2)).Trim('/');
              }
         }
-        else if (raw.Contains("/"))
+        else
         {
-             var parts = raw.Split('/', 2);
-             if (parts.Length > 1) baseDir = parts[1];
+            // Handle "Share/Dir" format to match SmbService logic
+            // Normalize slashes
+            var norm = raw.Replace('\\', '/');
+            if (norm.Contains('/'))
+            {
+                var parts = norm.Split('/', 2, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length > 1) 
+                {
+                    baseDir = parts[1];
+                }
+            }
         }
+
+        baseDir = baseDir.Replace('\\', '/'); // Ensure forward slash for composition
+
 
         if (string.IsNullOrEmpty(baseDir)) return relativePath;
         if (string.IsNullOrEmpty(relativePath)) return baseDir;
