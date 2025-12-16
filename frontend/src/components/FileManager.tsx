@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { browseFiles, createDirectory, uploadFile, type FileItem } from '../services/files';
-import { X, Folder, FileText, HardDrive, ArrowLeft, Upload, Plus } from 'lucide-react';
+import { browseFiles, createDirectory, uploadFile, deleteFile, type FileItem } from '../services/files';
+import { X, Folder, FileText, HardDrive, ArrowLeft, Upload, Plus, Trash2 } from 'lucide-react';
 
 interface FileManagerProps {
     onClose: () => void;
 }
 
 export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
+
+
     const [currentPath, setCurrentPath] = useState('');
     const [currentSourceId, setCurrentSourceId] = useState<number | undefined>(undefined);
     const [items, setItems] = useState<FileItem[]>([]);
@@ -21,6 +23,24 @@ export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
     const [history, setHistory] = useState<{ sid: number | undefined, path: string, basePath: string }[]>([]);
 
     const loadRef = useRef(false);
+
+    const handleDelete = async (e: React.MouseEvent, item: FileItem) => {
+        e.stopPropagation(); // Prevent navigation
+        if (!currentSourceId) return;
+
+        const confirmMsg = `Are you sure you want to delete ${item.type} "${item.name}"? This cannot be undone.`;
+        if (window.confirm(confirmMsg)) {
+            try {
+                // item.path is relative to Source Root (returned by backend listing)
+                await deleteFile(currentSourceId, item.path, item.type === 'Directory');
+                // alert("Deleted successfully"); // Optional, maybe too noisy? User asked for confirmation interaction. window.confirm handles the "Ask".
+                loadFiles(currentSourceId, currentPath);
+            } catch (err: any) {
+                console.error(err);
+                alert("Failed to delete item: " + (err.response?.data || err.message));
+            }
+        }
+    };
 
     const loadFiles = async (sid?: number, path: string = '') => {
         setLoading(true);
@@ -213,6 +233,16 @@ export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
                                     <span className="text-sm text-gray-300 group-hover:text-white truncate w-full px-1" title={item.name}>
                                         {item.name}
                                     </span>
+
+                                    {item.type !== 'Source' && (
+                                        <button
+                                            onClick={(e) => handleDelete(e, item)}
+                                            className="absolute top-2 right-2 p-1.5 bg-red-600/80 hover:bg-red-500 rounded-full text-white opacity-0 group-hover:opacity-100 transition-all scale-90 hover:scale-100 shadow-lg"
+                                            title="Delete"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    )}
                                 </div>
                             ))}
 

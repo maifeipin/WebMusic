@@ -14,6 +14,7 @@ public interface ISmbService
     Stream? OpenFile(ScanSource source, string filePath);
     Stream? OpenWriteFile(ScanSource source, string filePath);
     bool CreateDirectory(ScanSource source, string dirPath);
+    bool Delete(ScanSource source, string path, bool isDirectory);
     bool TestCredentials(StorageCredential credential);
 }
 
@@ -449,6 +450,63 @@ public class SmbService : ISmbService
              }
         }
         return null;
+    }
+
+    public bool Delete(ScanSource source, string path, bool isDirectory)
+    {
+        if (Connect(source, out var client, out var fileStore))
+        {
+            try
+            {
+                ParseSourcePath(source, out _, out _, out string baseDir);
+                
+                // Combine
+                string targetPath = baseDir;
+                if (!string.IsNullOrEmpty(path))
+                {
+                    string rel = path.Replace('/', '\\');
+                    if (string.IsNullOrEmpty(targetPath)) targetPath = rel;
+                    else targetPath = targetPath + "\\" + rel;
+                }
+                
+                object handle;
+                // OPEN with DELETE access (included in GENERIC_ALL)
+                // Note: To delete a directory, it must be empty usually? SMB pending delete usually handles it if empty.
+                // If not empty, it returns DirectoryNotEmpty.
+                var access = AccessMask.GENERIC_ALL; 
+                var attrs = isDirectory ? SMBLibrary.FileAttributes.Directory : SMBLibrary.FileAttributes.Normal;
+                var createOpt = isDirectory ? CreateOptions.FILE_DIRECTORY_FILE : CreateOptions.FILE_NON_DIRECTORY_FILE;
+                
+                // Try Open
+                var status = fileStore.CreateFile(out handle, out _, targetPath, access, attrs, ShareAccess.None, CreateDisposition.FILE_OPEN, createOpt, null);
+                
+                if (status != NTStatus.STATUS_SUCCESS)
+                {
+                     _logger.LogError($"Delete Open Failed: {targetPath} - {status}");
+                     return false;
+                }
+                
+                // Set Delete Disposition
+                var disposition = new FileDispositionInformation { DeletePending = true };
+                status = fileStore.SetFileInformation(handle, disposition);
+                
+                fileStore.CloseFile(handle); // Delete happens on close
+                
+                if (status != NTStatus.STATUS_SUCCESS)
+                {
+                    _logger.LogError($"Delete SetDisposition Failed: {targetPath} - {status}");
+                    return false;
+                }
+                
+                _logger.LogInformation($"Deleted: {targetPath}");
+                return true;
+            }
+            finally
+            {
+                client.Disconnect();
+            }
+        }
+        return false;
     }
 
     public bool CreateDirectory(ScanSource source, string dirPath)

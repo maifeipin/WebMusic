@@ -38,3 +38,7 @@ export const uploadFile = async (sourceId: number, path: string, file: File, onP
         }
     });
 };
+
+export const deleteFile = async (sourceId: number, path: string, isDirectory: boolean) => {
+    await api.post('/files/delete', { sourceId, path, isDirectory });
+};

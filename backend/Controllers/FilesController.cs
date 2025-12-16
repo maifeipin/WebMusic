@@ -91,6 +91,29 @@ public class FilesController : ControllerBase
         }
     }
 
+    [HttpPost("delete")]
+    public async Task<IActionResult> Delete([FromBody] FileOpRequest request)
+    {
+        var source = await _context.ScanSources
+            .Include(s => s.StorageCredential)
+            .FirstOrDefaultAsync(s => s.Id == request.SourceId);
+        if (source == null) return NotFound("Source not found");
+
+        try
+        {
+             string properPath = GetRelativePathToShare(source, request.Path);
+             _logger.LogInformation($"Delete Request - Source: {source.Name}, RelPath: {request.Path}, FullRel: {properPath}, IsDir: {request.IsDirectory}");
+             
+             if (_smbService.Delete(source, properPath, request.IsDirectory)) return Ok(new { success = true });
+             return BadRequest("Failed to delete item (It might be non-empty or locked)");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Delete Failed");
+            return StatusCode(500, ex.Message);
+        }
+    }
+    
     [HttpPost("mkdir")]
     public async Task<IActionResult> Mkdir([FromBody] FileOpRequest request)
     {
@@ -101,23 +124,6 @@ public class FilesController : ControllerBase
 
         try
         {
-            string fullPath = GetFullPath(source, request.Path);
-            bool success = _smbService.CreateDirectory(source, fullPath); // Using Source overload or Credential?
-            // SmbService.CreateDirectory(ScanSource, path) was creating in Step 2965.
-            // It calls Connect(source) which parses Source path.
-            // Wait, if I pass "Share/Folder/New", Connect(source) tries to connect to Source.Path's share.
-            // If CreateDirectory implementation uses "dirPath" as FULL path on share?
-            // Let's check impl: `fileStore.CreateFile(..., dirPath.Replace('/', '\\'), ...)`
-            // This expects relative path to the Connected Share.
-            // If Source is "smb://server/music", connect goes to "music".
-            // If mkdir path is "Pop/2023", it creates "music/Pop/2023"?
-            // We need to ensure we pass path RELATIVE TO SHARE.
-            
-            // Implementation detail:
-            // SmbService.CreateDirectory calls Connect(source).
-            // Connect(source) parses Source.Path -> updates share.
-            // The `dirPath` arg passed to CreateFile is passed AS IS.
-            // So we need to pass BaseDir + RequestPath.
             _logger.LogInformation($"Mkdir Request - Source: {source.Name}, RawPath: {source.Path}, RequestPath: {request.Path}");
             
             string properPath = GetRelativePathToShare(source, request.Path);
@@ -276,4 +282,5 @@ public class FileOpRequest
 {
     public int SourceId { get; set; }
     public string Path { get; set; } = "";
+    public bool IsDirectory { get; set; } // Added for Delete operation
 }
