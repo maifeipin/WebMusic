@@ -19,6 +19,15 @@ builder.Services.AddControllers(options =>
     // Global exception filter for unified API error responses
     options.Filters.Add<WebMusic.Backend.Filters.GlobalExceptionFilter>();
 });
+
+// Allow large uploads
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = long.MaxValue;
+    options.ValueLengthLimit = int.MaxValue;
+    options.MemoryBufferThreshold = int.MaxValue;
+});
+
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 

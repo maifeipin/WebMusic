@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { browseFiles, createDirectory, uploadFile, deleteFile, type FileItem } from '../services/files';
-import { X, Folder, FileText, HardDrive, ArrowLeft, Upload, Plus, Trash2, Download } from 'lucide-react';
+import { X, Folder, FileText, HardDrive, ArrowLeft, Upload, Plus, Trash2, Download, Share2 } from 'lucide-react';
 
 interface FileManagerProps {
     onClose: () => void;
@@ -115,6 +115,26 @@ export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
                 console.error(err);
                 alert("Failed to delete item: " + (err.response?.data || err.message));
             }
+        }
+    };
+
+    const handleShare = async (e: React.MouseEvent, item: FileItem) => {
+        e.stopPropagation();
+        if (!currentSourceId) return;
+
+        const params = new URLSearchParams();
+        params.append('sourceId', currentSourceId.toString());
+        params.append('path', item.path);
+
+        const relativeUrl = `/api/files/download?${params.toString()}`;
+        const absoluteUrl = `${window.location.origin}${relativeUrl}`;
+
+        try {
+            await navigator.clipboard.writeText(absoluteUrl);
+            alert("Download link copied to clipboard!");
+        } catch (err) {
+            console.error('Failed to copy', err);
+            alert("Failed to copy link");
         }
     };
 
@@ -245,13 +265,22 @@ export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
                                     {item.type !== 'Source' && (
                                         <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
                                             {item.type === 'File' && (
-                                                <button
-                                                    onClick={(e) => handleDownload(e, item)}
-                                                    className="p-1.5 bg-blue-600/80 hover:bg-blue-500 rounded-full text-white shadow-lg transform scale-90 hover:scale-100 transition"
-                                                    title="Download"
-                                                >
-                                                    <Download size={14} />
-                                                </button>
+                                                <>
+                                                    <button
+                                                        onClick={(e) => handleShare(e, item)}
+                                                        className="p-1.5 bg-purple-600/80 hover:bg-purple-500 rounded-full text-white shadow-lg transform scale-90 hover:scale-100 transition"
+                                                        title="Copy Link"
+                                                    >
+                                                        <Share2 size={14} />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => handleDownload(e, item)}
+                                                        className="p-1.5 bg-blue-600/80 hover:bg-blue-500 rounded-full text-white shadow-lg transform scale-90 hover:scale-100 transition"
+                                                        title="Download"
+                                                    >
+                                                        <Download size={14} />
+                                                    </button>
+                                                </>
                                             )}
                                             <button
                                                 onClick={(e) => handleDelete(e, item)}
