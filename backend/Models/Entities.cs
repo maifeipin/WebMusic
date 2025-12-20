@@ -45,6 +45,7 @@ public class MediaFile
     public string Genre { get; set; } = string.Empty;
     public int Year { get; set; }
     public TimeSpan Duration { get; set; }
+    public string? CoverArt { get; set; } // Custom cover art path (SMB path)
     public long SizeBytes { get; set; }
     public string FileHash { get; set; } = string.Empty; // For deduplication (e.g. partial MD5)
     public string ParentPath { get; set; } = string.Empty; // For tree view

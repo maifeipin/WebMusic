@@ -131,7 +131,7 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
     }
 
     return (
-        <div className="fixed inset-y-0 right-0 w-80 md:w-96 bg-gray-900/95 backdrop-blur-xl border-l border-white/10 shadow-2xl z-50 flex flex-col transition-all duration-300">
+        <div className="fixed inset-0 md:inset-auto md:inset-y-0 md:right-0 md:w-96 bg-gray-900/95 backdrop-blur-xl border-l border-white/10 shadow-2xl z-[70] flex flex-col transition-all duration-300">
             {/* Header */}
             <div className="p-3 border-b border-white/10 flex justify-between items-start bg-gray-900/50">
                 <div className="flex flex-col gap-0.5 overflow-hidden">

@@ -157,7 +157,7 @@ export default function CoverPickerModal({ isOpen, onClose, onSelect, currentCov
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-4xl h-[85vh] flex flex-col shadow-2xl animate-fade-in">
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-gray-800">

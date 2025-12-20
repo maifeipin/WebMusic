@@ -180,7 +180,7 @@ public class MediaController : ControllerBase
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(m => new { 
-                m.Id, m.Title, m.Artist, m.Album, m.Genre, m.Duration.TotalSeconds, m.Year, m.FilePath 
+                m.Id, m.Title, m.Artist, m.Album, m.Genre, m.Duration.TotalSeconds, m.Year, m.FilePath, m.CoverArt 
             })
             .ToListAsync();
 
@@ -195,7 +195,7 @@ public class MediaController : ControllerBase
         var songs = await _context.MediaFiles
             .Where(m => ids.Contains(m.Id))
             .Select(m => new { 
-                m.Id, m.Title, m.Artist, m.Album, m.Genre, duration = m.Duration.TotalSeconds, m.Year, m.FilePath 
+                m.Id, m.Title, m.Artist, m.Album, m.Genre, duration = m.Duration.TotalSeconds, m.Year, m.FilePath, m.CoverArt 
             })
             .ToListAsync();
 
@@ -357,7 +357,7 @@ public class MediaController : ControllerBase
             var files = await _context.MediaFiles
                 .Where(m => m.ParentPath.Replace("\\", "/") == dbPath || m.ParentPath.Replace("\\", "/") == targetWithSlash)
                 .OrderBy(m => m.Title)
-                .Select(m => new { Type = "File", m.Id, Name = m.Title, Path = m.FilePath, m.Artist, m.Album, Duration = m.Duration.TotalSeconds })
+                .Select(m => new { Type = "File", m.Id, Name = m.Title, Path = m.FilePath, m.Artist, m.Album, Duration = m.Duration.TotalSeconds, m.CoverArt })
                 .ToListAsync();
 
             var folderList = foldersMap
@@ -370,10 +370,11 @@ public class MediaController : ControllerBase
                     Artist = "", 
                     Album = "", 
                     Duration = 0.0,
-                    Count = kvp.Value
+                    Count = kvp.Value,
+                    CoverArt = (string?)null
                 });
             
-            return Ok( folderList.Concat(files.Select(f => new { f.Type, f.Id, f.Name, f.Path, f.Artist, f.Album, f.Duration, Count = 0 })) );
+            return Ok( folderList.Concat(files.Select(f => new { f.Type, f.Id, f.Name, f.Path, f.Artist, f.Album, f.Duration, Count = 0, f.CoverArt })) );
         }
     }
 
@@ -703,6 +704,8 @@ public class MediaController : ControllerBase
             media.Album = dto.Album;
         if (dto.Genre != null)
             media.Genre = dto.Genre;
+        if (dto.CoverArt != null) // Allow empty string to clear? Assuming null means "no change"
+            media.CoverArt = dto.CoverArt;
 
         await _context.SaveChangesAsync();
 
@@ -711,7 +714,8 @@ public class MediaController : ControllerBase
             media.Title, 
             media.Artist, 
             media.Album, 
-            media.Genre 
+            media.Genre,
+            media.CoverArt 
         });
     }
 
@@ -721,6 +725,7 @@ public class MediaController : ControllerBase
         public string? Artist { get; set; }
         public string? Album { get; set; }
         public string? Genre { get; set; }
+        public string? CoverArt { get; set; }
     }
 
     [HttpGet("directory/ids")]
