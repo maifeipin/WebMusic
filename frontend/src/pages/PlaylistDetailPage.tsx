@@ -19,7 +19,7 @@ interface PlaylistDetail {
             title: string;
             artist: string;
             album: string;
-            duration: string;
+            duration: number;
             filePath: string;
         };
         addedAt: string;
@@ -88,6 +88,11 @@ export default function PlaylistDetailPage() {
         }
     };
 
+    const formatTime = (seconds: number) => {
+        if (!seconds) return '0:00';
+        return `${Math.floor(seconds / 60)}:${(Math.floor(seconds % 60)).toString().padStart(2, '0')}`;
+    };
+
     const handlePlayAll = () => {
         if (!playlist || playlist.songs.length === 0) return;
 
@@ -105,7 +110,7 @@ export default function PlaylistDetailPage() {
             title: item.song.title,
             artist: item.song.artist,
             album: item.song.album,
-            duration: 0,
+            duration: item.song.duration || 0,
             filePath: item.song.filePath,
         })) as any;
 
@@ -308,7 +313,7 @@ export default function PlaylistDetailPage() {
 
             {/* List */}
             <div className="bg-gray-900/50 border border-gray-800/50 rounded-2xl overflow-hidden">
-                <div className="grid grid-cols-[auto_40px_1fr_1fr_100px] gap-4 p-4 border-b border-gray-800 text-sm font-medium text-gray-400 select-none">
+                <div className="grid grid-cols-[auto_40px_1fr_1fr_80px_100px] gap-4 p-4 border-b border-gray-800 text-sm font-medium text-gray-400 select-none">
                     {/* Select All / None Checkbox */}
                     <div
                         className="w-6 cursor-pointer hover:text-blue-400 transition"
@@ -337,6 +342,7 @@ export default function PlaylistDetailPage() {
                     <div>#</div>
                     <div>Title</div>
                     <div>Artist</div>
+                    <div className="text-right">Time</div>
                     <div className="text-right">Added</div>
                 </div>
 
@@ -352,7 +358,7 @@ export default function PlaylistDetailPage() {
                         <div
                             key={item.id}
                             onClick={() => toggleSelect(item.song.id)}
-                            className={`grid grid-cols-[auto_40px_1fr_1fr_100px] gap-4 p-4 items-center hover:bg-white/5 transition cursor-pointer group ${isSelected ? 'bg-blue-500/10' : ''}`}
+                            className={`grid grid-cols-[auto_40px_1fr_1fr_80px_100px] gap-4 p-4 items-center hover:bg-white/5 transition cursor-pointer group ${isSelected ? 'bg-blue-500/10' : ''}`}
                         >
                             <div className="w-6 text-gray-500 group-hover:text-blue-500">
                                 {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
@@ -360,6 +366,7 @@ export default function PlaylistDetailPage() {
                             <div className="text-gray-500 font-mono text-sm">{i + 1}</div>
                             <div className="font-medium text-gray-200 truncate">{item.song.title}</div>
                             <div className="text-gray-400 truncate">{item.song.artist}</div>
+                            <div className="text-right text-gray-500 font-mono text-sm">{formatTime(item.song.duration)}</div>
                             <div className="text-right text-gray-500 text-sm">{formatRelativeTime(item.addedAt)}</div>
                         </div>
                     );
@@ -485,4 +492,3 @@ export default function PlaylistDetailPage() {
         </div>
     );
 }
-

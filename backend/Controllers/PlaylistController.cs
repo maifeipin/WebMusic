@@ -97,7 +97,14 @@ public class PlaylistController : ControllerBase
             .Select(ps => new 
             {
                 ps.Id, // PlaylistSong ID (for removal)
-                Song = ps.MediaFile,
+                Song = new {
+                    ps.MediaFile.Id,
+                    ps.MediaFile.Title,
+                    ps.MediaFile.Artist,
+                    ps.MediaFile.Album,
+                    ps.MediaFile.FilePath,
+                    Duration = ps.MediaFile.Duration.TotalSeconds
+                },
                 ps.AddedAt
             });
 

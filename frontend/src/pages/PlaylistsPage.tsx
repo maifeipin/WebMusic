@@ -65,7 +65,7 @@ export default function PlaylistsPage() {
                 title: s.song.title,
                 artist: s.song.artist,
                 album: s.song.album,
-                duration: 0,
+                duration: s.song.duration || 0, // Use real duration
                 filePath: s.song.filePath
             }));
             playQueue(songs, 0);
