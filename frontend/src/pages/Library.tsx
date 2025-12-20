@@ -86,7 +86,10 @@ export default function Library() {
             }
         }
         const res = await getFiles(params);
-        setSongs(res.data.files);
+        setSongs(res.data.files.map((f: any) => ({
+            ...f,
+            duration: f.totalSeconds || f.duration || 0
+        })));
         setTotal(res.data.total);
         setSelectedIds([]);
     };
@@ -105,7 +108,8 @@ export default function Library() {
     const fetchGroupContent = async (groupKey: string) => {
         if (expandedGroups[groupKey]) return;
         const res = await getFiles({ page: 1, pageSize: 1000, filterBy: groupBy, filterValue: groupKey });
-        setExpandedGroups(prev => ({ ...prev, [groupKey]: res.data.files }));
+        const mappedFiles = res.data.files.map((f: any) => ({ ...f, duration: f.totalSeconds || f.duration || 0 }));
+        setExpandedGroups(prev => ({ ...prev, [groupKey]: mappedFiles }));
     };
 
     const sortedSongs = [...songs].sort((a, b) => {
@@ -493,8 +497,8 @@ export default function Library() {
                 {viewMode === 'group' && groupBy === 'directory' && (
                     <div className="bg-gray-900/30 rounded-lg p-4 min-h-[500px] border border-gray-800">
                         <DirectoryTree
-                            onPlayFile={(id, title, artist, album) => {
-                                handlePlay({ id, title, artist, album, genre: '', year: 0, duration: 0, filePath: '' });
+                            onPlayFile={(id, title, artist, album, path, duration) => {
+                                handlePlay({ id, title, artist, album, genre: '', year: 0, duration: duration || 0, filePath: path });
                             }}
                             onPlayFolder={(path) => handlePlayFolder(path)}
                             selectedPaths={selectedPaths}
@@ -562,8 +566,8 @@ export default function Library() {
                 {viewMode === 'directory' && (
                     <div className="bg-gray-900/30 rounded-lg p-4 min-h-[500px] border border-gray-800">
                         <DirectoryTree
-                            onPlayFile={(id, title, artist, album) => {
-                                handlePlay({ id, title, artist, album, genre: '', year: 0, duration: 0, filePath: '' });
+                            onPlayFile={(id, title, artist, album, path, duration) => {
+                                handlePlay({ id, title, artist, album, genre: '', year: 0, duration: duration || 0, filePath: path });
                             }}
                             onPlayFolder={(path) => handlePlayFolder(path)}
                             selectedPaths={selectedPaths}

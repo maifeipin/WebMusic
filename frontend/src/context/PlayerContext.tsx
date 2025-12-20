@@ -212,7 +212,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const ext = song.filePath ? song.filePath.split('.').pop()?.toLowerCase() : '';
         const supported = ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'];
         // Known problematic: wma, ape, dsf
-        const webSafe = supported.includes(ext || '');
+        // Force transcode if duration is missing/zero (fixes problematic files)
+        const webSafe = supported.includes(ext || '') && (song.duration > 0);
 
         if (webSafe) {
             setTranscodeMode(false);

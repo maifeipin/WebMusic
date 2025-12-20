@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using WebMusic.Backend.Data;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http.Features;
 
 // Disable default claim mapping to keep claims as 'sub', 'name', etc.
 System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
@@ -11,6 +12,9 @@ System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler.DefaultInboundClaimTypeM
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Suppress verbose EF Core SQL logs in console
+builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
 
 // Add services to the container.
 

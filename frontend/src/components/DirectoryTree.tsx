@@ -10,10 +10,11 @@ export interface DirectoryItem {
     artist?: string;
     album?: string;
     count?: number; // Number of songs in folder
+    duration?: number;
 }
 
 interface DirectoryTreeProps {
-    onPlayFile: (id: number, title: string, artist: string, album: string) => void;
+    onPlayFile: (id: number, title: string, artist: string, album: string, path?: string, duration?: number) => void;
     onPlayFolder: (path: string) => void;
     // Selection Props
     selectedPaths: string[];
@@ -71,7 +72,7 @@ export default function DirectoryTree({
 
 interface TreeNodeProps {
     item: DirectoryItem;
-    onPlayFile: (id: number, title: string, artist: string, album: string) => void;
+    onPlayFile: (id: number, title: string, artist: string, album: string, path?: string, duration?: number) => void;
     onPlayFolder: (path: string) => void;
     selectedPaths: string[];
     selectedFileIds: number[];
@@ -122,7 +123,7 @@ function TreeNode({
     const handlePlayClick = (e: React.MouseEvent) => {
         e.stopPropagation();
         if (item.type === 'File') {
-            onPlayFile(item.id, item.name, item.artist || '', item.album || '');
+            onPlayFile(item.id, item.name, item.artist || '', item.album || '', item.path, item.duration);
         } else {
             onPlayFolder(currentPath);
         }

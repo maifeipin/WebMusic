@@ -357,7 +357,7 @@ public class MediaController : ControllerBase
             var files = await _context.MediaFiles
                 .Where(m => m.ParentPath.Replace("\\", "/") == dbPath || m.ParentPath.Replace("\\", "/") == targetWithSlash)
                 .OrderBy(m => m.Title)
-                .Select(m => new { Type = "File", m.Id, Name = m.Title, Path = m.FilePath, m.Artist, m.Album })
+                .Select(m => new { Type = "File", m.Id, Name = m.Title, Path = m.FilePath, m.Artist, m.Album, Duration = m.Duration.TotalSeconds })
                 .ToListAsync();
 
             var folderList = foldersMap
@@ -369,10 +369,11 @@ public class MediaController : ControllerBase
                     Path = (cleanPath + "/" + kvp.Key), // Frontend Path includes Share
                     Artist = "", 
                     Album = "", 
-                    Count = kvp.Value 
+                    Duration = 0.0,
+                    Count = kvp.Value
                 });
             
-            return Ok( folderList.Concat(files.Select(f => new { f.Type, f.Id, f.Name, f.Path, f.Artist, f.Album, Count = 0 })) );
+            return Ok( folderList.Concat(files.Select(f => new { f.Type, f.Id, f.Name, f.Path, f.Artist, f.Album, f.Duration, Count = 0 })) );
         }
     }
 
@@ -397,7 +398,7 @@ public class MediaController : ControllerBase
 
         if (transcode)
         {
-            return StartTranscode(stream, startTime);
+            return StartTranscode(stream, startTime, media.Id);
         }
         
         return File(stream, contentType, enableRangeProcessing: true);
@@ -453,13 +454,13 @@ public class MediaController : ControllerBase
 
         if (transcode)
         {
-            return StartTranscode(stream);
+            return StartTranscode(stream, 0, media.Id);
         }
 
         return File(stream, contentType, enableRangeProcessing: true);
     }
 
-    private IActionResult StartTranscode(Stream inputStream, double startTime = 0)
+    private IActionResult StartTranscode(Stream inputStream, double startTime = 0, int? mediaId = null)
     {
         try 
         {
@@ -474,6 +475,7 @@ public class MediaController : ControllerBase
                      Arguments = $"{seekArg}-i pipe:0 -f mp3 -ab 192k -", 
                      RedirectStandardInput = true,
                      RedirectStandardOutput = true,
+                     RedirectStandardError = true, // Capture Logs
                      UseShellExecute = false,
                      CreateNoWindow = true
                  }
@@ -481,7 +483,7 @@ public class MediaController : ControllerBase
              
              process.Start();
              
-             // Background Task: Pump data from SMB Stream -> FFmpeg Stdin
+             // Background Task 1: Pump data from SMB Stream -> FFmpeg Stdin
              _ = Task.Run(async () => 
              {
                  using (inputStream) // Ensure SMB resources are freed
@@ -493,15 +495,128 @@ public class MediaController : ControllerBase
                      } 
                      catch(Exception ex) 
                      {
+                         // If process is disposed/dead, input stream write will fail. This is expected if ffmpeg exits early.
+                         if (ex is ObjectDisposedException || ex.Message.Contains("disposed")) 
+                         {
+                             return;
+                         }
+
                          Console.WriteLine($"Transcode Input Error: {ex.Message}");
-                         // If writing fails (e.g. ffmpeg died), we just stop.
                          try { process.Kill(); } catch {} 
                      }
                  }
              });
+
+             // Background Task 2: Parse Duration from Stderr (Metadata & Progress)
+             if (mediaId.HasValue)
+             {
+                 _ = Task.Run(async () => 
+                 {
+                     try
+                     {
+                        // Use a separate scope for DB operations in background thread
+                        using var scope = HttpContext.RequestServices.CreateScope();
+                        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                        
+                        // Check if we actually need to update duration
+                        var media = await dbContext.MediaFiles.FindAsync(mediaId.Value);
+                        if (media != null && media.Duration.TotalSeconds < 1)
+                        {
+                            var buffer = new char[4096];
+                            int read;
+                            string pending = "";
+                            TimeSpan? capturedDuration = null;
+                            TimeSpan? lastProgressTime = null;
+
+                            // Read stderr
+                            while ((read = await process.StandardError.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                            {
+                                var chunk = new string(buffer, 0, read);
+                                pending += chunk;
+                                
+                                // TEMP DEBUG REMOVED
+                                // Console.WriteLine($"[FFmpeg-Debug] Chunk: {chunk}");
+
+                                // 1. Try Find "Duration: HH:MM:SS" (Header)
+                                if (capturedDuration == null)
+                                {
+                                    var matchDur = System.Text.RegularExpressions.Regex.Match(pending, @"Duration:\s(\d{2}):(\d{2}):(\d{2})\.(\d{2})");
+                                    if (matchDur.Success)
+                                    {
+                                        var h = int.Parse(matchDur.Groups[1].Value);
+                                        var m = int.Parse(matchDur.Groups[2].Value);
+                                        var s = int.Parse(matchDur.Groups[3].Value);
+                                        var ms = int.Parse(matchDur.Groups[4].Value);
+                                        capturedDuration = new TimeSpan(0, h, m, s, ms * 10);
+                                        // Console.WriteLine($"[FFmpeg] Found Header Duration: {capturedDuration}");
+                                    }
+                                }
+
+                                // 2. Try Track "time=HH:MM:SS.ss" (Progress)
+                                // Regex matches last occurrence in chunk
+                                var matchesTime = System.Text.RegularExpressions.Regex.Matches(chunk, @"time=(\d{2}):(\d{2}):(\d{2})\.(\d{2})");
+                                if (matchesTime.Count > 0)
+                                {
+                                    var lastMatch = matchesTime[matchesTime.Count - 1];
+                                    var h = int.Parse(lastMatch.Groups[1].Value);
+                                    var m = int.Parse(lastMatch.Groups[2].Value);
+                                    var s = int.Parse(lastMatch.Groups[3].Value);
+                                    var ms = int.Parse(lastMatch.Groups[4].Value);
+                                    lastProgressTime = new TimeSpan(0, h, m, s, ms * 10);
+                                }
+
+                                // Avoid infinite string growth
+                                if (pending.Length > 2000) pending = pending.Substring(pending.Length - 1000);
+                            }
+
+                            // Process finished reading stderr (means FFmpeg is closing/closed)
+                            await process.WaitForExitAsync();
+                            
+                            // Check exit code safely
+                            int exitCode = -1;
+                            try { exitCode = process.ExitCode; } catch {}
+
+                            // Only update if success (ExitCode 0) to ensure we have the FULL duration
+                            if (exitCode == 0)
+                            {
+                                var finalDuration = capturedDuration ?? lastProgressTime;
+                                
+                                if (finalDuration.HasValue && finalDuration.Value.TotalSeconds > 0)
+                                {
+                                     Console.WriteLine($"[FFmpeg] Process Complete. Updating Duration for ID {mediaId} to: {finalDuration.Value}");
+                                     media.Duration = finalDuration.Value;
+                                     await dbContext.SaveChangesAsync();
+                                }
+                                else
+                                {
+                                     Console.WriteLine($"[FFmpeg] Finished but no valid duration found.");
+                                }
+                            }
+                            else
+                            {
+                                Console.WriteLine($"[FFmpeg] Process exited with code {exitCode}. Duration not updated.");
+                            }
+                        }
+                     }
+                     catch (Exception ex)
+                     {
+                         Console.WriteLine($"[FFmpeg] Metadata Parse Error: {ex.Message}");
+                     }
+                     finally 
+                     {
+                         // Ensure we clean up the process object finally
+                         try { process.Dispose(); } catch {}
+                     }
+                 });
+             }
+             else 
+             {
+                  // If we are not parsing metadata, we still need to dispose process eventually.
+                  // But ProcessCleanupStream kills it. We can leave it to GC or handle better?
+                  // For now, let's just let it be killed.
+             }
              
              // Wrap the stdout in a custom stream that Kills the process when Disposed/Closed
-             // This ensures that if the HTTP Client disconnects, we clean up the process.
              var wrapperStream = new ProcessCleanupStream(process.StandardOutput.BaseStream, process);
              
              return File(wrapperStream, "audio/mpeg", enableRangeProcessing: false);
@@ -549,10 +664,10 @@ public class MediaController : ControllerBase
                 {
                     if (!_process.HasExited) 
                     {
-                        Console.WriteLine("Killing FFmpeg process (Stream Disposed)");
+                        // Console.WriteLine("Killing FFmpeg process (Stream Disposed)");
                         _process.Kill(); 
                     }
-                    _process.Dispose();
+                    // REMOVED: _process.Dispose(); -> Moved to Parsing Task or GC
                 } 
                 catch {}
             }

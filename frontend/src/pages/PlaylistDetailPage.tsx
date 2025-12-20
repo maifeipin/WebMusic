@@ -20,6 +20,7 @@ interface PlaylistDetail {
             artist: string;
             album: string;
             duration: string;
+            filePath: string;
         };
         addedAt: string;
     }[];
@@ -105,6 +106,7 @@ export default function PlaylistDetailPage() {
             artist: item.song.artist,
             album: item.song.album,
             duration: 0,
+            filePath: item.song.filePath,
         })) as any;
 
         playQueue(queue, 0);
