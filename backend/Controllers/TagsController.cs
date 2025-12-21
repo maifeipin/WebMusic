@@ -44,8 +44,9 @@ public class TagsController : ControllerBase
     [HttpPost("suggest")]
     public async Task<IActionResult> SuggestTags([FromBody] SuggestRequest req)
     {
+        if (!User.IsInRole("Admin")) return StatusCode(403, "AI Features are restricted to the Administrator.");
+        
         var userId = GetUserId();
-        if (userId != 1) return StatusCode(403, "AI Features are restricted to the Administrator.");
 
         if (req.SongIds.Count == 0) return BadRequest("No songs selected");
         if (req.SongIds.Count > 50) return BadRequest("Batch size limit is 50");
@@ -92,8 +93,7 @@ public class TagsController : ControllerBase
     [HttpPost("batch/start")]
     public IActionResult StartBatch([FromBody] SuggestRequest req)
     {
-        var userId = GetUserId();
-        if (userId != 1) return StatusCode(403, "AI Features are restricted to the Administrator.");
+        if (!User.IsInRole("Admin")) return StatusCode(403, "AI Features are restricted to the Administrator.");
 
         if (req.SongIds.Count == 0) return BadRequest("No songs selected");
         if (req.SongIds.Count > 1000) return BadRequest("Batch size limit is 1000. Please select fewer songs.");

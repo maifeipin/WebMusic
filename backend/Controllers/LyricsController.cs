@@ -70,7 +70,7 @@ public class LyricsController : ControllerBase
     [HttpPost("{mediaId}/generate")]
     public async Task<IActionResult> GenerateLyrics(int mediaId, [FromQuery] string lang = null, [FromQuery] string prompt = null)
     {
-        if (GetUserId() != 1) return StatusCode(403, "AI Features are restricted to the Administrator.");
+        if (!User.IsInRole("Admin")) return StatusCode(403, "AI Features are restricted to the Administrator.");
         try
         {
             var lyrics = await _lyricsService.GenerateLyricsAsync(mediaId, lang, prompt);
@@ -89,7 +89,7 @@ public class LyricsController : ControllerBase
     [HttpPost("batch/start")]
     public IActionResult StartBatch([FromBody] BatchLyricsRequest request)
     {
-        if (GetUserId() != 1) return StatusCode(403, "AI Features are restricted to the Administrator.");
+        if (!User.IsInRole("Admin")) return StatusCode(403, "AI Features are restricted to the Administrator.");
         
         var batchId = Guid.NewGuid().ToString();
         _queue.Enqueue(new LyricsBatchJob(batchId, request.SongIds, request.Force, request.Language));
@@ -103,7 +103,7 @@ public class LyricsController : ControllerBase
 
     public async Task<IActionResult> OptimizeLyrics([FromBody] OptimizeLyricsRequest request)
     {
-        if (GetUserId() != 1) return StatusCode(403, "AI Features are restricted to the Administrator.");
+        if (!User.IsInRole("Admin")) return StatusCode(403, "AI Features are restricted to the Administrator.");
 
         if (string.IsNullOrWhiteSpace(request.LrcContent))
         {
