@@ -273,7 +273,7 @@ export default function GlobalPlayer() {
                     </div>
 
                     {/* Mobile Mini Player */}
-                    <div className={`md:hidden fixed z-[50] w-full transition-all duration-300 ${mobileExpand ? 'bottom-0 translate-y-full opacity-0 pointer-events-none' : 'bottom-[20px] opacity-100'}`} style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+                    <div className={`md:hidden fixed z-[50] w-full transition-all duration-300 ${mobileExpand ? 'bottom-0 translate-y-full opacity-0 pointer-events-none' : 'bottom-[70px] opacity-100'}`} style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
                         <div onClick={() => setMobileExpand(true)} className="mx-4 h-14 bg-gray-900/80 backdrop-blur-xl border border-white/5 rounded-full flex items-center px-2 pr-4 shadow-lg active:scale-95 transition-all cursor-pointer">
                             {/* Spin Record Art */}
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center border border-white/10 shrink-0 relative overflow-hidden ${isPlaying ? 'animate-spin-slow' : ''}`}>

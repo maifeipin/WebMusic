@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { Home, Music, Settings, LogOut, Heart, Clock, User, ListMusic, DatabaseBackup, Tag } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import GlobalPlayer from './GlobalPlayer';
+import MobileTabBar from './MobileTabBar';
 import ChangePasswordModal from './ChangePasswordModal';
 
 import { Logo } from './Logo';
@@ -117,11 +118,12 @@ export const Layout = () => {
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 overflow-y-auto relative pt-16 md:pt-0 transition-all duration-300 bg-black">
+            <main className="flex-1 overflow-y-auto relative pt-16 md:pt-0 pb-36 md:pb-0 transition-all duration-300 bg-black">
                 <Outlet />
             </main>
 
             <GlobalPlayer />
+            <MobileTabBar />
 
             {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
         </div>
