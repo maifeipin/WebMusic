@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using WebMusic.Backend.Data;
 using WebMusic.Backend.Models;
 using WebMusic.Backend.Services;
+using System.Security.Claims;
 
 namespace WebMusic.Backend.Controllers;
 
@@ -25,10 +26,24 @@ public class ScanController : ControllerBase
         _smbService = smbService;
     }
 
+    private int GetUserId()
+    {
+        var claim = User.FindFirst("sub") ?? User.FindFirst(ClaimTypes.NameIdentifier);
+        if (claim != null && int.TryParse(claim.Value, out int userId))
+        {
+            return userId;
+        }
+        return 0;
+    }
+
     [HttpGet("sources")]
     public async Task<ActionResult<IEnumerable<ScanSource>>> GetSources()
     {
-        return await _context.ScanSources.ToListAsync();
+        var userId = GetUserId();
+        // Return Public (UserId is null) OR Owned (UserId == current)
+        return await _context.ScanSources
+            .Where(s => s.UserId == null || s.UserId == userId)
+            .ToListAsync();
     }
 
     [HttpPost("sources")]
@@ -66,6 +81,14 @@ public class ScanController : ControllerBase
             }
         }
 
+        // Auto-assign owner
+        var userId = GetUserId();
+        // If user is Admin (Id=1), maybe allow creating public sources? 
+        // For now, let's make all created sources Private by default to ensure isolation.
+        // Or if you want Admin's sources to be Public by default, check userId == 1.
+        // Let's stick to Private for All for consistency in this "Multi-User" phase.
+        source.UserId = userId;
+
         _context.ScanSources.Add(source);
         await _context.SaveChangesAsync();
         return CreatedAtAction(nameof(GetSources), new { id = source.Id }, source);
@@ -91,8 +114,15 @@ public class ScanController : ControllerBase
     [HttpDelete("sources/{id}")]
     public async Task<IActionResult> DeleteSource(int id)
     {
+        var userId = GetUserId();
         var source = await _context.ScanSources.FindAsync(id);
+        
         if (source == null) return NotFound();
+        
+        // Security Check: Can only delete own source. 
+        // If source.UserId is NULL (Public), only Admin (Id=1) should delete it? (Assuming Admin is 1)
+        if (source.UserId != null && source.UserId != userId) return Forbid();
+        if (source.UserId == null && userId != 1) return Forbid(); // Only admin deletes public sources
         
         _context.ScanSources.Remove(source);
         await _context.SaveChangesAsync();
@@ -102,7 +132,12 @@ public class ScanController : ControllerBase
     [HttpPost("start/{id}")]
     public async Task<IActionResult> StartScan(int id)
     {
-        if (!await _context.ScanSources.AnyAsync(s => s.Id == id)) return NotFound();
+        var userId = GetUserId();
+        var source = await _context.ScanSources.FindAsync(id);
+        if (source == null) return NotFound();
+        
+        // Check access
+        if (source.UserId != null && source.UserId != userId) return Forbid();
 
         _queue.Enqueue(new ScanJob(id, false));
         

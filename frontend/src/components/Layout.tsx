@@ -10,7 +10,7 @@ import { Logo } from './Logo';
 import { Menu, X } from 'lucide-react';
 
 export const Layout = () => {
-    const { logout } = useAuth();
+    const { logout, username } = useAuth();
     const navigate = useNavigate();
     const [showPasswordModal, setShowPasswordModal] = useState(false);
 
@@ -93,7 +93,7 @@ export const Layout = () => {
                         title="Profile"
                     >
                         <User size={20} />
-                        {!isCollapsed && <span>Profile</span>}
+                        {!isCollapsed && <span className="truncate max-w-[120px]">{username || 'Profile'}</span>}
                     </button>
 
                     <NavLink

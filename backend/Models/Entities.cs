@@ -19,6 +19,10 @@ public class StorageCredential
     public string ProviderType { get; set; } = "SMB"; // SMB, WANPAN, GDRIVE
     public string Host { get; set; } = string.Empty; // IP or Domain
     public string AuthData { get; set; } = "{}"; // JSON blob
+
+    public int? UserId { get; set; }
+    [JsonIgnore]
+    public User? User { get; set; }
 }
 
 public class ScanSource
@@ -32,6 +36,10 @@ public class ScanSource
     // Credentials
     public int? StorageCredentialId { get; set; }
     public StorageCredential? StorageCredential { get; set; }
+
+    public int? UserId { get; set; }
+    [JsonIgnore]
+    public User? User { get; set; }
 }
 
 public class MediaFile

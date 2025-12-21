@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using WebMusic.Backend.Data;
 using WebMusic.Backend.Models;
+using System.Security.Claims;
 
 namespace WebMusic.Backend.Controllers;
 
@@ -18,15 +19,31 @@ public class CredentialsController : ControllerBase
         _context = context;
     }
 
+    private int GetUserId()
+    {
+        var claim = User.FindFirst("sub") ?? User.FindFirst(ClaimTypes.NameIdentifier);
+        if (claim != null && int.TryParse(claim.Value, out int userId))
+        {
+            return userId;
+        }
+        return 0;
+    }
+
     [HttpGet]
     public async Task<ActionResult<IEnumerable<StorageCredential>>> GetCredentials()
     {
-        return await _context.StorageCredentials.ToListAsync();
+        var userId = GetUserId();
+        // Return only OWNED credentials (+ perhaps admin shared 1-18 if we wanted, but sticking to STRICT isolation for credentials is safer)
+        // Let's allow seeing UserId=NULL as "System Credentials" and UserId=current for "My Credentials"
+        return await _context.StorageCredentials
+            .Where(c => c.UserId == null || c.UserId == userId)
+            .ToListAsync();
     }
 
     [HttpPost]
     public async Task<ActionResult<StorageCredential>> AddCredential(StorageCredential credential)
     {
+        credential.UserId = GetUserId();
         _context.StorageCredentials.Add(credential);
         await _context.SaveChangesAsync();
         return CreatedAtAction(nameof(GetCredentials), new { id = credential.Id }, credential);
@@ -37,6 +54,10 @@ public class CredentialsController : ControllerBase
     {
         var cred = await _context.StorageCredentials.FindAsync(id);
         if (cred == null) return NotFound();
+        
+        var userId = GetUserId();
+        if (cred.UserId != null && cred.UserId != userId) return Forbid();
+        if (cred.UserId == null && userId != 1) return Forbid(); // Only admin deletes public creds
         
         _context.StorageCredentials.Remove(cred);
         await _context.SaveChangesAsync();

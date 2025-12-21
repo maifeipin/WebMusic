@@ -1,8 +1,12 @@
 # WebMusic
 
-A modern, web-based music player and library manager designed for NAS (Network Attached Storage) and SMB shares. Built with .NET 8 (Backend) and React + Vite (Frontend).
+A modern, **Multi-User** web-based music player and library manager designed for NAS (Network Attached Storage) and SMB shares. Built with .NET 8 (Backend) and React + Vite (Frontend).
 
 **Live Demo**: [https://music.maifeipin.com/sources](https://music.maifeipin.com/sources)
+> **Public Demo Account**:  
+> Username: `demo`  
+> Password: `demo123`  
+> *Note: This account is isolated in a private environment and cannot access other users' data.*
 
 ## Features
 
@@ -14,6 +18,10 @@ A modern, web-based music player and library manager designed for NAS (Network A
   ![Connection Manager](docs/screenshots/sources.png)
 - **Background Scanning**: Asynchronous scanning pipeline with real-time status updates, capable of handling large libraries without timeout.
 - **Deduplication**: Intelligent handling of physical files to prevent duplicate library entries across multiple shares.
+- **Multi-Tenant Architecture** (New in v2.7.0):
+    - **Physical Data Isolation**: Each user can configure their own private SMB Sources and Credentials.
+    - **Shared vs Private**: Admins can expose Public Libraries, while users keep their personal NAS shares private.
+    - **Secure Credentials**: Storage credentials are encrypted and owned strictly by the creator.
 
 ### AI Tag Manager 🤖
 - **Intelligent Metadata Cleanup**: Use **Google Gemini AI** models (Flash 2.0/1.5) to automatically analyze filenames and suggest accurate Artist/Title tags.

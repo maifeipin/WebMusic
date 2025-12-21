@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using WebMusic.Backend.Data;
 using WebMusic.Backend.Services;
 using WebMusic.Backend.Models;
+using System.Security.Claims;
 using System.IO;
 
 namespace WebMusic.Backend.Controllers;
@@ -24,6 +25,16 @@ public class MediaController : ControllerBase
         _smbService = smbService;
         _pathResolver = pathResolver;
         _dataService = dataService;
+    }
+
+    private int GetUserId()
+    {
+        var claim = User.FindFirst("sub") ?? User.FindFirst(ClaimTypes.NameIdentifier);
+        if (claim != null && int.TryParse(claim.Value, out int userId))
+        {
+            return userId;
+        }
+        return 0;
     }
 
     // ... (GetFiles and others remain unchanged, skipping to DeleteMedia)
@@ -59,7 +70,17 @@ public class MediaController : ControllerBase
         [FromQuery] bool recursive = false,
         [FromQuery] List<string>? criteria = null)
     {
-        var query = _context.MediaFiles.AsQueryable();
+        var userId = GetUserId();
+
+        // Robust Filtering: Get Allowed Source IDs first
+        var allowedSourceIds = await _context.ScanSources
+            .Where(s => s.UserId == null || s.UserId == userId)
+            .Select(s => s.Id)
+            .ToListAsync();
+
+        var query = _context.MediaFiles
+            .Where(m => allowedSourceIds.Contains(m.ScanSourceId))
+            .AsQueryable();
 
         // Path Filtering (Directory Playback) - Using PathResolver for consistent path handling
         if (!string.IsNullOrEmpty(path))
@@ -192,8 +213,15 @@ public class MediaController : ControllerBase
     {
         if (ids == null || ids.Count == 0) return Ok(new List<object>());
 
+        var userId = GetUserId();
+        var allowedSourceIds = await _context.ScanSources
+            .Where(s => s.UserId == null || s.UserId == userId)
+            .Select(s => s.Id)
+            .ToListAsync();
+
         var songs = await _context.MediaFiles
             .Where(m => ids.Contains(m.Id))
+            .Where(m => allowedSourceIds.Contains(m.ScanSourceId))
             .Select(m => new { 
                 m.Id, m.Title, m.Artist, m.Album, m.Genre, duration = m.Duration.TotalSeconds, m.Year, m.FilePath, m.CoverArt 
             })
@@ -212,7 +240,15 @@ public class MediaController : ControllerBase
     public async Task<IActionResult> GetGroups([FromQuery] string groupBy)
     {
         // Returns list of unique values for a column + count
-        var query = _context.MediaFiles.AsQueryable();
+        var userId = GetUserId();
+        var allowedSourceIds = await _context.ScanSources
+            .Where(s => s.UserId == null || s.UserId == userId)
+            .Select(s => s.Id)
+            .ToListAsync();
+
+        var query = _context.MediaFiles
+            .Where(m => allowedSourceIds.Contains(m.ScanSourceId))
+            .AsQueryable();
         
         // This dynamic grouping is limited in EF Core without raw SQL or expression trees.
         // For MVP, simple switch is safest.
@@ -262,12 +298,15 @@ public class MediaController : ControllerBase
     [HttpGet("directory")]
     public async Task<IActionResult> GetDirectory([FromQuery] string? path = "")
     {
+        var userId = GetUserId();
         var cleanPath = _pathResolver.NormalizePath(path);
 
         if (string.IsNullOrEmpty(cleanPath))
         {
             // Root Level: Return Configured Sources as "Roots"
+            // Filter Sources by User
             var sources = await _context.ScanSources
+                .Where(s => s.UserId == null || s.UserId == userId)
                 .Select(s => new { s.Id, s.Name, s.Path })
                 .ToListAsync();
                 
@@ -295,12 +334,22 @@ public class MediaController : ControllerBase
         else
         {
             // Sub-Folder Level: Find children using PathResolver
-            var sources = await _context.ScanSources.ToListAsync();
+            // Filter sources first for resolver
+            var sources = await _context.ScanSources
+                .Where(s => s.UserId == null || s.UserId == userId)
+                .ToListAsync();
             var resolved = _pathResolver.ResolveFrontendToDbPath(path, sources);
             var dbPath = resolved.DbPath;
             
-            // 1. Folders: In-Memory aggregation
-            var query = _context.MediaFiles.AsQueryable();
+            var allowedSourceIds = await _context.ScanSources
+                .Where(s => s.UserId == null || s.UserId == userId)
+                .Select(s => s.Id)
+                .ToListAsync();
+
+            var query = _context.MediaFiles
+                .Where(m => allowedSourceIds.Contains(m.ScanSourceId))
+                .AsQueryable();
+            
             if (!string.IsNullOrEmpty(dbPath))
             {
                 query = query.Where(m => m.ParentPath.Contains(dbPath) || m.ParentPath.Replace("\\", "/").Contains(dbPath));
@@ -355,6 +404,8 @@ public class MediaController : ControllerBase
             if (string.IsNullOrEmpty(dbPath)) targetWithSlash = "/"; // Edge case
             
             var files = await _context.MediaFiles
+                .Include(m => m.ScanSource)
+                .Where(m => m.ScanSource != null && (m.ScanSource.UserId == null || m.ScanSource.UserId == userId))
                 .Where(m => m.ParentPath.Replace("\\", "/") == dbPath || m.ParentPath.Replace("\\", "/") == targetWithSlash)
                 .OrderBy(m => m.Title)
                 .Select(m => new { Type = "File", m.Id, Name = m.Title, Path = m.FilePath, m.Artist, m.Album, Duration = m.Duration.TotalSeconds, m.CoverArt })
@@ -679,10 +730,19 @@ public class MediaController : ControllerBase
     [HttpGet("stats")]
     public async Task<IActionResult> GetStats()
     {
-        var totalSongs = await _context.MediaFiles.CountAsync();
-        var totalArtists = await _context.MediaFiles.Select(m => m.Artist).Distinct().CountAsync();
-        var totalAlbums = await _context.MediaFiles.Select(m => m.Album).Distinct().CountAsync();
-        var totalSize = await _context.MediaFiles.SumAsync(m => m.SizeBytes);
+        var userId = GetUserId();
+        var allowedSourceIds = await _context.ScanSources
+            .Where(s => s.UserId == null || s.UserId == userId)
+            .Select(s => s.Id)
+            .ToListAsync();
+
+        var query = _context.MediaFiles
+            .Where(m => allowedSourceIds.Contains(m.ScanSourceId));
+
+        var totalSongs = await query.CountAsync();
+        var totalArtists = await query.Select(m => m.Artist).Distinct().CountAsync();
+        var totalAlbums = await query.Select(m => m.Album).Distinct().CountAsync();
+        var totalSize = await query.SumAsync(m => m.SizeBytes);
         
         return Ok(new { totalSongs, totalArtists, totalAlbums, totalSize });
     }
@@ -693,8 +753,18 @@ public class MediaController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateMedia(int id, [FromBody] UpdateMediaDto dto)
     {
-        var media = await _context.MediaFiles.FindAsync(id);
+        var userId = GetUserId();
+        var media = await _context.MediaFiles
+            .Include(m => m.ScanSource)
+            .FirstOrDefaultAsync(m => m.Id == id); // Need to include Source to check permission
+            
         if (media == null) return NotFound();
+        
+        // Security Check
+        if (media.ScanSource != null)
+        {
+             if (media.ScanSource.UserId != null && media.ScanSource.UserId != userId) return Forbid();
+        }
 
         if (!string.IsNullOrEmpty(dto.Title))
             media.Title = dto.Title;
