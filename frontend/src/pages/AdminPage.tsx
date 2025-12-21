@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { getUsers, adminResetPassword } from '../services/api';
+import { getUsers, adminResetPassword, createUser, deleteUser } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { Shield, Key, User } from 'lucide-react';
+import { Shield, Key, User, Plus, Trash2 } from 'lucide-react';
 
 export default function AdminPage() {
     const { username } = useAuth();
@@ -34,6 +34,32 @@ export default function AdminPage() {
         }
     };
 
+    const handleCreate = async () => {
+        const username = prompt("Enter new username:");
+        if (!username) return;
+        const password = prompt("Enter password for new user:");
+        if (!password) return;
+
+        try {
+            await createUser({ username, password });
+            const updated = await getUsers();
+            setUsers(updated);
+        } catch (e: any) {
+            alert("Failed to create user: " + (e.response?.data || e.message));
+        }
+    };
+
+    const handleDelete = async (id: number, username: string) => {
+        if (!confirm(`Are you sure you want to delete user '${username}'? This will also delete their playlists and history.`)) return;
+
+        try {
+            await deleteUser(id);
+            setUsers(users.filter(u => u.id !== id));
+        } catch (e: any) {
+            alert("Failed to delete user: " + (e.response?.data || e.message));
+        }
+    };
+
     if (!isAdmin) {
         return (
             <div className="h-full flex items-center justify-center text-gray-500">
@@ -56,9 +82,17 @@ export default function AdminPage() {
             </header>
 
             <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 max-w-2xl">
-                <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                    <User size={20} /> User Management
-                </h2>
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        <User size={20} /> User Management
+                    </h2>
+                    <button
+                        onClick={handleCreate}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-bold transition"
+                    >
+                        <Plus size={16} /> Add User
+                    </button>
+                </div>
 
                 {loading ? (
                     <div className="text-gray-500 text-sm">Loading users...</div>
@@ -78,12 +112,24 @@ export default function AdminPage() {
                                         <div className="text-xs text-gray-500">ID: {u.id}</div>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => handleReset(u.id, u.username)}
-                                    className="px-3 py-1.5 bg-gray-700 hover:bg-red-600 hover:text-white text-gray-300 rounded-lg text-xs font-bold transition flex items-center gap-1"
-                                >
-                                    <Key size={14} /> Reset
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => handleReset(u.id, u.username)}
+                                        className="px-3 py-1.5 bg-gray-700 hover:bg-yellow-600 hover:text-white text-gray-300 rounded-lg text-xs font-bold transition flex items-center gap-1"
+                                        title="Reset Password"
+                                    >
+                                        <Key size={14} /> Reset
+                                    </button>
+                                    {u.id !== 1 && (
+                                        <button
+                                            onClick={() => handleDelete(u.id, u.username)}
+                                            className="p-1.5 bg-gray-700 hover:bg-red-600 hover:text-white text-gray-300 rounded-lg transition"
+                                            title="Delete User"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         ))}
                     </div>

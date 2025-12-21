@@ -97,5 +97,7 @@ export const applyTags = (updates: any[]) => api.post('/tags/apply', updates);
 // User Management (Admin)
 export const getUsers = () => api.get<{ id: number; username: string }[]>('/users').then(r => r.data);
 export const adminResetPassword = (id: number, newPassword: string) => api.post(`/users/${id}/reset-password`, { newPassword });
+export const createUser = (data: any) => api.post('/users', data);
+export const deleteUser = (id: number) => api.delete(`/users/${id}`);
 
 export default api;
