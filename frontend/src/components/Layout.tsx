@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Home, Music, Settings, LogOut, Heart, Clock, User, ListMusic, DatabaseBackup, Tag } from 'lucide-react';
+import { Home, Music, Settings, LogOut, Heart, Clock, User, ListMusic, DatabaseBackup, Tag, Shield } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import GlobalPlayer from './GlobalPlayer';
 import MobileTabBar from './MobileTabBar';
@@ -11,6 +11,7 @@ import { Menu, X } from 'lucide-react';
 
 export const Layout = () => {
     const { logout, username } = useAuth();
+    const isAdmin = username === 'admin';
     const navigate = useNavigate();
     const [showPasswordModal, setShowPasswordModal] = useState(false);
 
@@ -79,6 +80,7 @@ export const Layout = () => {
                     <NavItem to="/favorites" icon={<Heart size={20} />} label="Favorites" collapsed={isCollapsed} />
                     <NavItem to="/history" icon={<Clock size={20} />} label="History" collapsed={isCollapsed} />
                     <NavItem to="/tags" icon={<Tag size={20} />} label="AI Studio" collapsed={isCollapsed} />
+                    {isAdmin && <NavItem to="/admin" icon={<Shield size={20} />} label="Admin" collapsed={isCollapsed} />}
                     <NavItem to="/sources" icon={<Settings size={20} />} label="Sources" collapsed={isCollapsed} />
                 </nav>
 
