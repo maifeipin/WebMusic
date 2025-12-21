@@ -24,6 +24,16 @@ public class TagsController : ControllerBase
         _queue = queue;
     }
 
+    private int GetUserId()
+    {
+        var claim = User.FindFirst("sub") ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+        if (claim != null && int.TryParse(claim.Value, out int userId))
+        {
+            return userId;
+        }
+        return 0;
+    }
+
     public class SuggestRequest
     {
         public List<int> SongIds { get; set; } = new();
@@ -34,6 +44,9 @@ public class TagsController : ControllerBase
     [HttpPost("suggest")]
     public async Task<IActionResult> SuggestTags([FromBody] SuggestRequest req)
     {
+        var userId = GetUserId();
+        if (userId != 1) return StatusCode(403, "AI Features are restricted to the Administrator.");
+
         if (req.SongIds.Count == 0) return BadRequest("No songs selected");
         if (req.SongIds.Count > 50) return BadRequest("Batch size limit is 50");
 
@@ -79,6 +92,9 @@ public class TagsController : ControllerBase
     [HttpPost("batch/start")]
     public IActionResult StartBatch([FromBody] SuggestRequest req)
     {
+        var userId = GetUserId();
+        if (userId != 1) return StatusCode(403, "AI Features are restricted to the Administrator.");
+
         if (req.SongIds.Count == 0) return BadRequest("No songs selected");
         if (req.SongIds.Count > 1000) return BadRequest("Batch size limit is 1000. Please select fewer songs.");
         
@@ -113,8 +129,14 @@ public class TagsController : ControllerBase
     {
         if (updates == null || updates.Count == 0) return Ok(0);
 
+        var userId = GetUserId();
         var ids = updates.Select(u => u.Id).ToList();
-        var songs = await _context.MediaFiles.Where(m => ids.Contains(m.Id)).ToListAsync();
+        
+        // Load with Source to check ownership
+        var songs = await _context.MediaFiles
+            .Include(m => m.ScanSource)
+            .Where(m => ids.Contains(m.Id))
+            .ToListAsync();
 
         int applied = 0;
         foreach (var update in updates)
@@ -122,6 +144,11 @@ public class TagsController : ControllerBase
             var song = songs.FirstOrDefault(s => s.Id == update.Id);
             if (song != null)
             {
+                // Security Check: Only update own songs
+                if (song.ScanSource != null && song.ScanSource.UserId != null && song.ScanSource.UserId != userId) 
+                {
+                    continue; // Skip silently or log warning
+                }
                 // Only update if not empty, or business rule?
                 // For now, trust the AI/User explicit accept
                 song.Title = update.Title;

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Filter, Save, Trash2, X, Folder, CheckSquare, Square, RefreshCw, Zap, Sparkles, RotateCcw, Mic } from 'lucide-react';
 import { api, suggestTags, applyTags, deleteMedia, startBatch, getBatchStatus, startLyricsBatch } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 
 interface Song {
     id: number;
@@ -32,6 +33,9 @@ const PROMPT_TEMPLATES: Record<string, string> = {
 };
 
 export default function BatchProcessor() {
+    const { username } = useAuth();
+    const isAdmin = username === 'admin';
+
     const [candidates, setCandidates] = useState<Song[]>([]);
     const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
     const [criteria, setCriteria] = useState<string[]>([]);
@@ -409,20 +413,20 @@ export default function BatchProcessor() {
                         <div className="flex flex-col gap-2 w-24">
                             <button
                                 onClick={handleGenerate}
-                                disabled={selectedIds.size === 0 || selectedIds.size > 50 || processing}
+                                disabled={selectedIds.size === 0 || selectedIds.size > 50 || processing || !isAdmin}
                                 className="flex-1 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-lg font-bold flex flex-col items-center justify-center gap-1 transition text-xs disabled:cursor-not-allowed group/preview"
-                                title={selectedIds.size > 50 ? "Limit 50 for preview. Use Auto Batch for more." : "Preview changes (Diff View)"}
+                                title={!isAdmin ? "AI Features are restricted to Admin." : (selectedIds.size > 50 ? "Limit 50 for preview. Use Auto Batch for more." : "Preview changes (Diff View)")}
                             >
                                 {processing ? <div className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" /> : <Sparkles size={20} />}
-                                {processing ? 'Thinking' : 'Preview'}
+                                {processing ? 'Thinking' : (!isAdmin ? 'Restricted' : 'Preview')}
                             </button>
                             <button
                                 onClick={handleStartBatch}
-                                disabled={selectedIds.size === 0 || processing}
+                                disabled={selectedIds.size === 0 || processing || !isAdmin}
                                 className="h-8 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-lg font-bold flex items-center justify-center gap-1 transition text-xs"
-                                title="Auto-process in background (Up to 1000 items)"
+                                title={!isAdmin ? "AI Features are restricted to Admin." : "Auto-process in background (Up to 1000 items)"}
                             >
-                                <Zap size={14} /> Auto Tag
+                                <Zap size={14} /> {!isAdmin ? 'Restricted' : 'Auto Tag'}
                             </button>
                         </div>
                     </div>
@@ -451,11 +455,11 @@ export default function BatchProcessor() {
 
                         <button
                             onClick={handleLyricsBatch}
-                            disabled={selectedIds.size === 0 || processing}
+                            disabled={selectedIds.size === 0 || processing || !isAdmin}
                             className="w-24 h-8 bg-pink-600 hover:bg-pink-500 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-lg font-bold flex items-center justify-center gap-1 transition text-xs"
-                            title="Generate Lyrics via Whisper"
+                            title={!isAdmin ? "AI Features are restricted to Admin." : "Generate Lyrics via Whisper"}
                         >
-                            <Mic size={14} /> Scan
+                            <Mic size={14} /> {!isAdmin ? 'Restricted' : 'Scan'}
                         </button>
                     </div>
                     {selectedIds.size > 50 && (
