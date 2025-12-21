@@ -147,6 +147,12 @@ app.UseCors("AllowAll");
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Optional: API Logging Middleware (Configurable)
+if (app.Configuration.GetValue<bool>("EnableApiRequestLogging"))
+{
+    app.UseMiddleware<WebMusic.Backend.Middleware.ApiLoggingMiddleware>();
+}
+
 app.MapControllers();
 
 // Check for FFmpeg presence
