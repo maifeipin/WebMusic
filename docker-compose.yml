@@ -23,6 +23,8 @@ services:
       - Gemini__ApiKeys__2=${GEMINI_API_KEY_3}
       # Internal or External AI Service URL
       - AiLyricsUrl=${AI_LYRICS_URL:-http://webmusic-ai-lyrics:5001}
+      # Audit Logging
+      - EnableApiRequestLogging=${ENABLE_API_LOGGING:-true}
     ports:
       - "5080:8080"
     volumes:
