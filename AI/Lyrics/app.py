@@ -76,7 +76,7 @@ def download_smb_file(cfg: SmbConfig, local_path: str):
         file_open.create(ImpersonationLevel.Impersonation,
                          FilePipePrinterAccessMask.GENERIC_READ, 
                          FileAttributes.FILE_ATTRIBUTE_NORMAL, 
-                         ShareAccess.FILE_SHARE_READ,
+                         ShareAccess.FILE_SHARE_READ | ShareAccess.FILE_SHARE_WRITE | ShareAccess.FILE_SHARE_DELETE,
                          CreateDisposition.FILE_OPEN, 
                          CreateOptions.FILE_NON_DIRECTORY_FILE)
         try:
