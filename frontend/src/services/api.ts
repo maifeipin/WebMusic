@@ -12,6 +12,21 @@ api.interceptors.request.use((config: any) => {
     return config;
 });
 
+// Response Interceptor for 401 handling
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response && error.response.status === 401) {
+            // Token expired or invalid
+            localStorage.removeItem('token');
+            if (window.location.pathname !== '/login') {
+                window.location.href = '/login';
+            }
+        }
+        return Promise.reject(error);
+    }
+);
+
 export const login = (username: string, password: string) => api.post('/auth/login', { username, password });
 export const changePassword = (data: any) => api.post('/auth/change-password', data);
 export const getStats = () => api.get('/media/stats');
