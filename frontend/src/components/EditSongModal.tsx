@@ -102,20 +102,45 @@ export default function EditSongModal({ isOpen, onClose, song, onSaved }: EditSo
         return null;
     };
 
-    const handleAutoFill = (nSong: NeteaseSong) => {
-        setTitle(nSong.name);
+    const handleAutoFill = async (nSong: NeteaseSong) => {
+        if (!neteasePluginId) return;
 
+        // 1. Optimistic Fill (Instant)
+        setTitle(nSong.name);
         const artistName = (nSong.artists || nSong.ar || []).map(a => a.name).join(', ');
         setArtist(artistName);
-
         const albumObj = nSong.album || nSong.al;
         if (albumObj) {
             setAlbum(albumObj.name);
         }
 
-        const bestPic = getImageUrl(nSong);
-        if (bestPic) {
-            setCoverArt(bestPic);
+        // Use cached/fallback image immediately
+        const fallbackPic = getImageUrl(nSong);
+        if (fallbackPic) setCoverArt(fallbackPic);
+
+        // 2. Fetch Detail for HD Cover Art
+        const tempBtn = document.getElementById(`autofill-${nSong.id}`) as HTMLButtonElement;
+        if (tempBtn) {
+            tempBtn.disabled = true;
+            tempBtn.innerText = '...';
+        }
+
+        try {
+            const res = await api.get(`/plugins/${neteasePluginId}/proxy/song/detail?ids=${nSong.id}`);
+            if (res.data && res.data.songs && res.data.songs.length > 0) {
+                const detail = res.data.songs[0];
+                const detailAlbum = detail.al || detail.album;
+                if (detailAlbum && detailAlbum.picUrl) {
+                    setCoverArt(detailAlbum.picUrl);
+                }
+            }
+        } catch (e) {
+            console.error("Failed to fetch detail", e);
+        } finally {
+            if (tempBtn) {
+                tempBtn.disabled = false;
+                tempBtn.innerText = 'Auto Fill';
+            }
         }
     };
 
@@ -328,8 +353,9 @@ export default function EditSongModal({ isOpen, onClose, song, onSaved }: EditSo
                                                     </div>
                                                 </div>
                                                 <button
+                                                    id={`autofill-${res.id}`}
                                                     onClick={() => handleAutoFill(res)}
-                                                    className="px-3 py-1.5 bg-blue-600/10 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-600/20 hover:border-blue-600 rounded text-xs font-medium transition whitespace-nowrap"
+                                                    className="px-3 py-1.5 bg-blue-600/10 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-600/20 hover:border-blue-600 rounded text-xs font-medium transition whitespace-nowrap disabled:opacity-50"
                                                 >
                                                     Auto Fill
                                                 </button>
