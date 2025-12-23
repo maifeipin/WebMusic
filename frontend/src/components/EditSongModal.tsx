@@ -99,6 +99,8 @@ export default function EditSongModal({ isOpen, onClose, song, onSaved }: EditSo
         if (albumObj) {
             setAlbum(albumObj.name);
             if (albumObj.picUrl) {
+                // Remove params if present to store clean URL, or keep them if needed for sizing
+                // Netease URLs usually don't have params by default unless added.
                 setCoverArt(albumObj.picUrl);
             }
         }
@@ -147,7 +149,7 @@ export default function EditSongModal({ isOpen, onClose, song, onSaved }: EditSo
     return (
         <>
             <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-                <div className={`bg-gray-900 border border-gray-800 rounded-2xl w-full shadow-2xl animate-fade-in flex flex-col max-h-[90vh] ${hasPlugin ? 'max-w-4xl' : 'max-w-md'}`}>
+                <div className={`bg-gray-900 border border-gray-800 rounded-2xl w-full shadow-2xl animate-fade-in flex flex-col max-h-[90vh] ${hasPlugin ? 'max-w-5xl md:w-[90vw]' : 'max-w-md'}`}>
 
                     {/* Header */}
                     <div className="flex items-center justify-between p-4 border-b border-gray-800 flex-shrink-0">
@@ -164,7 +166,7 @@ export default function EditSongModal({ isOpen, onClose, song, onSaved }: EditSo
                     <div className={`flex flex-1 overflow-hidden ${hasPlugin ? 'flex-col md:flex-row' : ''}`}>
 
                         {/* LEFT: Form */}
-                        <div className="flex-1 p-4 overflow-y-auto custom-scrollbar space-y-4">
+                        <div className={`p-6 overflow-y-auto custom-scrollbar space-y-6 ${hasPlugin ? 'md:w-1/2 border-r border-gray-800' : 'w-full'}`}>
                             {error && (
                                 <div className="p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 text-sm">
                                     {error}
@@ -172,8 +174,8 @@ export default function EditSongModal({ isOpen, onClose, song, onSaved }: EditSo
                             )}
 
                             {/* Cover Art Section */}
-                            <div className="flex items-center gap-4 p-3 bg-gray-800/50 rounded-xl border border-gray-700/50">
-                                <div className="w-20 h-20 bg-gray-800 rounded-lg flex items-center justify-center overflow-hidden border border-gray-700 flex-shrink-0 relative group">
+                            <div className="flex items-center gap-5 p-4 bg-gray-800/30 rounded-xl border border-gray-700/50">
+                                <div className="w-24 h-24 bg-gray-900 rounded-lg flex items-center justify-center overflow-hidden border border-gray-700 flex-shrink-0 relative group shadow-inner">
                                     {coverArt ? (
                                         <SmbImage
                                             smbPath={coverArt}
@@ -182,23 +184,25 @@ export default function EditSongModal({ isOpen, onClose, song, onSaved }: EditSo
                                             fallbackClassName="text-gray-600"
                                         />
                                     ) : (
-                                        <ImageIcon size={24} className="text-gray-600" />
+                                        <ImageIcon size={32} className="text-gray-700" />
                                     )}
                                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center pointer-events-none">
-                                        <span className="text-xs text-white">Change</span>
+                                        <span className="text-xs text-white font-medium bg-black/50 px-2 py-1 rounded">Change</span>
                                     </div>
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                    <label className="block text-xs text-gray-400 mb-1 uppercase tracking-wider font-semibold">Cover Art</label>
-                                    <div className="text-xs text-gray-300 truncate mb-2" title={coverArt}>
-                                        {coverArt ? (coverArt.startsWith('http') ? 'Online Image' : coverArt) : 'No cover set'}
+                                <div className="flex-1 min-w-0 space-y-2">
+                                    <div>
+                                        <label className="block text-xs text-gray-400 uppercase tracking-wider font-bold mb-0.5">Cover Art Source</label>
+                                        <div className="text-xs text-gray-300 truncate font-mono bg-black/30 px-2 py-1 rounded border border-gray-800" title={coverArt}>
+                                            {coverArt ? (coverArt.startsWith('http') ? '🌐 Online URL' : '📁 Local: ' + coverArt) : 'No cover set'}
+                                        </div>
                                     </div>
                                     <button
                                         onClick={() => setIsCoverPickerOpen(true)}
-                                        className="px-3 py-1.5 text-xs bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition flex items-center gap-1.5 w-fit"
+                                        className="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 hover:text-white text-gray-300 rounded-lg transition flex items-center gap-2 border border-gray-700"
                                     >
                                         <ImageIcon size={14} />
-                                        Local File...
+                                        Browse Local Files...
                                     </button>
                                 </div>
                             </div>
@@ -210,7 +214,8 @@ export default function EditSongModal({ isOpen, onClose, song, onSaved }: EditSo
                                         type="text"
                                         value={title}
                                         onChange={(e) => setTitle(e.target.value)}
-                                        className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 transition"
+                                        className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition text-white placeholder-gray-600"
+                                        placeholder="Song Title"
                                     />
                                 </div>
                                 <div>
@@ -219,7 +224,8 @@ export default function EditSongModal({ isOpen, onClose, song, onSaved }: EditSo
                                         type="text"
                                         value={artist}
                                         onChange={(e) => setArtist(e.target.value)}
-                                        className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 transition"
+                                        className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition text-white placeholder-gray-600"
+                                        placeholder="Artist Name"
                                     />
                                 </div>
                                 <div>
@@ -228,7 +234,8 @@ export default function EditSongModal({ isOpen, onClose, song, onSaved }: EditSo
                                         type="text"
                                         value={album}
                                         onChange={(e) => setAlbum(e.target.value)}
-                                        className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 transition"
+                                        className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition text-white placeholder-gray-600"
+                                        placeholder="Album Name"
                                     />
                                 </div>
                                 <div>
@@ -241,7 +248,8 @@ export default function EditSongModal({ isOpen, onClose, song, onSaved }: EditSo
                                         type="text"
                                         value={genre}
                                         onChange={(e) => setGenre(e.target.value)}
-                                        className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 transition"
+                                        className="w-full bg-black/50 border border-gray-700 rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition text-white placeholder-gray-600"
+                                        placeholder="Genre"
                                     />
                                 </div>
                             </div>
@@ -249,55 +257,73 @@ export default function EditSongModal({ isOpen, onClose, song, onSaved }: EditSo
 
                         {/* RIGHT: Netease Match (Only if plugin exists) */}
                         {hasPlugin && (
-                            <div className="flex-1 border-t md:border-t-0 md:border-l border-gray-800 flex flex-col bg-black/20">
-                                <div className="p-3 border-b border-gray-800 bg-gray-900/50">
-                                    <div className="bg-red-900/20 text-red-500 text-xs font-bold px-2 py-1 rounded w-fit mb-2 flex items-center gap-1">
-                                        <Disc size={12} /> NETEASE MATCH
+                            <div className="flex flex-col bg-gray-900/50 md:w-1/2">
+                                <div className="p-4 border-b border-gray-800 bg-gray-900">
+                                    <div className="bg-red-500/10 text-red-400 text-xs font-bold px-2 py-1 rounded w-fit mb-3 flex items-center gap-1.5 border border-red-500/20">
+                                        <Disc size={12} />
+                                        NETEASE CLOUD MATCH
                                     </div>
                                     <div className="flex gap-2">
                                         <input
                                             value={searchQuery}
                                             onChange={e => setSearchQuery(e.target.value)}
                                             onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                                            className="flex-1 bg-black/50 border border-gray-700 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-red-500"
+                                            className="flex-1 bg-black/50 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-red-500 text-white placeholder-gray-600"
                                             placeholder="Search metadata..."
                                         />
                                         <button
                                             onClick={handleSearch}
                                             disabled={searching}
-                                            className="bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded text-sm transition"
+                                            className="bg-red-600 hover:bg-red-500 text-white px-4 py-2 rounded-lg text-sm transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                            {searching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                                            {searching ? <Loader2 size={18} className="animate-spin" /> : <Search size={18} />}
                                         </button>
                                     </div>
                                 </div>
 
-                                <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                                    {searchResults.map(res => (
-                                        <div key={res.id} className="group p-2 rounded bg-gray-800/30 hover:bg-gray-700 transition flex gap-3 items-center">
-                                            <img
-                                                src={(res.album?.picUrl || res.al?.picUrl) + "?param=50y50"}
-                                                className="w-10 h-10 rounded object-cover bg-gray-900"
-                                                referrerPolicy="no-referrer"
-                                                alt=""
-                                            />
-                                            <div className="flex-1 overflow-hidden">
-                                                <div className="font-bold text-sm truncate text-gray-200">{res.name}</div>
-                                                <div className="text-xs text-gray-400 truncate">
-                                                    {(res.artists || res.ar || []).map(a => a.name).join(', ')} - {res.album?.name || res.al?.name}
+                                <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                                    {searchResults.map(res => {
+                                        const picUrl = res.album?.picUrl || res.al?.picUrl;
+                                        return (
+                                            <div key={res.id} className="group p-2 rounded-lg hover:bg-gray-800 transition flex gap-3 items-center border border-transparent hover:border-gray-700">
+                                                <div className="w-12 h-12 flex-shrink-0 bg-gray-800 rounded overflow-hidden">
+                                                    {picUrl ? (
+                                                        <img
+                                                            src={picUrl + "?param=100y100"}
+                                                            className="w-full h-full object-cover"
+                                                            referrerPolicy="no-referrer"
+                                                            alt=""
+                                                            onError={(e) => {
+                                                                (e.target as HTMLImageElement).style.display = 'none';
+                                                            }}
+                                                        />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center text-gray-600">
+                                                            <Disc size={20} />
+                                                        </div>
+                                                    )}
                                                 </div>
+                                                <div className="flex-1 overflow-hidden min-w-0">
+                                                    <div className="font-bold text-sm truncate text-gray-200" title={res.name}>{res.name}</div>
+                                                    <div className="text-xs text-gray-400 truncate" title={`${(res.artists || res.ar || []).map(a => a.name).join(', ')} - ${res.album?.name || res.al?.name}`}>
+                                                        <span className="text-gray-300">{(res.artists || res.ar || []).map(a => a.name).join(', ')}</span>
+                                                        <span className="text-gray-600 mx-1">•</span>
+                                                        <span>{res.album?.name || res.al?.name}</span>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleAutoFill(res)}
+                                                    className="px-3 py-1.5 bg-blue-600/10 text-blue-400 hover:bg-blue-600 hover:text-white border border-blue-600/20 hover:border-blue-600 rounded text-xs font-medium transition whitespace-nowrap"
+                                                >
+                                                    Auto Fill
+                                                </button>
                                             </div>
-                                            <button
-                                                onClick={() => handleAutoFill(res)}
-                                                className="px-3 py-1.5 bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white rounded text-xs font-medium opacity-0 group-hover:opacity-100 transition whitespace-nowrap"
-                                            >
-                                                Auto Fill
-                                            </button>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                     {searchResults.length === 0 && !searching && (
-                                        <div className="text-center text-gray-600 py-10 text-xs">
-                                            No matches found.
+                                        <div className="text-center text-gray-500 py-12 flex flex-col items-center gap-2">
+                                            <Search size={32} className="opacity-20" />
+                                            <span className="text-xs">Search for a song to match metadata</span>
                                         </div>
                                     )}
                                 </div>
