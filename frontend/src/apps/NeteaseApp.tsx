@@ -8,7 +8,7 @@ interface NeteaseSong {
     name: string;
     artists: { name: string }[];
     album: { id: number; name: string; picUrl: string };
-    duration: number;
+    dt: number;
 }
 
 interface NeteaseAlbum {
@@ -148,7 +148,7 @@ ${album.songs.map((s, i) => `${i + 1}. ${s.name} - ${s.artists.map(a => a.name).
                             onClick={() => fetchAlbum(song.album.id)}
                             className={`p-3 rounded-lg cursor-pointer transition flex items-center gap-3 hover:bg-white/10 ${selectedAlbum?.id === song.album.id ? 'bg-white/10 border-l-4 border-red-500' : ''}`}
                         >
-                            <img src={song.album.picUrl + "?param=50y50"} alt="" className="w-10 h-10 rounded object-cover" />
+                            <img src={song.album.picUrl + "?param=50y50"} alt="" referrerPolicy="no-referrer" className="w-10 h-10 rounded object-cover" />
                             <div className="overflow-hidden">
                                 <div className="font-medium truncate">{song.name}</div>
                                 <div className="text-xs text-gray-400 truncate">{song.artists.map(a => a.name).join(', ')} - {song.album.name}</div>
@@ -214,7 +214,7 @@ ${album.songs.map((s, i) => `${i + 1}. ${s.name} - ${s.artists.map(a => a.name).
                                     <div key={song.id} className="flex items-center text-sm py-2 hover:bg-white/5 px-2 rounded">
                                         <span className="w-8 text-gray-500 text-right mr-4">{idx + 1}</span>
                                         <span className="flex-1 text-gray-200">{song.name}</span>
-                                        <span className="text-gray-500">{Math.floor(song.duration / 60000)}:{String(Math.floor((song.duration % 60000) / 1000)).padStart(2, '0')}</span>
+                                        <span className="text-gray-500">{Math.floor(song.dt / 60000)}:{String(Math.floor((song.dt % 60000) / 1000)).padStart(2, '0')}</span>
                                     </div>
                                 ))}
                             </div>
