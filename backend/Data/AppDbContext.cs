@@ -16,6 +16,7 @@ public class AppDbContext : DbContext
     public DbSet<Lyric> Lyrics { get; set; }
     public DbSet<Playlist> Playlists { get; set; }
     public DbSet<PlaylistSong> PlaylistSongs { get; set; }
+    public DbSet<PluginDefinition> Plugins { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
