@@ -323,7 +323,7 @@ public class SmbService : ISmbService
     private bool GenericMediaFilter(string fileName)
     {
         var ext = Path.GetExtension(fileName).ToLower();
-        return ext == ".mp3" || ext == ".flac" || ext == ".m4a" || ext == ".wav";
+        return ext == ".mp3" || ext == ".flac" || ext == ".m4a" || ext == ".wav" || ext == ".ogg" || ext == ".opus";
     }
 
     private void ParseSourcePath(ScanSource source, out string server, out string share, out string baseDir)
