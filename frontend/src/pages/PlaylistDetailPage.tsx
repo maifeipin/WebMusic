@@ -6,6 +6,7 @@ import { Play, ArrowLeft, Trash2, CheckSquare, Square, Edit2, Save, X, Image as 
 import { formatRelativeTime } from '../utils/time';
 import CoverPickerModal from '../components/CoverPickerModal';
 import SmbImage from '../components/SmbImage';
+import EditSongModal from '../components/EditSongModal';
 
 interface PlaylistDetail {
     id: number;
@@ -183,13 +184,22 @@ export default function PlaylistDetailPage() {
         }
     };
 
+    // Edit Song State
+    const [editingSong, setEditingSong] = useState<any>(null);
+
+    const handleEditSong = (e: React.MouseEvent, song: any) => {
+        e.stopPropagation();
+        setEditingSong(song);
+    };
+
     if (loading) return <div className="p-8 text-gray-500">Loading...</div>;
     if (!playlist) return null;
 
     return (
         <div className="p-6 md:p-8 min-h-screen pb-32">
-            {/* Header */}
+            {/* Header ... code omitted for brevity unless we need to change it ... */}
             <div className="flex items-center gap-4 mb-8">
+                {/* ... existing header code ... */}
                 <button onClick={() => navigate('/playlists')} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition">
                     <ArrowLeft size={24} />
                 </button>
@@ -313,7 +323,7 @@ export default function PlaylistDetailPage() {
 
             {/* List */}
             <div className="bg-gray-900/50 border border-gray-800/50 rounded-2xl overflow-hidden">
-                <div className="grid grid-cols-[auto_40px_1fr_1fr_80px_100px] gap-4 p-4 border-b border-gray-800 text-sm font-medium text-gray-400 select-none">
+                <div className="grid grid-cols-[auto_40px_1fr_1fr_80px_100px_50px] gap-4 p-4 border-b border-gray-800 text-sm font-medium text-gray-400 select-none">
                     {/* Select All / None Checkbox */}
                     <div
                         className="w-6 cursor-pointer hover:text-blue-400 transition"
@@ -344,6 +354,7 @@ export default function PlaylistDetailPage() {
                     <div>Artist</div>
                     <div className="text-right">Time</div>
                     <div className="text-right">Added</div>
+                    <div></div> {/* Edit Action */}
                 </div>
 
                 {playlist.songs.length === 0 && (
@@ -358,7 +369,7 @@ export default function PlaylistDetailPage() {
                         <div
                             key={item.id}
                             onClick={() => toggleSelect(item.song.id)}
-                            className={`grid grid-cols-[auto_40px_1fr_1fr_80px_100px] gap-4 p-4 items-center hover:bg-white/5 transition cursor-pointer group ${isSelected ? 'bg-blue-500/10' : ''}`}
+                            className={`grid grid-cols-[auto_40px_1fr_1fr_80px_100px_50px] gap-4 p-4 items-center hover:bg-white/5 transition cursor-pointer group ${isSelected ? 'bg-blue-500/10' : ''}`}
                         >
                             <div className="w-6 text-gray-500 group-hover:text-blue-500">
                                 {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
@@ -368,6 +379,15 @@ export default function PlaylistDetailPage() {
                             <div className="text-gray-400 truncate">{item.song.artist}</div>
                             <div className="text-right text-gray-500 font-mono text-sm">{formatTime(item.song.duration)}</div>
                             <div className="text-right text-gray-500 text-sm">{formatRelativeTime(item.addedAt)}</div>
+                            <div className="flex justify-end opacity-0 group-hover:opacity-100 transition">
+                                <button
+                                    onClick={(e) => handleEditSong(e, item.song)}
+                                    className="p-2 text-gray-500 hover:text-blue-400 hover:bg-blue-500/10 rounded-full transition"
+                                    title="Edit Metadata"
+                                >
+                                    <Edit2 size={14} />
+                                </button>
+                            </div>
                         </div>
                     );
                 })}
@@ -383,12 +403,15 @@ export default function PlaylistDetailPage() {
             {/* Share Modal */}
             {showShareModal && (
                 <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    {/* ... existing share modal code ... */}
                     <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md p-6 shadow-2xl">
                         <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
                             <Share2 size={20} className="text-emerald-400" />
                             {shareResult ? 'Share Link Ready!' : 'Share Playlist'}
                         </h3>
-
+                        {/* We can assume the rest of the modal is fine properly closed, but replace requires care. */}
+                        {/* For safety I will just include the rest of the modal logic from the original file snippet if needed or truncate if replacing block. */}
+                        {/* Since this tool completely replaces the block logic, I must be careful not to delete the modal content. */}
                         {!shareResult ? (
                             <>
                                 <div className="mb-4">
@@ -402,7 +425,6 @@ export default function PlaylistDetailPage() {
                                     />
                                 </div>
 
-                                {/* Security Settings */}
                                 <div className="grid grid-cols-2 gap-4 mb-4">
                                     <div>
                                         <label className="block text-sm text-gray-400 mb-2 flex items-center gap-1">
@@ -489,6 +511,13 @@ export default function PlaylistDetailPage() {
                     </div>
                 </div>
             )}
+
+            <EditSongModal
+                isOpen={!!editingSong}
+                song={editingSong}
+                onClose={() => setEditingSong(null)}
+                onSaved={loadData}
+            />
         </div>
     );
 }

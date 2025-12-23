@@ -18,8 +18,11 @@ export default function SmbImage({ smbPath, alt = '', className = '', fallbackCl
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(false);
 
+    // Check for HTTP(S) URL
+    const isHttp = smbPath?.startsWith('http://') || smbPath?.startsWith('https://');
+
     useEffect(() => {
-        if (!smbPath) {
+        if (!smbPath || isHttp) {
             setBlobUrl(null);
             setError(false);
             return;
@@ -57,7 +60,7 @@ export default function SmbImage({ smbPath, alt = '', className = '', fallbackCl
                 URL.revokeObjectURL(blobUrl);
             }
         };
-    }, [smbPath]);
+    }, [smbPath, isHttp]);
 
     // Cleanup on unmount
     useEffect(() => {
@@ -68,8 +71,20 @@ export default function SmbImage({ smbPath, alt = '', className = '', fallbackCl
         };
     }, [blobUrl]);
 
-    if (!smbPath || error) {
+    if (!smbPath || (error && !isHttp)) {
         return <Music size={48} className={fallbackClassName || "text-gray-700"} />;
+    }
+
+    if (isHttp) {
+        return (
+            <img
+                src={smbPath!}
+                alt={alt}
+                className={className}
+                referrerPolicy="no-referrer"
+                onError={() => setError(true)}
+            />
+        );
     }
 
     if (loading || !blobUrl) {
