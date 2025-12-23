@@ -115,4 +115,19 @@ export const adminResetPassword = (id: number, newPassword: string) => api.post(
 export const createUser = (data: any) => api.post('/users', data);
 export const deleteUser = (id: number) => api.delete(`/users/${id}`);
 
+export interface PluginDefinition {
+    id: number;
+    name: string;
+    description: string;
+    baseUrl: string;
+    entryPath: string;
+    icon: string;
+    isEnabled: boolean;
+    createdAt: string;
+}
+
+export const getPlugins = () => api.get<PluginDefinition[]>('/plugins').then(r => r.data);
+export const addPlugin = (data: Partial<PluginDefinition>) => api.post('/plugins', data).then(r => r.data);
+export const deletePlugin = (id: number) => api.delete(`/plugins/${id}`);
+
 export default api;

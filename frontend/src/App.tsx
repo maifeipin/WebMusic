@@ -13,6 +13,8 @@ import BackupPage from './pages/BackupPage';
 import TagManagerPage from './pages/TagManagerPage';
 import SharedPlaylistPage from './pages/SharedPlaylistPage';
 import AdminPage from './pages/AdminPage';
+import PluginsPage from './pages/PluginsPage';
+import PluginViewPage from './pages/PluginViewPage';
 import { Layout } from './components/Layout';
 
 const ProtectedRoute = ({ children }: { children: React.ReactElement }) => {
@@ -42,6 +44,8 @@ function App() {
                 <Route path="/playlists/:id" element={<PlaylistDetailPage />} />
                 <Route path="/backup" element={<BackupPage />} />
                 <Route path="/tags" element={<TagManagerPage />} />
+                <Route path="/apps" element={<PluginsPage />} />
+                <Route path="/apps/:id" element={<PluginViewPage />} />
                 <Route path="/admin" element={<AdminPage />} />
               </Route>
             </Routes>
