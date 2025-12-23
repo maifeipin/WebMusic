@@ -21,10 +21,10 @@ interface EditSongModalProps {
 interface NeteaseSong {
     id: number;
     name: string;
-    artists?: { name: string }[];
-    ar?: { name: string }[];
-    album?: { id: number; name: string; picUrl: string };
-    al?: { id: number; name: string; picUrl: string };
+    artists?: { name: string; img1v1Url?: string; picUrl?: string }[];
+    ar?: { name: string; img1v1Url?: string; picUrl?: string }[];
+    album?: { id: number; name: string; picUrl?: string };
+    al?: { id: number; name: string; picUrl?: string };
     dt: number;
 }
 
@@ -89,6 +89,19 @@ export default function EditSongModal({ isOpen, onClose, song, onSaved }: EditSo
         }
     };
 
+    // Helper to extract the best possible image URL
+    const getImageUrl = (song: NeteaseSong) => {
+        // 1. Try Album Art (Standard)
+        if (song.album?.picUrl) return song.album.picUrl;
+        if (song.al?.picUrl) return song.al.picUrl;
+
+        // 2. Try Artist Image (Fallback)
+        if (song.artists && song.artists.length > 0 && song.artists[0].img1v1Url) return song.artists[0].img1v1Url;
+        if (song.ar && song.ar.length > 0 && song.ar[0].img1v1Url) return song.ar[0].img1v1Url;
+
+        return null;
+    };
+
     const handleAutoFill = (nSong: NeteaseSong) => {
         setTitle(nSong.name);
 
@@ -98,11 +111,11 @@ export default function EditSongModal({ isOpen, onClose, song, onSaved }: EditSo
         const albumObj = nSong.album || nSong.al;
         if (albumObj) {
             setAlbum(albumObj.name);
-            if (albumObj.picUrl) {
-                // Remove params if present to store clean URL, or keep them if needed for sizing
-                // Netease URLs usually don't have params by default unless added.
-                setCoverArt(albumObj.picUrl);
-            }
+        }
+
+        const bestPic = getImageUrl(nSong);
+        if (bestPic) {
+            setCoverArt(bestPic);
         }
     };
 
@@ -193,9 +206,12 @@ export default function EditSongModal({ isOpen, onClose, song, onSaved }: EditSo
                                 <div className="flex-1 min-w-0 space-y-2">
                                     <div>
                                         <label className="block text-xs text-gray-400 uppercase tracking-wider font-bold mb-0.5">Cover Art Source</label>
-                                        <div className="text-xs text-gray-300 truncate font-mono bg-black/30 px-2 py-1 rounded border border-gray-800" title={coverArt}>
-                                            {coverArt ? (coverArt.startsWith('http') ? '🌐 Online URL' : '📁 Local: ' + coverArt) : 'No cover set'}
-                                        </div>
+                                        <input
+                                            value={coverArt}
+                                            onChange={(e) => setCoverArt(e.target.value)}
+                                            className="w-full bg-black/30 border border-gray-800 rounded px-2 py-1 text-xs text-gray-300 font-mono focus:outline-none focus:border-blue-500 transition"
+                                            placeholder="https://... or /path/to/file.jpg"
+                                        />
                                     </div>
                                     <button
                                         onClick={() => setIsCoverPickerOpen(true)}
@@ -283,7 +299,7 @@ export default function EditSongModal({ isOpen, onClose, song, onSaved }: EditSo
 
                                 <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
                                     {searchResults.map(res => {
-                                        const picUrl = res.album?.picUrl || res.al?.picUrl;
+                                        const picUrl = getImageUrl(res);
                                         return (
                                             <div key={res.id} className="group p-2 rounded-lg hover:bg-gray-800 transition flex gap-3 items-center border border-transparent hover:border-gray-700">
                                                 <div className="w-12 h-12 flex-shrink-0 bg-gray-800 rounded overflow-hidden">
