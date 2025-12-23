@@ -179,7 +179,7 @@ public class FilesController : ControllerBase
     [HttpPost("upload")]
     [DisableRequestSizeLimit]
     [RequestFormLimits(MultipartBodyLengthLimit = long.MaxValue)]
-    public async Task<IActionResult> Upload([FromQuery] int sourceId, [FromQuery] string path, [FromForm] IFormFile file)
+    public async Task<IActionResult> Upload([FromQuery] int sourceId, [FromQuery] string? path, [FromForm] IFormFile file)
     {
         if (file == null || file.Length == 0) return BadRequest("No file");
 
@@ -188,6 +188,8 @@ public class FilesController : ControllerBase
             .FirstOrDefaultAsync(s => s.Id == sourceId);
         if (source == null) return NotFound("Source not found");
         
+        path = path ?? "";
+
         // Target Path
         string properPath = GetRelativePathToShare(source, path);
         // properPath is directory. Append filename.
@@ -312,7 +314,7 @@ public class FilesController : ControllerBase
     private bool IsMusicFile(string fileName)
     {
         var ext = Path.GetExtension(fileName).ToLower();
-        return ext == ".mp3" || ext == ".flac" || ext == ".m4a" || ext == ".wav";
+        return ext == ".mp3" || ext == ".flac" || ext == ".m4a" || ext == ".wav" || ext == ".ogg" || ext == ".opus";
     }
 }
 
