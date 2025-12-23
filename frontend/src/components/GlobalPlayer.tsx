@@ -190,9 +190,17 @@ export default function GlobalPlayer() {
                             <div className="p-4 pt-2">
                                 <div className="flex gap-4">
                                     <div className={`relative bg-gray-800 rounded-lg overflow-hidden flex-shrink-0 transition-all ${isMinimized ? 'w-10 h-10' : 'w-16 h-16'}`}>
-                                        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-900">
-                                            <Music size={isMinimized ? 16 : 24} className="text-white/50" />
-                                        </div>
+                                        {currentSong.coverArt ? (
+                                            <SmbImage
+                                                smbPath={currentSong.coverArt}
+                                                className="w-full h-full object-cover"
+                                                alt={currentSong.album || 'Cover'}
+                                            />
+                                        ) : (
+                                            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-blue-900 to-purple-900">
+                                                <Music size={isMinimized ? 16 : 24} className="text-white/50" />
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="flex-1 min-w-0 flex flex-col justify-center">
