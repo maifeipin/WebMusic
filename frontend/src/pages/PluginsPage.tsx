@@ -110,7 +110,13 @@ const PluginsPage = () => {
                                     {plugin.isEnabled ? 'Active' : 'Disabled'}
                                 </span>
                                 <button
-                                    onClick={() => navigate(`/apps/${plugin.id}`)}
+                                    onClick={() => {
+                                        if (plugin.name.toLowerCase().includes('netease') || plugin.name.includes('网易')) {
+                                            navigate('/apps/netease');
+                                        } else {
+                                            navigate(`/apps/${plugin.id}`);
+                                        }
+                                    }}
                                     className="text-sm text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium"
                                 >
                                     Open App <ExternalLink size={14} />

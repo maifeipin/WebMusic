@@ -15,6 +15,7 @@ import SharedPlaylistPage from './pages/SharedPlaylistPage';
 import AdminPage from './pages/AdminPage';
 import PluginsPage from './pages/PluginsPage';
 import PluginViewPage from './pages/PluginViewPage';
+import NeteaseApp from './apps/NeteaseApp';
 import { Layout } from './components/Layout';
 
 const ProtectedRoute = ({ children }: { children: React.ReactElement }) => {
@@ -45,6 +46,7 @@ function App() {
                 <Route path="/backup" element={<BackupPage />} />
                 <Route path="/tags" element={<TagManagerPage />} />
                 <Route path="/apps" element={<PluginsPage />} />
+                <Route path="/apps/netease" element={<NeteaseApp />} />
                 <Route path="/apps/:id" element={<PluginViewPage />} />
                 <Route path="/admin" element={<AdminPage />} />
               </Route>
