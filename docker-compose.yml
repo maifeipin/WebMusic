@@ -70,3 +70,15 @@ services:
       - WHISPER_MODEL=${WHISPER_MODEL:-tiny}
     profiles: 
       - ai  # Only start if explicitly requested via --profile ai
+
+  # Plugin: Netease Cloud Music API
+  netease-api:
+    image: binaryify/netease_cloud_music_api:latest
+    container_name: webmusic-plugin-netease
+    restart: unless-stopped
+    ports:
+      - "3500:3000"
+    environment:
+      - PORT=3000
+    profiles:
+      - plugins
