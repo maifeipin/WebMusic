@@ -130,4 +130,9 @@ export const getPlugins = () => api.get<PluginDefinition[]>('/plugins').then(r =
 export const addPlugin = (data: Partial<PluginDefinition>) => api.post('/plugins', data).then(r => r.data);
 export const deletePlugin = (id: number) => api.delete(`/plugins/${id}`);
 
+export const getDuplicates = (path?: string) => api.get<any[]>('/duplicates', { params: { path } });
+export const cleanupDuplicates = (ids: number[]) => api.post<{ successCount: number; failedCount: number }>('/duplicates/cleanup', ids);
+
+export const getStorageStats = () => api.get('/media/stats');
+
 export default api;

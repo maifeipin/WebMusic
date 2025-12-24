@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { browseFiles, createDirectory, uploadFile, deleteFile, type FileItem } from '../services/files';
-import { X, Folder, FileText, HardDrive, ArrowLeft, Upload, Plus, Trash2, Download, Share2 } from 'lucide-react';
+import { DuplicateCleanerModal } from './DuplicateCleanerModal';
+import { X, Folder, FileText, HardDrive, ArrowLeft, Upload, Plus, Trash2, Download, Share2, AlertTriangle } from 'lucide-react';
 
 interface FileManagerProps {
     onClose: () => void;
@@ -158,9 +159,12 @@ export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
         link.remove();
     };
 
+    const [showDuplicateCleaner, setShowDuplicateCleaner] = useState(false);
+
     return (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 animate-fade-in">
-            <div className="bg-gray-800 rounded-xl w-full max-w-4xl h-[80vh] flex flex-col shadow-2xl overflow-hidden border border-white/10">
+            <DuplicateCleanerModal isOpen={showDuplicateCleaner} onClose={() => setShowDuplicateCleaner(false)} />
+            <div className={`bg-gray-800 rounded-xl w-full max-w-4xl h-[80vh] flex flex-col shadow-2xl overflow-hidden border border-white/10 ${showDuplicateCleaner ? 'hidden' : ''}`}>
 
                 {/* Header / Toolbar */}
                 <div className="p-4 bg-gray-900 border-b border-white/10 flex flex-col gap-4 sticky top-0 z-10">
@@ -192,6 +196,14 @@ export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
 
                         {/* Right: Actions */}
                         <div className="flex gap-2 shrink-0">
+                            <button
+                                onClick={() => setShowDuplicateCleaner(true)}
+                                className="px-3 py-1.5 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 rounded text-sm transition border border-orange-500/20 flex items-center gap-2"
+                                title="Find Duplicates"
+                            >
+                                <AlertTriangle size={16} />
+                                <span className="hidden sm:inline">Clean Duplicates</span>
+                            </button>
                             {currentSourceId && (
                                 <>
                                     <button

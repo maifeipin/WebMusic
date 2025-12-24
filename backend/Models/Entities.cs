@@ -62,6 +62,11 @@ public class MediaFile
     // Foreign Key to Source? Maybe not strictly needed if path contains it, but useful
     public int ScanSourceId { get; set; }
     public ScanSource? ScanSource { get; set; }
+
+    [JsonIgnore]
+    public List<Favorite> Favorites { get; set; } = new();
+    [JsonIgnore]
+    public List<PlaylistSong> PlaylistSongs { get; set; } = new();
 }
 
 public class PlayHistory

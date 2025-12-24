@@ -458,16 +458,8 @@ public class SmbService : ISmbService
         {
             try
             {
-                ParseSourcePath(source, out _, out _, out string baseDir);
-                
-                // Combine
-                string targetPath = baseDir;
-                if (!string.IsNullOrEmpty(path))
-                {
-                    string rel = path.Replace('/', '\\');
-                    if (string.IsNullOrEmpty(targetPath)) targetPath = rel;
-                    else targetPath = targetPath + "\\" + rel;
-                }
+                // Do not prepend baseDir. MediaFile.FilePath is already relative to Share.
+                string targetPath = path.Replace('/', '\\');
                 
                 object handle;
                 // OPEN with DELETE access (included in GENERIC_ALL)

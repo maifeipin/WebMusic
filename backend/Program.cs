@@ -16,6 +16,14 @@ var builder = WebApplication.CreateBuilder(args);
 // Suppress verbose EF Core SQL logs in console
 builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
 
+// Configure Logs with Timestamp
+builder.Logging.AddSimpleConsole(options =>
+{
+    options.IncludeScopes = false;
+    options.SingleLine = false; 
+    options.TimestampFormat = "yyyy-MM-dd HH:mm:ss ";
+});
+
 // Add services to the container.
 
 builder.Services.AddControllers(options =>
