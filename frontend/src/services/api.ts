@@ -27,7 +27,7 @@ api.interceptors.response.use(
     }
 );
 
-export const login = (username: string, password: string) => api.post('/auth/login', { username, password });
+export const login = (username: string, password: string, captchaId?: string, captchaAnswer?: string) => api.post('/auth/login', { username, password, captchaId, captchaAnswer });
 export const changePassword = (data: any) => api.post('/auth/change-password', data);
 export const getStats = () => api.get('/media/stats');
 export const getFiles = (params: any) => api.get('/media', { params });

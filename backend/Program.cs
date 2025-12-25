@@ -117,6 +117,7 @@ builder.Services.AddCors(options =>
 
 // Services
 builder.Services.AddScoped<WebMusic.Backend.Services.ISmbService, WebMusic.Backend.Services.SmbService>();
+builder.Services.AddMemoryCache();
 builder.Services.AddScoped<WebMusic.Backend.Services.ScannerService>();
 builder.Services.AddSingleton<WebMusic.Backend.Services.BackgroundTaskQueue>();
 builder.Services.AddSingleton<WebMusic.Backend.Services.ScanStateService>();
