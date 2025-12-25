@@ -89,7 +89,8 @@ public class UserController : ControllerBase
                     h.MediaFile.Album,
                     h.MediaFile.Genre,
                     Duration = h.MediaFile.Duration.TotalSeconds,
-                    h.MediaFile.FilePath
+                    h.MediaFile.FilePath,
+                    h.MediaFile.CoverArt
                 }
             })
             .ToListAsync();
@@ -150,7 +151,8 @@ public class UserController : ControllerBase
                     f.MediaFile.Album,
                     f.MediaFile.Genre,
                     Duration = f.MediaFile.Duration.TotalSeconds,
-                    f.MediaFile.FilePath
+                    f.MediaFile.FilePath,
+                    f.MediaFile.CoverArt
                 }
             })
             .ToListAsync();
@@ -191,7 +193,8 @@ public class UserController : ControllerBase
                 h.MediaFile.Album,
                 h.MediaFile.Genre,
                 Duration = h.MediaFile.Duration.TotalSeconds,
-                h.MediaFile.FilePath
+                h.MediaFile.FilePath,
+                h.MediaFile.CoverArt
             })
             .ToListAsync();
 
@@ -207,7 +210,8 @@ public class UserController : ControllerBase
                 f.MediaFile.Album,
                 f.MediaFile.Genre,
                 Duration = f.MediaFile.Duration.TotalSeconds,
-                f.MediaFile.FilePath
+                f.MediaFile.FilePath,
+                f.MediaFile.CoverArt
             })
             .ToListAsync();
 

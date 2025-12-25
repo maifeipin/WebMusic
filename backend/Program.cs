@@ -149,6 +149,8 @@ using (var scope = app.Services.CreateScope())
     // Since I added tables, I need to force update.
     // I will delete the .db file via command line.
     db.Database.EnsureCreated();
+
+
 }
 
 app.UseCors("AllowAll");
