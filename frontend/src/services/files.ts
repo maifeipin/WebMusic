@@ -20,7 +20,7 @@ export const createDirectory = async (sourceId: number, path: string) => {
     await api.post('/files/mkdir', { sourceId, path });
 };
 
-export const uploadFile = async (sourceId: number, path: string, file: File, onProgress?: (percent: number) => void) => {
+export const uploadFile = async (sourceId: number, path: string, file: File, onProgress?: (percent: number) => void, signal?: AbortSignal) => {
     const formData = new FormData();
     // Path should be directory path
     formData.append('file', file);
@@ -35,7 +35,8 @@ export const uploadFile = async (sourceId: number, path: string, file: File, onP
                 const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
                 onProgress(percent);
             }
-        }
+        },
+        signal // Pass abort signal
     });
 };
 
