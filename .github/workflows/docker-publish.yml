@@ -93,6 +93,24 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
+      - name: Connect GitHub Runner to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          ping: 100.115.42.126
+
+      - name: Sync Compose configuration to MEDIA
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.MEDIA_HOST }}
+          username: ${{ secrets.MEDIA_USER }}
+          key: ${{ secrets.MEDIA_SSH_KEY }}
+          port: ${{ secrets.MEDIA_PORT || 22 }}
+          source: docker-compose.yml
+          target: /root/WebMusic
+
       - name: Deploy published images over SSH
         uses: appleboy/ssh-action@v1.2.0
         with:

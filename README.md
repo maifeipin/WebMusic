@@ -84,9 +84,12 @@ Configure these repository secrets before enabling automatic deployment:
 
 - `MEDIA_HOST`, `MEDIA_USER`, `MEDIA_SSH_KEY`
 - `GHCR_USERNAME` and `GHCR_READ_TOKEN` (a GitHub token with package read access, stored as repository secrets)
+- `TS_OAUTH_CLIENT_ID` and `TS_OAUTH_SECRET` (Tailscale OAuth client with `auth_keys` write scope and permission to use `tag:ci`)
 - Optional: `MEDIA_PORT` (defaults to `22`)
 
 The MEDIA `/root/WebMusic/docker-compose.yml` must use the published `ghcr.io/maifeipin/webmusic-*-latest` images. The deployment performs basic checks for frontend HTTP `200` and unauthenticated media API HTTP `401`.
+
+The deploy runner joins the Tailnet temporarily through Tailscale before connecting to the private MEDIA address. Create the `ci` tag in the Tailscale ACL policy and allow it to reach MEDIA on TCP port 22.
 
 ```yaml
 version: '3.8'
