@@ -78,18 +78,13 @@ You don't need to clone the code. Just create a `docker-compose.yml` file:
 
 ### GitHub Actions CI/CD
 
-Pushes to `main` build and publish the backend, frontend, and AI images to GitHub Container Registry (GHCR) with GitHub Actions cache. The deployment job then connects to MEDIA and runs `docker compose pull` followed by `docker compose up -d --no-build`, so MEDIA does not compile or restore NuGet packages.
+Pushes to `main` build and publish the backend, frontend, and AI images to GitHub Container Registry (GHCR) with GitHub Actions cache. MEDIA pulls the published images locally and runs `docker compose up -d --no-build`; GitHub Actions never connects to MEDIA.
 
 Configure these repository secrets before enabling automatic deployment:
 
-- `MEDIA_HOST`, `MEDIA_USER`, `MEDIA_SSH_KEY`
-- `GHCR_USERNAME` and `GHCR_READ_TOKEN` (a GitHub token with package read access, stored as repository secrets)
-- `TS_OAUTH_CLIENT_ID` and `TS_OAUTH_SECRET` (Tailscale OAuth client with `auth_keys` write scope and permission to use `tag:ci`)
-- Optional: `MEDIA_PORT` (defaults to `22`)
+- No MEDIA or Tailscale secrets are needed by GitHub Actions.
 
-The MEDIA `/root/WebMusic/docker-compose.yml` must use the published `ghcr.io/maifeipin/webmusic-*-latest` images. The deployment performs basic checks for frontend HTTP `200` and unauthenticated media API HTTP `401`.
-
-The deploy runner joins the Tailnet temporarily through Tailscale before connecting to the private MEDIA address. Create the `ci` tag in the Tailscale ACL policy and allow it to reach MEDIA on TCP port 22.
+The MEDIA `/root/WebMusic/docker-compose.yml` must use the published `ghcr.io/maifeipin/webmusic-*-latest` images. Store `GHCR_USERNAME` and `GHCR_READ_TOKEN` only on MEDIA, then run `scripts/media-pull-deploy.sh` from cron or a systemd timer. The script performs basic checks for frontend HTTP `200` and unauthenticated media API HTTP `401`.
 
 ```yaml
 version: '3.8'
