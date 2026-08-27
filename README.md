@@ -76,6 +76,18 @@ A modern, **Multi-User** web-based music player and library manager designed for
 ### Option A: Docker Deployment (Recommended)
 You don't need to clone the code. Just create a `docker-compose.yml` file:
 
+### GitHub Actions CI/CD
+
+Pushes to `main` build and publish the backend, frontend, and AI images to GitHub Container Registry (GHCR) with GitHub Actions cache. The deployment job then connects to MEDIA and runs `docker compose pull` followed by `docker compose up -d --no-build`, so MEDIA does not compile or restore NuGet packages.
+
+Configure these repository secrets before enabling automatic deployment:
+
+- `MEDIA_HOST`, `MEDIA_USER`, `MEDIA_SSH_KEY`
+- `GHCR_USERNAME` and `GHCR_READ_TOKEN` (a GitHub token with package read access, stored as repository secrets)
+- Optional: `MEDIA_PORT` (defaults to `22`)
+
+The MEDIA `/root/WebMusic/docker-compose.yml` must use the published `ghcr.io/maifeipin/webmusic-*-latest` images. The deployment performs basic checks for frontend HTTP `200` and unauthenticated media API HTTP `401`.
+
 ```yaml
 version: '3.8'
 

@@ -201,7 +201,12 @@ public class MediaController : ControllerBase
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(m => new { 
-                m.Id, m.Title, m.Artist, m.Album, m.Genre, m.Duration.TotalSeconds, m.Year, m.FilePath, m.CoverArt 
+                m.Id, m.Title, m.Artist, m.Album, m.Genre, m.Duration.TotalSeconds, m.Year, m.FilePath, m.CoverArt,
+                isFavorite = _context.Favorites.Any(f => f.UserId == userId && f.MediaFileId == m.Id),
+                playlists = _context.PlaylistSongs
+                    .Where(ps => ps.MediaFileId == m.Id && ps.Playlist != null && ps.Playlist.UserId == userId && ps.Playlist.Type == "normal")
+                    .Select(ps => new { id = ps.Playlist!.Id, name = ps.Playlist.Name })
+                    .ToList()
             })
             .ToListAsync();
 

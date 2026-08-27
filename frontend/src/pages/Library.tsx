@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { usePlayer } from '../context/PlayerContext';
 import { getFiles, getGroups, getSongsByIds } from '../services/api';
-import { Play, Music, Folder, List, Grid, ChevronRight, ChevronDown, ArrowUp, ArrowDown, CheckSquare, Square, X, ListPlus, HardDrive } from 'lucide-react';
+import { Play, Music, Folder, List, Grid, ChevronRight, ChevronDown, ArrowUp, ArrowDown, CheckSquare, Square, X, ListPlus, HardDrive, Heart, ListMusic } from 'lucide-react';
 import DirectoryTree from '../components/DirectoryTree';
 import AddToPlaylistModal from '../components/AddToPlaylistModal';
 import { FileManager } from '../components/FileManager';
@@ -15,6 +15,8 @@ interface Song {
     year: number;
     duration: number;
     filePath?: string;
+    isFavorite?: boolean;
+    playlists?: { id: number; name: string }[];
 }
 
 interface GroupRow {
@@ -60,7 +62,7 @@ export default function Library() {
 
     const [showFileManager, setShowFileManager] = useState(false);
 
-    const { playSong, playQueue } = usePlayer();
+    const { playSong, playQueue, isFavorite, toggleLike, queue } = usePlayer();
 
     useEffect(() => {
         setSelectedIds([]);
@@ -426,6 +428,7 @@ export default function Library() {
                                     <SortHeader field="album" label="Album" />
                                     <SortHeader field="genre" label="Genre" />
                                     <SortHeader field="filePath" label="Path" className="w-48" />
+                                    <th className="px-4 py-3 w-44">Status</th>
                                     <SortHeader field="duration" label="Time" className="w-20" />
                                 </tr>
                             </thead>
@@ -479,6 +482,23 @@ export default function Library() {
                                                 title={`Filter by path: ${directoryPath}`}
                                             >
                                                 <div className="truncate text-xs font-mono text-gray-500 hover:text-blue-400">{directoryPath}</div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex items-center gap-2 whitespace-nowrap">
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); toggleLike(song.id); }}
+                                                        className={`p-1 rounded transition ${isFavorite(song.id) ? 'text-pink-500' : 'text-gray-600 hover:text-pink-400'}`}
+                                                        title={isFavorite(song.id) ? '取消收藏' : '收藏'}
+                                                    >
+                                                        <Heart size={16} fill={isFavorite(song.id) ? 'currentColor' : 'none'} />
+                                                    </button>
+                                                    {queue.some(item => item.id === song.id) && <span title="当前播放列表"><ListMusic size={15} className="text-blue-400" /></span>}
+                                                    {!!song.playlists?.length && (
+                                                        <span className="text-xs text-gray-500" title={song.playlists.map(p => p.name).join('、')}>
+                                                            {song.playlists.length} 个歌单
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="px-4 py-3">{song.duration && formatTime(song.duration)}</td>
                                         </tr>

@@ -4,7 +4,7 @@ services:
   backend:
     build: 
       context: ./backend
-    image: maifeipin/webmusic-backend:latest
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-maifeipin}/webmusic-backend:latest
     container_name: webmusic-backend
     restart: always
     environment:
@@ -35,7 +35,7 @@ services:
   frontend:
     build: 
       context: ./frontend
-    image: maifeipin/webmusic-frontend:latest
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-maifeipin}/webmusic-frontend:latest
     container_name: webmusic-frontend
     restart: always
     ports:
@@ -61,7 +61,7 @@ services:
   ai-lyrics:
     build: 
       context: ./AI/Lyrics
-    image: maifeipin/webmusic-ai-lyrics:latest
+    image: ${IMAGE_REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-maifeipin}/webmusic-ai-lyrics:latest
     container_name: webmusic-ai-lyrics
     restart: unless-stopped
     ports:
