@@ -250,7 +250,7 @@ public class SmbService : ISmbService
                         {
                             if (item is FileDirectoryInformation fileInfo)
                             {
-                                if (fileInfo.FileName == "." || fileInfo.FileName == "..") continue;
+                                if (fileInfo.FileName == "." || fileInfo.FileName == ".." || MediaFileFilter.IsIgnoredSystemFile(fileInfo.FileName)) continue;
                                 
                                 bool isDir = (fileInfo.FileAttributes & SMBLibrary.FileAttributes.Directory) == SMBLibrary.FileAttributes.Directory;
                                 results.Add(new BrowsableItem
@@ -298,7 +298,7 @@ public class SmbService : ISmbService
                 {
                     if (item is FileDirectoryInformation fileInfo)
                     {
-                        if (fileInfo.FileName == "." || fileInfo.FileName == "..") continue;
+                        if (fileInfo.FileName == "." || fileInfo.FileName == ".." || MediaFileFilter.IsIgnoredSystemFile(fileInfo.FileName)) continue;
 
                         // Use forward slash for internal representation (works on Mac/Linux/Windows .NET)
                         string fullPath = string.IsNullOrEmpty(path) ? fileInfo.FileName : path + "/" + fileInfo.FileName;
@@ -322,8 +322,7 @@ public class SmbService : ISmbService
 
     private bool GenericMediaFilter(string fileName)
     {
-        var ext = Path.GetExtension(fileName).ToLower();
-        return ext == ".mp3" || ext == ".flac" || ext == ".m4a" || ext == ".wav" || ext == ".ogg" || ext == ".opus";
+        return MediaFileFilter.IsSupportedAudioFile(fileName);
     }
 
     private void ParseSourcePath(ScanSource source, out string server, out string share, out string baseDir)

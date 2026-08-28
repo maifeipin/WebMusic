@@ -328,8 +328,7 @@ public class FilesController : ControllerBase
     
     private bool IsMusicFile(string fileName)
     {
-        var ext = Path.GetExtension(fileName).ToLower();
-        return ext == ".mp3" || ext == ".flac" || ext == ".m4a" || ext == ".wav" || ext == ".ogg" || ext == ".opus";
+        return MediaFileFilter.IsSupportedAudioFile(fileName);
     }
 }
 

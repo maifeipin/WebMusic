@@ -96,6 +96,7 @@ public class ScannerService
 
     public async Task<bool> ScanFileAsync(ScanSource source, string path, HashSet<string>? existingPaths = null)
     {
+         if (!MediaFileFilter.IsSupportedAudioFile(path)) return false;
          if (existingPaths != null && existingPaths.Contains(path)) return false;
 
          // Optimization: Read metadata directly from SMB stream without downloading full file.
@@ -140,6 +141,7 @@ public class ScannerService
     // Overload for single file save (called by Controller)
     public async Task IndexSingleFileAsync(int sourceId, string path)
     {
+        if (!MediaFileFilter.IsSupportedAudioFile(path)) return;
         var source = await _context.ScanSources
             .Include(s => s.StorageCredential)
             .FirstOrDefaultAsync(s => s.Id == sourceId);
