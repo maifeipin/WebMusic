@@ -73,8 +73,21 @@ public class LyricsController : ControllerBase
         if (!User.IsInRole("Admin")) return StatusCode(403, "AI Features are restricted to the Administrator.");
         try
         {
-            var lyrics = await _lyricsService.GenerateLyricsAsync(mediaId, lang, prompt);
-            return Ok(lyrics);
+            var lyric = await _lyricsService.GenerateLyricsAsync(mediaId, lang, prompt);
+            if (lyric == null)
+            {
+                return StatusCode(500, new { message = "AI Generation failed" });
+            }
+            return Ok(new 
+            {
+                lyric.Id,
+                lyric.Content,
+                lyric.Language,
+                lyric.Source,
+                lyric.Version,
+                Title = lyric.MediaFile?.Title ?? "Unknown Title",
+                Artist = lyric.MediaFile?.Artist ?? "Unknown Artist"
+            });
         }
         catch (KeyNotFoundException)
         {

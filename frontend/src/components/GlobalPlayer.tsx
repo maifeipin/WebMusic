@@ -471,7 +471,21 @@ export default function GlobalPlayer() {
             <EditSongModal isOpen={showEditModal} onClose={() => setShowEditModal(false)} song={currentSong} onSaved={updateCurrentSong} />
 
             {showLyrics && currentSong && (
-                <LyricsPanel mediaId={currentSong.id} currentTime={displayTime} onClose={() => setShowLyrics(false)} />
+                <LyricsPanel
+                    mediaId={currentSong.id}
+                    currentTime={displayTime}
+                    onClose={() => setShowLyrics(false)}
+                    song={currentSong}
+                    onSeek={(time) => {
+                        if (transcodeMode) {
+                            setSeekOffset(time);
+                            setCurrentTime(0);
+                        } else {
+                            if (audioRef.current) audioRef.current.currentTime = time;
+                            setCurrentTime(time);
+                        }
+                    }}
+                />
             )}
         </>
     );
