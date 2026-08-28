@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { getLyrics, generateLyrics, getAiStatus, optimizeLyrics, saveLyrics, getPlugins, api, type Lyric } from '../services/api';
+import { getLyrics, generateLyrics, getAiStatus, optimizeLyrics, saveLyrics, deleteLyrics, getPlugins, api, type Lyric } from '../services/api';
 import { 
     Sparkles, Copy, Check, Edit3, X, Mic2, Music, RefreshCw, Volume2, 
     ArrowDownCircle, Disc, Search, ChevronRight, Eye, CheckCircle2,
-    Minimize2, Maximize2
+    Minimize2, Maximize2, Trash2, RotateCcw
 } from 'lucide-react';
 
 interface LyricsPanelProps {
@@ -409,25 +409,59 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
         } catch { }
     };
 
-    const handleSaveManualEdit = async () => {
-        if (!editText.trim()) return;
-        setSavingEdit(true);
+    const handleDeleteLyrics = async () => {
+        if (!confirm("确定要删除当前歌曲的歌词吗？删除后可随时重新匹配。")) return;
+        setLoading(true);
+        setError(null);
         try {
-            await saveLyrics(mediaId, editText, 'User Edited', 'manual');
-            setLyricData({
-                id: lyricData?.id || 0,
-                content: editText,
-                language: lyricData?.language || 'manual',
-                source: 'User Edited',
-                version: 'manual',
-                Title: song?.title || lyricData?.Title,
-                Artist: song?.artist || lyricData?.Artist
-            });
-            setIsEditing(false);
+            await deleteLyrics(mediaId);
+            if (isMounted.current) {
+                setLyricData(null);
+                setParsedLines([]);
+                setEditText('');
+                setIsEditing(false);
+                setShowNeteaseSearch(false);
+            }
         } catch {
-            setError("保存歌词失败，请重试。");
+            if (isMounted.current) setError("删除歌词失败，请重试。");
         } finally {
-            setSavingEdit(false);
+            if (isMounted.current) setLoading(false);
+        }
+    };
+
+    const handleSaveManualEdit = async () => {
+        setSavingEdit(true);
+        setError(null);
+        try {
+            if (!editText.trim()) {
+                // User emptied content -> delete lyric from DB
+                await deleteLyrics(mediaId);
+                if (isMounted.current) {
+                    setLyricData(null);
+                    setParsedLines([]);
+                    setEditText('');
+                    setIsEditing(false);
+                }
+                return;
+            }
+
+            await saveLyrics(mediaId, editText, 'User Edited', 'manual');
+            if (isMounted.current) {
+                setLyricData({
+                    id: lyricData?.id || 0,
+                    content: editText,
+                    language: lyricData?.language || 'manual',
+                    source: 'User Edited',
+                    version: 'manual',
+                    Title: song?.title || lyricData?.Title,
+                    Artist: song?.artist || lyricData?.Artist
+                });
+                setIsEditing(false);
+            }
+        } catch {
+            if (isMounted.current) setError("保存歌词失败，请重试。");
+        } finally {
+            if (isMounted.current) setSavingEdit(false);
         }
     };
 
@@ -548,10 +582,10 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
                                     </button>
                                     <button
                                         onClick={() => handleOpenNeteaseView()}
-                                        title="网易云重新匹配歌词"
-                                        className="p-2 rounded-lg text-rose-400/80 hover:text-rose-300 hover:bg-rose-500/10 transition"
+                                        title="重新匹配网易云歌词 / 更换版本"
+                                        className="p-2 rounded-lg text-rose-400/90 hover:text-rose-300 hover:bg-rose-500/10 transition"
                                     >
-                                        <Disc size={16} />
+                                        <RotateCcw size={16} />
                                     </button>
                                     <button
                                         onClick={() => setIsEditing(true)}
@@ -559,6 +593,13 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
                                         className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition"
                                     >
                                         <Edit3 size={16} />
+                                    </button>
+                                    <button
+                                        onClick={handleDeleteLyrics}
+                                        title="删除当前歌曲歌词"
+                                        className="p-2 rounded-lg text-rose-400/70 hover:text-rose-300 hover:bg-rose-500/20 transition"
+                                    >
+                                        <Trash2 size={16} />
                                     </button>
                                 </>
                             )}
@@ -588,13 +629,13 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
                         {loading ? (
                             <div className="flex flex-col justify-center items-center h-full text-gray-400 space-y-3">
                                 <RefreshCw className="animate-spin text-purple-400" size={28} />
-                                <span className="text-sm">正在加载歌词...</span>
+                                <span className="text-sm">正在处理歌词...</span>
                             </div>
                         ) : isEditing ? (
                             /* Manual Edit View */
                             <div className="flex flex-col h-full space-y-3">
                                 <div className="flex justify-between items-center text-xs text-gray-400">
-                                    <span>编辑或粘贴 LRC 歌词内容：</span>
+                                    <span>编辑或粘贴 LRC 歌词内容（清空保存即可删除）：</span>
                                     <span>包含 [00:00.00] 时间戳</span>
                                 </div>
                                 <textarea
@@ -603,21 +644,30 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
                                     onChange={(e) => setEditText(e.target.value)}
                                     placeholder="[00:00.00] 歌词第一行&#10;[00:05.00] 歌词第二行..."
                                 />
-                                <div className="flex justify-end gap-2 pt-2">
+                                <div className="flex items-center justify-between gap-2 pt-2">
                                     <button
-                                        onClick={() => setIsEditing(false)}
-                                        className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-medium transition"
+                                        onClick={handleDeleteLyrics}
+                                        className="px-3 py-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-medium transition flex items-center gap-1.5"
                                     >
-                                        取消
+                                        <Trash2 size={13} />
+                                        删除歌词
                                     </button>
-                                    <button
-                                        onClick={handleSaveManualEdit}
-                                        disabled={savingEdit}
-                                        className="px-5 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-medium transition shadow-lg shadow-purple-900/30 flex items-center gap-1.5"
-                                    >
-                                        {savingEdit ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
-                                        保存歌词
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => setIsEditing(false)}
+                                            className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-medium transition"
+                                        >
+                                            取消
+                                        </button>
+                                        <button
+                                            onClick={handleSaveManualEdit}
+                                            disabled={savingEdit}
+                                            className="px-5 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-medium transition shadow-lg shadow-purple-900/30 flex items-center gap-1.5"
+                                        >
+                                            {savingEdit ? <RefreshCw size={14} className="animate-spin" /> : <Check size={14} />}
+                                            保存歌词
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         ) : showNeteaseSearch ? (

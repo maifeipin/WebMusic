@@ -107,6 +107,9 @@ export const startLyricsBatch = async (songIds: number[], force: boolean = false
 export const saveLyrics = (mediaId: number, content: string, source?: string, version?: string) =>
     api.post<Lyric>(`/lyrics/${mediaId}/save`, { content, source, version }).then(r => r.data);
 
+export const deleteLyrics = (mediaId: number) =>
+    api.delete<{ success: boolean; deleted: boolean }>(`/lyrics/${mediaId}`).then(r => r.data);
+
 export const optimizeLyrics = async (lrcContent: string, mediaId?: number) => {
     const { data } = await api.post('/lyrics/optimize', { lrcContent, mediaId });
     return data.content;

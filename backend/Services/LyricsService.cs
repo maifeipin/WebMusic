@@ -227,4 +227,16 @@ public class LyricsService
         await _context.SaveChangesAsync();
         return lyric;
     }
+
+    public async Task<bool> DeleteLyricsAsync(int mediaId)
+    {
+        var lyric = await _context.Lyrics.FirstOrDefaultAsync(l => l.MediaFileId == mediaId);
+        if (lyric != null)
+        {
+            _context.Lyrics.Remove(lyric);
+            await _context.SaveChangesAsync();
+            return true;
+        }
+        return false;
+    }
 }

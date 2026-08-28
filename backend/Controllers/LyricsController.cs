@@ -116,9 +116,12 @@ public class LyricsController : ControllerBase
     public async Task<IActionResult> SaveLyrics(int mediaId, [FromBody] SaveLyricsRequest request)
     {
         if (!User.IsInRole("Admin")) return StatusCode(403, "Forbidden");
+        
+        // If content is empty/whitespace, delete the lyric record cleanly
         if (string.IsNullOrWhiteSpace(request.Content))
         {
-            return BadRequest("Lyric content is required.");
+            await _lyricsService.DeleteLyricsAsync(mediaId);
+            return Ok(new { deleted = true });
         }
 
         try
@@ -140,6 +143,17 @@ public class LyricsController : ControllerBase
         {
             return StatusCode(500, new { error = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Deletes the lyric for a media file.
+    /// </summary>
+    [HttpDelete("{mediaId}")]
+    public async Task<IActionResult> DeleteLyrics(int mediaId)
+    {
+        if (!User.IsInRole("Admin")) return StatusCode(403, "Forbidden");
+        var deleted = await _lyricsService.DeleteLyricsAsync(mediaId);
+        return Ok(new { success = true, deleted });
     }
 
     /// <summary>
