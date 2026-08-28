@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Save, Music2, Tag, Image as ImageIcon, Search, Loader2, Disc } from 'lucide-react';
-import api, { updateMedia, getPlugins } from '../services/api';
+import api, { updateMedia, getPlugins, optimizeLyrics } from '../services/api';
 import CoverPickerModal from './CoverPickerModal';
 import SmbImage from './SmbImage';
 
@@ -126,12 +126,26 @@ export default function EditSongModal({ isOpen, onClose, song, onSaved }: EditSo
         }
 
         try {
+            // 2. Fetch Detail for HD Cover Art
             const res = await api.get(`/plugins/${neteasePluginId}/proxy/song/detail?ids=${nSong.id}`);
             if (res.data && res.data.songs && res.data.songs.length > 0) {
                 const detail = res.data.songs[0];
                 const detailAlbum = detail.al || detail.album;
                 if (detailAlbum && detailAlbum.picUrl) {
                     setCoverArt(detailAlbum.picUrl);
+                }
+            }
+
+            // 3. Auto Fetch & Save Lyric
+            if (song && song.id) {
+                try {
+                    const lyricRes = await api.get(`/plugins/${neteasePluginId}/proxy/lyric?id=${nSong.id}`);
+                    const lrc = lyricRes.data?.lrc?.lyric;
+                    if (lrc && lrc.trim() !== '') {
+                        await optimizeLyrics(lrc, song.id);
+                    }
+                } catch (lyricErr) {
+                    console.warn("Failed to auto-fetch lyric", lyricErr);
                 }
             }
         } catch (e) {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { getLyrics, generateLyrics, getAiStatus, optimizeLyrics, type Lyric } from '../services/api';
-import { Sparkles, Copy, Check, Edit3, X, Mic2, Music, RefreshCw, Volume2, ArrowDownCircle } from 'lucide-react';
+import { getLyrics, generateLyrics, getAiStatus, optimizeLyrics, getPlugins, api, type Lyric } from '../services/api';
+import { Sparkles, Copy, Check, Edit3, X, Mic2, Music, RefreshCw, Volume2, ArrowDownCircle, Disc, Search, ChevronRight } from 'lucide-react';
 
 interface LyricsPanelProps {
     mediaId: number;
@@ -18,6 +18,15 @@ interface LyricsPanelProps {
 interface LrcLine {
     time: number; // Seconds
     text: string;
+}
+
+interface NeteaseSearchResult {
+    id: number;
+    name: string;
+    artists?: { name: string }[];
+    ar?: { name: string }[];
+    album?: { name: string; picUrl?: string };
+    al?: { name: string; picUrl?: string };
 }
 
 const parseLrc = (lrc: string): LrcLine[] => {
@@ -53,6 +62,14 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
     const [error, setError] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
 
+    // Netease Plugin State
+    const [neteasePluginId, setNeteasePluginId] = useState<number | null>(null);
+    const [matchingNetease, setMatchingNetease] = useState(false);
+    const [showNeteaseSearch, setShowNeteaseSearch] = useState(false);
+    const [neteaseQuery, setNeteaseQuery] = useState('');
+    const [neteaseResults, setNeteaseResults] = useState<NeteaseSearchResult[]>([]);
+    const [searchingNetease, setSearchingNetease] = useState(false);
+
     // Manual Edit Mode
     const [isEditing, setIsEditing] = useState(false);
     const [editText, setEditText] = useState('');
@@ -80,11 +97,13 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
         };
     }, []);
 
-    // Initial Load & AI Health Check
+    // Initial Load & AI/Plugin Health Check
     useEffect(() => {
         loadLyrics();
         checkAi();
+        checkNeteasePlugin();
         setIsEditing(false);
+        setShowNeteaseSearch(false);
     }, [mediaId]);
 
     // Parse LRC when content changes
@@ -172,13 +191,104 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
         }
     };
 
+    const checkNeteasePlugin = async () => {
+        try {
+            const plugins = await getPlugins();
+            const found = plugins.find(p => p.baseUrl && p.isEnabled && (p.name.toLowerCase().includes("netease") || p.name.includes("网易")));
+            if (isMounted.current && found) {
+                setNeteasePluginId(found.id);
+            }
+        } catch { }
+    };
+
+    // Quick One-Click Match from Netease Cloud Music
+    const handleQuickNeteaseMatch = async (keywordOverride?: string) => {
+        if (!neteasePluginId) return;
+        setMatchingNetease(true);
+        setError(null);
+
+        const query = (keywordOverride || `${song?.title || ''} ${song?.artist || ''}`).trim();
+        if (!query) {
+            setMatchingNetease(false);
+            setShowNeteaseSearch(true);
+            return;
+        }
+
+        try {
+            const searchRes = await api.get(`/plugins/${neteasePluginId}/proxy/search?keywords=${encodeURIComponent(query)}`);
+            const songs: NeteaseSearchResult[] = searchRes.data?.result?.songs || [];
+            
+            if (songs.length === 0) {
+                setError("网易云音乐未搜索到相关歌曲，可尝试自定义关键词或使用 AI 识别。");
+                setShowNeteaseSearch(true);
+                setNeteaseQuery(query);
+                return;
+            }
+
+            // Try fetching lyric for top matching song
+            const topSong = songs[0];
+            await fetchAndApplyNeteaseLyric(topSong.id, topSong.name);
+        } catch (e: any) {
+            setError("网易云歌词匹配失败，请检查插件连接。");
+        } finally {
+            if (isMounted.current) setMatchingNetease(false);
+        }
+    };
+
+    const fetchAndApplyNeteaseLyric = async (songId: number, songName?: string) => {
+        if (!neteasePluginId) return;
+        setMatchingNetease(true);
+        try {
+            const lyricRes = await api.get(`/plugins/${neteasePluginId}/proxy/lyric?id=${songId}`);
+            const lrcContent = lyricRes.data?.lrc?.lyric;
+
+            if (!lrcContent || lrcContent.trim() === '') {
+                setError(`《${songName || '该歌曲'}》在网易云暂无可用歌词。`);
+                return;
+            }
+
+            // Save to DB via optimizeLyrics endpoint
+            await optimizeLyrics(lrcContent, mediaId);
+
+            if (isMounted.current) {
+                setLyricData({
+                    id: lyricData?.id || 0,
+                    content: lrcContent,
+                    language: 'zh',
+                    source: '网易云音乐 (官方LRC)',
+                    version: 'netease',
+                    Title: song?.title || lyricData?.Title,
+                    Artist: song?.artist || lyricData?.Artist
+                });
+                setShowNeteaseSearch(false);
+                setError(null);
+            }
+        } catch (e) {
+            setError("获取网易云歌词内容失败。");
+        } finally {
+            if (isMounted.current) setMatchingNetease(false);
+        }
+    };
+
+    const handleSearchNetease = async () => {
+        if (!neteasePluginId || !neteaseQuery.trim()) return;
+        setSearchingNetease(true);
+        try {
+            const res = await api.get(`/plugins/${neteasePluginId}/proxy/search?keywords=${encodeURIComponent(neteaseQuery.trim())}`);
+            setNeteaseResults(res.data?.result?.songs || []);
+        } catch {
+            setNeteaseResults([]);
+        } finally {
+            if (isMounted.current) setSearchingNetease(false);
+        }
+    };
+
     // AI Generation with intelligent polling fallback
     const handleGenerate = async () => {
         setGenerating(true);
         setError(null);
 
-        // Start background polling in case proxy or HTTP request drops/times out
-        let pollTimer: any | null = null;
+        let pollTimer: any = null;
         let isDone = false;
 
         const stopPolling = () => {
@@ -200,9 +310,7 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
                         setGenerating(false);
                     }
                 }
-            } catch {
-                // Ignore 404 while generating
-            }
+            } catch { }
         }, 3000);
 
         try {
@@ -212,9 +320,8 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
             if (isMounted.current) {
                 setLyricData(data);
             }
-        } catch (err: any) {
+        } catch {
             if (!isDone) {
-                // If direct post timed out or errored, check one more time with a short delay
                 setTimeout(async () => {
                     if (!isMounted.current) return;
                     try {
@@ -271,7 +378,6 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
         if (!editText.trim()) return;
         setSavingEdit(true);
         try {
-            // Save manual edit via optimize endpoint with raw content
             await optimizeLyrics(editText, mediaId);
             setLyricData({
                 id: lyricData?.id || 0,
@@ -327,7 +433,7 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
                                     </h2>
                                     {lyricData?.source && (
                                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-medium whitespace-nowrap">
-                                            {lyricData.source.includes('Whisper') ? 'Whisper AI' : lyricData.source.includes('Gemini') ? 'Gemini 润色' : lyricData.source}
+                                            {lyricData.source.includes('Whisper') ? 'Whisper AI' : lyricData.source.includes('网易云') ? '网易云官方' : lyricData.source.includes('Gemini') ? 'Gemini 润色' : lyricData.source}
                                         </span>
                                     )}
                                 </div>
@@ -421,6 +527,71 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
                                     </button>
                                 </div>
                             </div>
+                        ) : showNeteaseSearch ? (
+                            /* Netease Search & Manual Pick View */
+                            <div className="flex flex-col h-full space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 text-rose-400 font-semibold text-sm">
+                                        <Disc size={18} />
+                                        <span>网易云精准歌词检索</span>
+                                    </div>
+                                    <button
+                                        onClick={() => setShowNeteaseSearch(false)}
+                                        className="text-xs text-gray-400 hover:text-white"
+                                    >
+                                        返回
+                                    </button>
+                                </div>
+
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        className="flex-1 bg-gray-950 border border-gray-700 text-white text-xs rounded-xl px-3 py-2 outline-none focus:border-rose-500"
+                                        placeholder="搜索歌曲 / 歌手..."
+                                        value={neteaseQuery}
+                                        onChange={(e) => setNeteaseQuery(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleSearchNetease()}
+                                    />
+                                    <button
+                                        onClick={handleSearchNetease}
+                                        disabled={searchingNetease}
+                                        className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-medium rounded-xl transition flex items-center gap-1"
+                                    >
+                                        {searchingNetease ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
+                                        搜索
+                                    </button>
+                                </div>
+
+                                <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                                    {neteaseResults.length > 0 ? (
+                                        neteaseResults.map((s) => {
+                                            const ar = (s.artists || s.ar || []).map(a => a.name).join(', ');
+                                            const al = (s.album || s.al)?.name;
+                                            return (
+                                                <div
+                                                    key={s.id}
+                                                    onClick={() => fetchAndApplyNeteaseLyric(s.id, s.name)}
+                                                    className="p-3 bg-gray-800/50 hover:bg-gray-800 rounded-xl border border-white/5 hover:border-rose-500/30 cursor-pointer transition flex items-center justify-between group"
+                                                >
+                                                    <div className="min-w-0 flex-1 pr-2">
+                                                        <div className="text-xs font-bold text-white group-hover:text-rose-400 transition truncate">
+                                                            {s.name}
+                                                        </div>
+                                                        <div className="text-[11px] text-gray-400 truncate">
+                                                            {ar} {al ? `• ${al}` : ''}
+                                                        </div>
+                                                    </div>
+                                                    <ChevronRight size={16} className="text-gray-500 group-hover:text-rose-400 group-hover:translate-x-0.5 transition" />
+                                                </div>
+                                            );
+                                        })
+                                    ) : (
+                                        <div className="text-center text-xs text-gray-500 py-10">
+                                            输入歌曲名称后回车搜索匹配网易云官方歌词
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         ) : lyricData && parsedLines.length > 0 ? (
                             /* Synchronized Lyrics View */
                             <div className="space-y-6 py-12 px-2">
@@ -459,7 +630,7 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
                                 </div>
                             </div>
                         ) : (
-                            /* No Lyrics / AI Generation State */
+                            /* No Lyrics / AI & Netease Action State */
                             <div className="flex flex-col items-center justify-center h-full space-y-6 px-4">
                                 {generating ? (
                                     /* Rich AI Listening Animation */
@@ -497,6 +668,17 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
                                             </p>
                                         </div>
                                     </div>
+                                ) : matchingNetease ? (
+                                    /* Netease Matching Loading */
+                                    <div className="flex flex-col items-center space-y-4 text-center">
+                                        <div className="w-14 h-14 rounded-2xl bg-rose-600/20 border border-rose-500/30 flex items-center justify-center text-rose-400 animate-pulse shadow-lg">
+                                            <Disc size={28} className="animate-spin" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <h4 className="text-sm font-semibold text-white">正在检索网易云官方歌词...</h4>
+                                            <p className="text-xs text-gray-400">1秒内自动匹配并入库</p>
+                                        </div>
+                                    </div>
                                 ) : (
                                     /* No Lyrics Action Card */
                                     <div className="flex flex-col items-center text-center space-y-5 w-full max-w-sm">
@@ -507,48 +689,82 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
                                         <div className="space-y-1">
                                             <h3 className="text-base font-semibold text-white">暂无同步歌词</h3>
                                             <p className="text-xs text-gray-400">
-                                                当前曲目尚未生成 LRC 歌词，可通过本地 AI 一键识别提取
+                                                支持网易云官方歌词极速匹配，或使用本地 AI 声学模型自动识别
                                             </p>
                                         </div>
 
-                                        {aiAvailable ? (
-                                            <div className="w-full space-y-3 bg-gray-800/40 p-4 rounded-2xl border border-white/5">
-                                                <div className="grid grid-cols-2 gap-2 text-left">
-                                                    <div>
-                                                        <label className="text-[10px] text-gray-400 mb-1 block">指定语言</label>
-                                                        <select
-                                                            className="w-full bg-gray-900 border border-gray-700 text-white text-xs rounded-lg p-2 focus:ring-1 focus:ring-purple-500 outline-none"
-                                                            value={lang}
-                                                            onChange={(e) => setLang(e.target.value)}
+                                        <div className="w-full space-y-3 bg-gray-800/40 p-4 rounded-2xl border border-white/5">
+                                            {/* Priority 1: Netease Match (Instant 1s) */}
+                                            {neteasePluginId && (
+                                                <div className="space-y-2">
+                                                    <button
+                                                        onClick={() => handleQuickNeteaseMatch()}
+                                                        className="w-full py-2.5 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-rose-900/30 flex items-center justify-center gap-2 active:scale-[0.98]"
+                                                    >
+                                                        <Disc size={15} />
+                                                        🔴 网易云极速匹配歌词 (1秒)
+                                                    </button>
+                                                    <div className="flex justify-end">
+                                                        <button
+                                                            onClick={() => {
+                                                                setNeteaseQuery(`${song?.title || ''} ${song?.artist || ''}`.trim());
+                                                                setShowNeteaseSearch(true);
+                                                            }}
+                                                            className="text-[11px] text-rose-400/80 hover:text-rose-300 hover:underline flex items-center gap-1"
                                                         >
-                                                            <option value="">自动检测 (Auto)</option>
-                                                            <option value="zh">中文 (Chinese)</option>
-                                                            <option value="en">英语 (English)</option>
-                                                            <option value="ja">日语 (Japanese)</option>
-                                                            <option value="ko">韩语 (Korean)</option>
-                                                            <option value="yue">粤语 (Cantonese)</option>
-                                                        </select>
-                                                    </div>
-                                                    <div>
-                                                        <label className="text-[10px] text-gray-400 mb-1 block">提示词 (可选)</label>
-                                                        <input
-                                                            type="text"
-                                                            className="w-full bg-gray-900 border border-gray-700 text-white text-xs rounded-lg p-2 focus:ring-1 focus:ring-purple-500 outline-none"
-                                                            placeholder="如: 繁體中文"
-                                                            value={customPrompt}
-                                                            onChange={(e) => setCustomPrompt(e.target.value)}
-                                                        />
+                                                            <Search size={11} />
+                                                            搜索其他版本 / 手动选歌
+                                                        </button>
                                                     </div>
                                                 </div>
+                                            )}
 
-                                                <button
-                                                    onClick={handleGenerate}
-                                                    className="w-full py-2.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-purple-900/30 flex items-center justify-center gap-2 active:scale-[0.98]"
-                                                >
-                                                    <Sparkles size={15} />
-                                                    ✨ 启动 AI 智能识别歌词
-                                                </button>
+                                            {/* Priority 2: AI Whisper Generation */}
+                                            {aiAvailable ? (
+                                                <div className="pt-2 border-t border-white/5 space-y-2.5">
+                                                    <div className="grid grid-cols-2 gap-2 text-left">
+                                                        <div>
+                                                            <label className="text-[10px] text-gray-400 mb-1 block">AI 识别语言</label>
+                                                            <select
+                                                                className="w-full bg-gray-900 border border-gray-700 text-white text-xs rounded-lg p-2 focus:ring-1 focus:ring-purple-500 outline-none"
+                                                                value={lang}
+                                                                onChange={(e) => setLang(e.target.value)}
+                                                            >
+                                                                <option value="">自动检测 (Auto)</option>
+                                                                <option value="zh">中文 (Chinese)</option>
+                                                                <option value="en">英语 (English)</option>
+                                                                <option value="ja">日语 (Japanese)</option>
+                                                                <option value="ko">韩语 (Korean)</option>
+                                                                <option value="yue">粤语 (Cantonese)</option>
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[10px] text-gray-400 mb-1 block">提示词 (可选)</label>
+                                                            <input
+                                                                type="text"
+                                                                className="w-full bg-gray-900 border border-gray-700 text-white text-xs rounded-lg p-2 focus:ring-1 focus:ring-purple-500 outline-none"
+                                                                placeholder="如: 繁體中文"
+                                                                value={customPrompt}
+                                                                onChange={(e) => setCustomPrompt(e.target.value)}
+                                                            />
+                                                        </div>
+                                                    </div>
 
+                                                    <button
+                                                        onClick={handleGenerate}
+                                                        className="w-full py-2.5 bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 text-white text-xs font-semibold rounded-xl transition shadow-lg shadow-purple-900/30 flex items-center justify-center gap-2 active:scale-[0.98]"
+                                                    >
+                                                        <Sparkles size={15} />
+                                                        ✨ 启动 AI 本地模型听音识别 (~30s)
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="text-[11px] text-amber-400/80 bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-xl">
+                                                    AI 服务离线（建议使用网易云匹配）
+                                                </div>
+                                            )}
+
+                                            <div className="pt-2 border-t border-white/5">
                                                 <button
                                                     onClick={() => setIsEditing(true)}
                                                     className="w-full py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs rounded-xl transition font-medium flex items-center justify-center gap-1.5"
@@ -557,20 +773,7 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
                                                     手动粘贴 / 输入歌词
                                                 </button>
                                             </div>
-                                        ) : (
-                                            <div className="w-full space-y-2">
-                                                <div className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-2 rounded-xl">
-                                                    AI 服务离线（可手动粘贴歌词）
-                                                </div>
-                                                <button
-                                                    onClick={() => setIsEditing(true)}
-                                                    className="w-full py-2.5 bg-gray-800 hover:bg-gray-700 text-white text-xs rounded-xl transition font-medium flex items-center justify-center gap-1.5"
-                                                >
-                                                    <Edit3 size={14} />
-                                                    手动粘贴 / 输入歌词
-                                                </button>
-                                            </div>
-                                        )}
+                                        </div>
 
                                         {error && (
                                             <div className="text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3 py-2 rounded-xl text-center w-full">
@@ -583,7 +786,7 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
                         )}
 
                         {/* Floating button to resume auto-scroll */}
-                        {userScrolled && lyricData && parsedLines.length > 0 && !isEditing && (
+                        {userScrolled && lyricData && parsedLines.length > 0 && !isEditing && !showNeteaseSearch && (
                             <button
                                 onClick={scrollToCurrentLine}
                                 className="sticky bottom-4 left-1/2 transform -translate-x-1/2 px-3 py-1.5 bg-purple-600/90 hover:bg-purple-600 text-white text-xs rounded-full shadow-xl shadow-purple-900/40 backdrop-blur-md transition flex items-center gap-1.5 border border-purple-400/30 animate-bounce"
