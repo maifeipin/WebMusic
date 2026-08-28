@@ -80,7 +80,7 @@ public class TagService
         throw new Exception("AI Service unavailable after retries");
     }
 
-    public async Task<string> GenerateTagsAsync(string userPrompt, object songsContext, string model = "gemini-2.0-flash-exp")
+    public async Task<string> GenerateTagsAsync(string userPrompt, object songsContext, string model = "gemini-1.5-flash")
     {
         var systemPrompt = @"
 You are a professional music librarian assistant.
@@ -114,7 +114,7 @@ DO NOT output markdown code blocks, just the raw JSON array.
         return await ExecuteGeminiRequest(requestBody, model);
     }
 
-    public async Task<string> PolishLyricsAsync(string lrcContent, string contextInfo = "", string model = "gemini-2.0-flash-exp")
+    public async Task<string> PolishLyricsAsync(string lrcContent, string contextInfo = "", string model = "gemini-1.5-flash")
     {
         var systemPrompt = $@"
 You are a professional lyrics editor.

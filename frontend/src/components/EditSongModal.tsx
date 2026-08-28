@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { X, Save, Music2, Tag, Image as ImageIcon, Search, Loader2, Disc } from 'lucide-react';
-import api, { updateMedia, getPlugins, optimizeLyrics } from '../services/api';
+import api, { updateMedia, getPlugins, saveLyrics } from '../services/api';
 import CoverPickerModal from './CoverPickerModal';
 import SmbImage from './SmbImage';
 
@@ -142,7 +142,7 @@ export default function EditSongModal({ isOpen, onClose, song, onSaved }: EditSo
                     const lyricRes = await api.get(`/plugins/${neteasePluginId}/proxy/lyric?id=${nSong.id}`);
                     const lrc = lyricRes.data?.lrc?.lyric;
                     if (lrc && lrc.trim() !== '') {
-                        await optimizeLyrics(lrc, song.id);
+                        await saveLyrics(song.id, lrc, '网易云音乐 (官方LRC)', 'netease');
                     }
                 } catch (lyricErr) {
                     console.warn("Failed to auto-fetch lyric", lyricErr);

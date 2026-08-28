@@ -110,10 +110,42 @@ public class LyricsController : ControllerBase
     }
 
     /// <summary>
+    /// Direct save/update lyric endpoint without running through AI.
+    /// </summary>
+    [HttpPost("{mediaId}/save")]
+    public async Task<IActionResult> SaveLyrics(int mediaId, [FromBody] SaveLyricsRequest request)
+    {
+        if (!User.IsInRole("Admin")) return StatusCode(403, "Forbidden");
+        if (string.IsNullOrWhiteSpace(request.Content))
+        {
+            return BadRequest("Lyric content is required.");
+        }
+
+        try
+        {
+            var source = string.IsNullOrWhiteSpace(request.Source) ? "User Edited" : request.Source;
+            var version = string.IsNullOrWhiteSpace(request.Version) ? "v1" : request.Version;
+
+            var lyric = await _lyricsService.UpdateLyricsAsync(mediaId, request.Content, source, version);
+            return Ok(new 
+            {
+                lyric.Id,
+                lyric.Content,
+                lyric.Language,
+                lyric.Source,
+                lyric.Version
+            });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Uses AI (Gemini) to polish/correct LRC text while preserving timestamps.
     /// </summary>
     [HttpPost("optimize")]
-
     public async Task<IActionResult> OptimizeLyrics([FromBody] OptimizeLyricsRequest request)
     {
         if (!User.IsInRole("Admin")) return StatusCode(403, "AI Features are restricted to the Administrator.");
@@ -147,8 +179,15 @@ public class LyricsController : ControllerBase
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new { error = ex.Message });
+            return StatusCode(500, new { error = "AI 润色失败: " + ex.Message });
         }
+    }
+
+    public class SaveLyricsRequest
+    {
+        public string Content { get; set; } = string.Empty;
+        public string? Source { get; set; }
+        public string? Version { get; set; }
     }
 
     public class OptimizeLyricsRequest

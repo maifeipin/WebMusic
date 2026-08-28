@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { getLyrics, generateLyrics, getAiStatus, optimizeLyrics, getPlugins, api, type Lyric } from '../services/api';
+import { getLyrics, generateLyrics, getAiStatus, optimizeLyrics, saveLyrics, getPlugins, api, type Lyric } from '../services/api';
 import { 
     Sparkles, Copy, Check, Edit3, X, Mic2, Music, RefreshCw, Volume2, 
     ArrowDownCircle, Disc, Search, ChevronRight, Eye, CheckCircle2,
@@ -296,7 +296,7 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
         setMatchingNetease(true);
         setError(null);
         try {
-            await optimizeLyrics(lrcContent, mediaId);
+            await saveLyrics(mediaId, lrcContent, '网易云音乐 (官方LRC)', 'netease');
             if (isMounted.current) {
                 setLyricData({
                     id: lyricData?.id || 0,
@@ -413,7 +413,7 @@ export const LyricsPanel: React.FC<LyricsPanelProps> = ({ mediaId, currentTime, 
         if (!editText.trim()) return;
         setSavingEdit(true);
         try {
-            await optimizeLyrics(editText, mediaId);
+            await saveLyrics(mediaId, editText, 'User Edited', 'manual');
             setLyricData({
                 id: lyricData?.id || 0,
                 content: editText,
