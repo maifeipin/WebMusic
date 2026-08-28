@@ -128,7 +128,7 @@ public class ScanController : ControllerBase
         // Security Check: Can only delete own source. 
         // If source.UserId is NULL (Public), only Admin (Id=1) should delete it? (Assuming Admin is 1)
         if (source.UserId != null && source.UserId != userId) return Forbid();
-        if (source.UserId == null && userId != 1) return Forbid(); // Only admin deletes public sources
+        if (source.UserId == null && !User.IsInRole("Admin")) return Forbid();
         
         _context.ScanSources.Remove(source);
         await _context.SaveChangesAsync();

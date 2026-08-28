@@ -125,7 +125,7 @@ public class AuthController : ControllerBase
         };
 
         // Determine Role
-        if (user.Id == 1) 
+        if (user.IsAdmin)
         {
             claims.Add(new Claim(ClaimTypes.Role, "Admin"));
         }

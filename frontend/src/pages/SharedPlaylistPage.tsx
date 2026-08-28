@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { getSharedPlaylist } from '../services/api';
+import { getSharedPlaylist, grantSharedPlaylistAccess } from '../services/api';
 import { Play, Pause, Music, SkipBack, SkipForward, Share2, Loader, Lock, AlertTriangle } from 'lucide-react';
 
 interface SharedSong {
@@ -28,7 +28,6 @@ export default function SharedPlaylistPage() {
     // Password State
     const [passwordRequired, setPasswordRequired] = useState(false);
     const [passwordInput, setPasswordInput] = useState('');
-    const [password, setPassword] = useState<string | undefined>(undefined); // Confirmed password
 
     const [currentSong, setCurrentSong] = useState<SharedSong | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -109,9 +108,9 @@ export default function SharedPlaylistPage() {
         try {
             setLoading(true);
             setError(null);
-            const res = await getSharedPlaylist(token!, pwd);
+            if (pwd) await grantSharedPlaylistAccess(token!, pwd);
+            const res = await getSharedPlaylist(token!);
             setPlaylist(res.data);
-            if (pwd) setPassword(pwd); // Save validated password
             setPasswordRequired(false);
         } catch (err: any) {
             const status = err.response?.status;
@@ -248,7 +247,7 @@ export default function SharedPlaylistPage() {
     };
 
     const streamUrl = currentSong && token
-        ? `/api/media/stream/shared/${token}/${currentSong.id}${password ? `?pwd=${encodeURIComponent(password)}` : ''}`
+        ? `/api/media/stream/shared/${token}/${currentSong.id}`
         : undefined;
 
     if (loading && !passwordRequired) {

@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using WebMusic.Backend.Data;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.DataProtection;
 
 // Disable default claim mapping to keep claims as 'sub', 'name', etc.
 System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
@@ -35,9 +36,9 @@ builder.Services.AddControllers(options =>
 // Allow large uploads
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
 {
-    options.MultipartBodyLengthLimit = long.MaxValue;
-    options.ValueLengthLimit = int.MaxValue;
-    options.MemoryBufferThreshold = int.MaxValue;
+    options.MultipartBodyLengthLimit = 10L * 1024 * 1024 * 1024;
+    options.ValueLengthLimit = 1024 * 1024;
+    options.MemoryBufferThreshold = 1024 * 1024;
 });
 
 builder.Services.AddEndpointsApiExplorer();
@@ -131,6 +132,8 @@ builder.Services.AddSingleton<WebMusic.Backend.Services.PathResolver>(); // Cent
 builder.Services.AddScoped<WebMusic.Backend.Services.DataManagementService>();
 builder.Services.AddScoped<WebMusic.Backend.Services.LyricsService>();
 builder.Services.AddHttpClient(); // Required for IHttpClientFactory
+builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, "data", "data-protection-keys")));
+builder.Services.AddSingleton<WebMusic.Backend.Services.IShareAccessService, WebMusic.Backend.Services.ShareAccessService>();
 builder.Services.AddHostedService<WebMusic.Backend.Services.JobWorker>();
 
 var app = builder.Build();
@@ -155,6 +158,12 @@ using (var scope = app.Services.CreateScope())
     // I will delete the .db file via command line.
     db.Database.EnsureCreated();
 
+    if (db.Database.IsNpgsql())
+    {
+        db.Database.ExecuteSqlRaw("ALTER TABLE \"Users\" ADD COLUMN IF NOT EXISTS \"IsAdmin\" boolean NOT NULL DEFAULT FALSE;");
+        db.Database.ExecuteSqlRaw("UPDATE \"Users\" SET \"IsAdmin\" = TRUE WHERE \"Id\" = 1 AND NOT EXISTS (SELECT 1 FROM \"Users\" WHERE \"IsAdmin\" = TRUE);");
+    }
+
     if (!db.Users.Any())
     {
         var adminUsername = builder.Configuration["BootstrapAdmin:Username"];
@@ -167,7 +176,8 @@ using (var scope = app.Services.CreateScope())
         db.Users.Add(new WebMusic.Backend.Models.User
         {
             Username = adminUsername,
-            PasswordHash = WebMusic.Backend.Services.PasswordService.Hash(adminPassword)
+            PasswordHash = WebMusic.Backend.Services.PasswordService.Hash(adminPassword),
+            IsAdmin = true
         });
         db.SaveChanges();
     }

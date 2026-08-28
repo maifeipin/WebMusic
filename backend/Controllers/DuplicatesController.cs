@@ -41,7 +41,7 @@ public class DuplicatesController : ControllerBase
     {
         var userId = GetUserId();
         // Restrict to Admin (ID 1)
-        if (userId != 1)
+        if (!User.IsInRole("Admin"))
         {
             return StatusCode(403, "Only the admin can manage duplicates.");
         }
@@ -114,7 +114,7 @@ public class DuplicatesController : ControllerBase
     public async Task<IActionResult> Cleanup([FromBody] List<int> ids)
     {
         var userId = GetUserId();
-        if (userId != 1) return StatusCode(403, "Only the admin can manage duplicates.");
+        if (!User.IsInRole("Admin")) return StatusCode(403, "Only the admin can manage duplicates.");
 
         if (ids == null || ids.Count == 0) return BadRequest("No IDs provided");
 
@@ -133,7 +133,7 @@ public class DuplicatesController : ControllerBase
         {
             // Permission Check: Admin (1) can delete anything. 
             // Others are already blocked by top-level check, but keeping logic safe:
-            if (userId != 1 && song.ScanSource?.UserId != null && song.ScanSource.UserId != userId)
+            if (!User.IsInRole("Admin") && song.ScanSource?.UserId != null && song.ScanSource.UserId != userId)
             {
                 _logger.LogWarning($"User {userId} attempted to delete song {song.Id} owned by {song.ScanSource.UserId}");
                 failedCount++;

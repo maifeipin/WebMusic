@@ -76,8 +76,9 @@ export const sharePlaylist = (id: number, options?: { name?: string; songIds?: n
     api.post(`/playlist/${id}/share`, options || {});
 export const revokePlaylistShare = (id: number) => api.delete(`/playlist/${id}/share`);
 // Note: getSharedPlaylist doesn't need auth, so we use a plain axios call
-export const getSharedPlaylist = (token: string, password?: string) =>
-    axios.get(`/api/playlist/shared/${token}${password ? `?password=${encodeURIComponent(password)}` : ''}`);
+export const getSharedPlaylist = (token: string) => axios.get(`/api/playlist/shared/${token}`);
+export const grantSharedPlaylistAccess = (token: string, password: string) =>
+    axios.post(`/api/playlist/shared/${token}/access`, { password });
 
 // Tags
 export const suggestTags = (songIds: number[], prompt: string, model = 'gemini-2.0-flash-exp') => api.post('/tags/suggest', { songIds, prompt, model });

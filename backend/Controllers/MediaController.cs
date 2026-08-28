@@ -18,14 +18,18 @@ public class MediaController : ControllerBase
     private readonly ISmbService _smbService;
     private readonly PathResolver _pathResolver;
     private readonly DataManagementService _dataService;
+    private readonly IShareAccessService _shareAccess;
 
-    public MediaController(AppDbContext context, ISmbService smbService, PathResolver pathResolver, DataManagementService dataService)
+    public MediaController(AppDbContext context, ISmbService smbService, PathResolver pathResolver, DataManagementService dataService, IShareAccessService shareAccess)
     {
         _context = context;
         _smbService = smbService;
         _pathResolver = pathResolver;
         _dataService = dataService;
+        _shareAccess = shareAccess;
     }
+
+    private bool CanAccess(ScanSource source) => source.UserId == null || source.UserId == GetUserId() || User.IsInRole("Admin");
 
     private int GetUserId()
     {
@@ -443,6 +447,7 @@ public class MediaController : ControllerBase
             .FirstOrDefaultAsync(m => m.Id == id);
             
         if (media == null || media.ScanSource == null) return NotFound();
+        if (!CanAccess(media.ScanSource)) return Forbid();
 
         var stream = _smbService.OpenFile(media.ScanSource, media.FilePath);
         if (stream == null) return NotFound("File not found on SMB share");
@@ -466,7 +471,7 @@ public class MediaController : ControllerBase
     /// </summary>
     [AllowAnonymous]
     [HttpGet("stream/shared/{shareToken}/{songId}")]
-    public async Task<IActionResult> StreamShared(string shareToken, int songId, [FromQuery] bool transcode = false, [FromQuery] string? pwd = null)
+    public async Task<IActionResult> StreamShared(string shareToken, int songId, [FromQuery] bool transcode = false)
     {
         // 1. Validate Share Token
         var playlist = await _context.Playlists
@@ -480,11 +485,8 @@ public class MediaController : ControllerBase
             return StatusCode(410, "Share link expired");
 
         // 3. Check Password
-        if (!string.IsNullOrEmpty(playlist.SharePassword))
-        {
-            if (string.IsNullOrEmpty(pwd) || pwd != playlist.SharePassword)
-                return Forbid("Invalid password");
-        }
+        if (!string.IsNullOrEmpty(playlist.SharePassword) && !_shareAccess.HasValidTicket(Request, shareToken))
+            return Forbid("Share access is required");
 
         var belongsToPlaylist = playlist.PlaylistSongs.Any(ps => ps.MediaFileId == songId);
         if (!belongsToPlaylist)
@@ -928,22 +930,31 @@ public class MediaController : ControllerBase
 
         Console.WriteLine($"[SMB-Image] Host: {host}, Share: {shareName}, RelPath: {relativePath}");
 
-        // Find a StorageCredential by host
-        var credentials = await _context.StorageCredentials.ToListAsync();
-
-        var matchedCredential = credentials.FirstOrDefault(c =>
+        // Only use a credential attached to a source the requesting user can access.
+        // Never search all stored credentials by host: that would allow cross-user SMB reads.
+        var userId = GetUserId();
+        var isAdmin = User.IsInRole("Admin");
+        var sources = await _context.ScanSources
+            .Include(s => s.StorageCredential)
+            .Where(s => s.UserId == null || s.UserId == userId || isAdmin)
+            .ToListAsync();
+        var targetSharePath = $"{shareName}/{relativePath}".Trim('/');
+        var matchedSource = sources.FirstOrDefault(source =>
         {
-            var credHost = c.Host.Replace('\\', '/');
-            if (credHost.StartsWith("smb://", StringComparison.OrdinalIgnoreCase))
-                credHost = credHost.Substring(6);
-            credHost = credHost.Trim('/');
-            
-            // Handle IP or hostname match
-            return string.Equals(credHost, host, StringComparison.OrdinalIgnoreCase);
+            var credential = source.StorageCredential;
+            if (credential == null) return false;
+            var credentialHost = credential.Host.Replace('\\', '/').Replace("smb://", "", StringComparison.OrdinalIgnoreCase).Trim('/');
+            if (!string.Equals(credentialHost, host, StringComparison.OrdinalIgnoreCase)) return false;
+
+            var sourcePath = source.Path.Replace('\\', '/').Replace("smb://", "", StringComparison.OrdinalIgnoreCase).Trim('/');
+            if (source.Path.StartsWith("smb://", StringComparison.OrdinalIgnoreCase) && sourcePath.StartsWith(host + "/", StringComparison.OrdinalIgnoreCase))
+                sourcePath = sourcePath[(host.Length + 1)..];
+            return targetSharePath.Equals(sourcePath, StringComparison.OrdinalIgnoreCase) ||
+                   targetSharePath.StartsWith(sourcePath.TrimEnd('/') + "/", StringComparison.OrdinalIgnoreCase);
         });
 
-        if (matchedCredential == null)
-            return NotFound($"No matching storage credential found for host: {host}");
+        if (matchedSource?.StorageCredential == null)
+            return NotFound("No accessible storage source matches this image path.");
 
         // Attempt to open the file via SMB service using SmbService helper
         try
@@ -952,7 +963,7 @@ public class MediaController : ControllerBase
             // We need to use the Connect method with credential and share
             var smbService = (WebMusic.Backend.Services.SmbService)_smbService;
             
-            if (!smbService.Connect(matchedCredential, shareName, out var client, out var fileStore))
+            if (!smbService.Connect(matchedSource.StorageCredential, shareName, out var client, out var fileStore))
             {
                 return NotFound($"Failed to connect to SMB share: {shareName}");
             }

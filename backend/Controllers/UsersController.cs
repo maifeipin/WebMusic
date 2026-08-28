@@ -36,7 +36,7 @@ public class UsersController : ControllerBase
         var user = await _context.Users.FindAsync(id);
         if (user == null) return NotFound("User not found");
 
-        if (user.Id == 1) return BadRequest("Cannot delete the Administrator account.");
+        if (user.IsAdmin) return BadRequest("Cannot delete an administrator account.");
 
         _context.Users.Remove(user);
         await _context.SaveChangesAsync();
@@ -58,7 +58,8 @@ public class UsersController : ControllerBase
         var newUser = new User 
         { 
             Username = req.Username, 
-            PasswordHash = PasswordService.Hash(req.Password)
+            PasswordHash = PasswordService.Hash(req.Password),
+            IsAdmin = false
         };
         
         _context.Users.Add(newUser);

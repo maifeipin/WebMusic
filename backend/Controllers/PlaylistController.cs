@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using WebMusic.Backend.Data;
 using WebMusic.Backend.Models;
+using WebMusic.Backend.Services;
 using System.Security.Claims;
 
 namespace WebMusic.Backend.Controllers;
@@ -13,18 +14,19 @@ namespace WebMusic.Backend.Controllers;
 public class PlaylistController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly IShareAccessService _shareAccess;
 
-    public PlaylistController(AppDbContext context)
+    public PlaylistController(AppDbContext context, IShareAccessService shareAccess)
     {
         _context = context;
+        _shareAccess = shareAccess;
     }
 
     private int GetUserId()
     {
-        var sub = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var sub = User.FindFirstValue("sub") ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (int.TryParse(sub, out int id)) return id;
-        // Fallback for dev/legacy
-        return 1;
+        return 0;
     }
 
     // GET: api/playlist?type=normal|shared|all
@@ -274,7 +276,7 @@ public class PlaylistController : ControllerBase
                 expiresAt = DateTime.UtcNow.AddDays(dto.ExpiresInDays.Value);
             }
             
-            sharedPlaylist.SharePassword = string.IsNullOrEmpty(dto.Password) ? null : dto.Password;
+            sharedPlaylist.SharePassword = string.IsNullOrEmpty(dto.Password) ? null : PasswordService.Hash(dto.Password);
             sharedPlaylist.ShareExpiresAt = expiresAt;
             await _context.SaveChangesAsync();
 
@@ -301,7 +303,7 @@ public class PlaylistController : ControllerBase
             expiresAtGlobal = DateTime.UtcNow.AddDays(dto.ExpiresInDays.Value);
         }
         playlist.ShareExpiresAt = expiresAtGlobal;
-        playlist.SharePassword = string.IsNullOrEmpty(dto.Password) ? null : dto.Password;
+        playlist.SharePassword = string.IsNullOrEmpty(dto.Password) ? null : PasswordService.Hash(dto.Password);
 
         await _context.SaveChangesAsync();
 
@@ -337,8 +339,21 @@ public class PlaylistController : ControllerBase
     /// Get shared playlist by token (PUBLIC - no authentication required).
     /// </summary>
     [AllowAnonymous]
+    [HttpPost("shared/{token}/access")]
+    public async Task<IActionResult> GrantSharedPlaylistAccess(string token, [FromBody] SharedAccessRequest request)
+    {
+        var playlist = await _context.Playlists.FirstOrDefaultAsync(p => p.ShareToken == token);
+        if (playlist == null) return NotFound("Shared playlist not found");
+        if (playlist.ShareExpiresAt.HasValue && DateTime.UtcNow > playlist.ShareExpiresAt.Value) return StatusCode(410, "Shared playlist has expired");
+        if (!await VerifySharePassword(playlist, request.Password))
+            return StatusCode(401, new { code = "PASSWORD_REQUIRED", hint = "Invalid share password" });
+
+        _shareAccess.Grant(Response, token);
+        return NoContent();
+    }
+
     [HttpGet("shared/{token}")]
-    public async Task<IActionResult> GetSharedPlaylist(string token, [FromQuery] string? password = null)
+    public async Task<IActionResult> GetSharedPlaylist(string token)
     {
         if (string.IsNullOrEmpty(token)) return BadRequest("Token required");
 
@@ -357,13 +372,8 @@ public class PlaylistController : ControllerBase
         }
 
         // Check Password
-        if (!string.IsNullOrEmpty(playlist.SharePassword))
-        {
-            if (string.IsNullOrEmpty(password) || password != playlist.SharePassword)
-            {
-                return StatusCode(401, new { code = "PASSWORD_REQUIRED", hint = "This playlist is password protected" });
-            }
-        }
+        if (!string.IsNullOrEmpty(playlist.SharePassword) && !_shareAccess.HasValidTicket(Request, token))
+            return StatusCode(401, new { code = "PASSWORD_REQUIRED", hint = "This playlist is password protected" });
 
         var songs = playlist.PlaylistSongs
             .Where(ps => ps.MediaFile != null)
@@ -384,6 +394,19 @@ public class PlaylistController : ControllerBase
             shareToken = token,
             songs
         });
+    }
+
+    private async Task<bool> VerifySharePassword(Playlist playlist, string? password)
+    {
+        if (string.IsNullOrEmpty(playlist.SharePassword)) return true;
+        if (string.IsNullOrEmpty(password)) return false;
+        var valid = PasswordService.Verify(playlist.SharePassword, password, out var needsUpgrade);
+        if (valid && needsUpgrade)
+        {
+            playlist.SharePassword = PasswordService.Hash(password);
+            await _context.SaveChangesAsync();
+        }
+        return valid;
     }
 }
 
@@ -407,3 +430,7 @@ public class SharePlaylistDto
     public int? ExpiresInDays { get; set; } // -1 or null means never
 }
 
+public class SharedAccessRequest
+{
+    public string? Password { get; set; }
+}

@@ -15,6 +15,11 @@ namespace WebMusic.Backend.Controllers;
 [Authorize]
 public class FilesController : ControllerBase
 {
+    private const long MaxUploadBytes = 10L * 1024 * 1024 * 1024;
+    private static readonly HashSet<string> AllowedUploadExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp3", ".flac", ".m4a", ".wav", ".ogg", ".opus", ".jpg", ".jpeg", ".png", ".webp", ".lrc", ".txt"
+    };
     private readonly AppDbContext _context;
     private readonly ISmbService _smbService;
     private readonly ScannerService _scannerService;
@@ -30,10 +35,19 @@ public class FilesController : ControllerBase
 
     private int GetUserId() => int.TryParse(User.FindFirst("sub")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId) ? userId : 0;
     private bool CanAccess(ScanSource source) => source.UserId == null || source.UserId == GetUserId() || User.IsInRole("Admin");
+    private static bool IsSafeRelativePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return true;
+        var normalized = path.Replace('\\', '/');
+        return !normalized.StartsWith('/') &&
+               !System.Text.RegularExpressions.Regex.IsMatch(normalized, "^[a-zA-Z]:") &&
+               normalized.Split('/', StringSplitOptions.RemoveEmptyEntries).All(segment => segment != "..");
+    }
 
     [HttpGet("browse")]
     public async Task<IActionResult> Browse([FromQuery] int? sourceId, [FromQuery] string path = "")
     {
+        if (!IsSafeRelativePath(path)) return BadRequest("Invalid path.");
         if (sourceId == null || sourceId == 0)
         {
             // List Sources as root
@@ -105,6 +119,7 @@ public class FilesController : ControllerBase
     [HttpGet("download")]
     public async Task<IActionResult> Download([FromQuery] int sourceId, [FromQuery] string path)
     {
+        if (!IsSafeRelativePath(path)) return BadRequest("Invalid path.");
         var source = await _context.ScanSources
             .Include(s => s.StorageCredential)
             .FirstOrDefaultAsync(s => s.Id == sourceId);
@@ -144,6 +159,7 @@ public class FilesController : ControllerBase
     [HttpPost("delete")]
     public async Task<IActionResult> Delete([FromBody] FileOpRequest request)
     {
+        if (!IsSafeRelativePath(request.Path)) return BadRequest("Invalid path.");
         var source = await _context.ScanSources
             .Include(s => s.StorageCredential)
             .FirstOrDefaultAsync(s => s.Id == request.SourceId);
@@ -168,6 +184,7 @@ public class FilesController : ControllerBase
     [HttpPost("mkdir")]
     public async Task<IActionResult> Mkdir([FromBody] FileOpRequest request)
     {
+        if (!IsSafeRelativePath(request.Path)) return BadRequest("Invalid path.");
         var source = await _context.ScanSources
             .Include(s => s.StorageCredential)
             .FirstOrDefaultAsync(s => s.Id == request.SourceId);
@@ -191,11 +208,14 @@ public class FilesController : ControllerBase
     }
 
     [HttpPost("upload")]
-    [DisableRequestSizeLimit]
-    [RequestFormLimits(MultipartBodyLengthLimit = long.MaxValue)]
+    [RequestFormLimits(MultipartBodyLengthLimit = MaxUploadBytes)]
     public async Task<IActionResult> Upload([FromQuery] int sourceId, [FromQuery] string? path, [FromForm] IFormFile file)
     {
         if (file == null || file.Length == 0) return BadRequest("No file");
+        if (file.Length > MaxUploadBytes) return BadRequest("File exceeds the 10 GB upload limit.");
+        if (!IsSafeRelativePath(path)) return BadRequest("Invalid path.");
+        if (Path.GetFileName(file.FileName) != file.FileName || !AllowedUploadExtensions.Contains(Path.GetExtension(file.FileName)))
+            return BadRequest("Unsupported file type.");
 
         var source = await _context.ScanSources
             .Include(s => s.StorageCredential)

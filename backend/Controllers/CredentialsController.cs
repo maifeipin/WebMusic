@@ -64,7 +64,7 @@ public class CredentialsController : ControllerBase
         
         var userId = GetUserId();
         if (cred.UserId != null && cred.UserId != userId) return Forbid();
-        if (cred.UserId == null && userId != 1) return Forbid(); // Only admin deletes public creds
+        if (cred.UserId == null && !User.IsInRole("Admin")) return Forbid();
         
         _context.StorageCredentials.Remove(cred);
         await _context.SaveChangesAsync();

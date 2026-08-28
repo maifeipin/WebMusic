@@ -35,7 +35,7 @@ public class GlobalExceptionFilter : IExceptionFilter
         {
             Success = false,
             StatusCode = statusCode,
-            Message = context.Exception.Message,
+            Message = _env.IsDevelopment() ? context.Exception.Message : "An unexpected server error occurred.",
             // Only include stack trace in development
             Details = _env.IsDevelopment() ? context.Exception.StackTrace : null
         };

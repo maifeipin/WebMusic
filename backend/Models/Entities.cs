@@ -9,6 +9,7 @@ public class User
     public int Id { get; set; }
     public string Username { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
+    public bool IsAdmin { get; set; }
 }
 
 public class StorageCredential
@@ -156,4 +157,3 @@ public class Lyric
     public string Version { get; set; } = "v1"; // e.g. "whisper-tiny"
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
-
