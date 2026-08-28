@@ -8,13 +8,14 @@ services:
     container_name: webmusic-backend
     restart: always
     environment:
+      - ASPNETCORE_ENVIRONMENT=Production
       - ASPNETCORE_URLS=http://+:8080
       # Default: Postgres (Controlled by env vars)
       - DatabaseProvider=${DATABASE_PROVIDER:-Postgres}
       # Connection String constructed from env vars
-      - ConnectionStrings__Postgres=Host=${POSTGRES_HOST:-postgres};Database=${POSTGRES_DB:-webmusic};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-password}
+      - ConnectionStrings__Postgres=Host=${POSTGRES_HOST:-postgres};Database=${POSTGRES_DB:-webmusic};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       # Security
-      - Jwt__Key=${JWT_KEY:-ChangeThisSecretKeyInProductionToSomethingSecureLongAndRandom}
+      - Jwt__Key=${JWT_KEY:?JWT_KEY must be set}
       - Jwt__Issuer=WebMusic
       - Jwt__Audience=WebMusicUser
       # AI API Keys (Supports up to 2 keys from env)
@@ -25,6 +26,8 @@ services:
       - AiLyricsUrl=${AI_LYRICS_URL:-http://webmusic-ai-lyrics:5001}
       # Audit Logging
       - EnableApiRequestLogging=${ENABLE_API_LOGGING:-true}
+      - BootstrapAdmin__Username=${BOOTSTRAP_ADMIN_USERNAME:-}
+      - BootstrapAdmin__Password=${BOOTSTRAP_ADMIN_PASSWORD:-}
     ports:
       - "5080:8080"
     volumes:
@@ -47,12 +50,9 @@ services:
     image: postgres:15-alpine
     container_name: webmusic-postgres
     restart: always
-    # Expose port for Compute Nodes (Mac Mini) to connect
-    ports:
-      - "5432:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: ${POSTGRES_DB:-webmusic}
     volumes:
       - ./data/postgres:/var/lib/postgresql/data

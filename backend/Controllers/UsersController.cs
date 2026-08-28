@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using WebMusic.Backend.Data;
 using WebMusic.Backend.Models;
+using WebMusic.Backend.Services;
 
 namespace WebMusic.Backend.Controllers;
 
@@ -48,6 +49,8 @@ public class UsersController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(req.Username) || string.IsNullOrWhiteSpace(req.Password))
             return BadRequest("Username and Password are required.");
+        if (req.Password.Length < 12)
+            return BadRequest("Password must be at least 12 characters.");
 
         if (await _context.Users.AnyAsync(u => u.Username == req.Username))
             return BadRequest("Username already exists.");
@@ -55,7 +58,7 @@ public class UsersController : ControllerBase
         var newUser = new User 
         { 
             Username = req.Username, 
-            PasswordHash = req.Password // Plaintext for MVP 
+            PasswordHash = PasswordService.Hash(req.Password)
         };
         
         _context.Users.Add(newUser);
@@ -73,7 +76,8 @@ public class UsersController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(req.NewPassword)) return BadRequest("Password cannot be empty");
 
-        user.PasswordHash = req.NewPassword;
+        if (req.NewPassword.Length < 12) return BadRequest("Password must be at least 12 characters.");
+        user.PasswordHash = PasswordService.Hash(req.NewPassword);
         await _context.SaveChangesAsync();
         
         return Ok(new { message = $"Password for user '{user.Username}' has been reset." });

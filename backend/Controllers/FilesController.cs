@@ -1,15 +1,18 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using WebMusic.Backend.Data;
 using WebMusic.Backend.Services;
 using WebMusic.Backend.Models;
 using System.IO;
 using System.Threading.Tasks;
+using System.Security.Claims;
 
 namespace WebMusic.Backend.Controllers;
 
 [ApiController]
 [Route("api/files")]
+[Authorize]
 public class FilesController : ControllerBase
 {
     private readonly AppDbContext _context;
@@ -25,13 +28,20 @@ public class FilesController : ControllerBase
         _logger = logger;
     }
 
+    private int GetUserId() => int.TryParse(User.FindFirst("sub")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId) ? userId : 0;
+    private bool CanAccess(ScanSource source) => source.UserId == null || source.UserId == GetUserId() || User.IsInRole("Admin");
+
     [HttpGet("browse")]
     public async Task<IActionResult> Browse([FromQuery] int? sourceId, [FromQuery] string path = "")
     {
         if (sourceId == null || sourceId == 0)
         {
             // List Sources as root
-            var sources = await _context.ScanSources.ToListAsync();
+            var userId = GetUserId();
+            var isAdmin = User.IsInRole("Admin");
+            var sources = await _context.ScanSources
+                .Where(s => s.UserId == null || s.UserId == userId || isAdmin)
+                .ToListAsync();
             var items = sources.Select(s => new {
                 Name = s.Name,
                 Type = "Source",
@@ -46,6 +56,7 @@ public class FilesController : ControllerBase
             .FirstOrDefaultAsync(s => s.Id == sourceId);
 
         if (source == null) return NotFound("Source not found");
+        if (!CanAccess(source)) return Forbid();
 
         try
         {
@@ -98,6 +109,7 @@ public class FilesController : ControllerBase
             .Include(s => s.StorageCredential)
             .FirstOrDefaultAsync(s => s.Id == sourceId);
         if (source == null) return NotFound("Source not found");
+        if (!CanAccess(source)) return Forbid();
 
         try
         {
@@ -136,6 +148,7 @@ public class FilesController : ControllerBase
             .Include(s => s.StorageCredential)
             .FirstOrDefaultAsync(s => s.Id == request.SourceId);
         if (source == null) return NotFound("Source not found");
+        if (!CanAccess(source)) return Forbid();
 
         try
         {
@@ -159,6 +172,7 @@ public class FilesController : ControllerBase
             .Include(s => s.StorageCredential)
             .FirstOrDefaultAsync(s => s.Id == request.SourceId);
         if (source == null) return NotFound();
+        if (!CanAccess(source)) return Forbid();
 
         try
         {
@@ -187,6 +201,7 @@ public class FilesController : ControllerBase
             .Include(s => s.StorageCredential)
             .FirstOrDefaultAsync(s => s.Id == sourceId);
         if (source == null) return NotFound("Source not found");
+        if (!CanAccess(source)) return Forbid();
         
         path = path ?? "";
 

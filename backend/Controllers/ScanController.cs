@@ -49,6 +49,13 @@ public class ScanController : ControllerBase
     [HttpPost("sources")]
     public async Task<ActionResult<ScanSource>> AddSource(ScanSource source, [FromQuery] bool force = false)
     {
+        var userId = GetUserId();
+        if (!source.StorageCredentialId.HasValue) return BadRequest("A storage credential is required.");
+
+        var credential = await _context.StorageCredentials.FindAsync(source.StorageCredentialId.Value);
+        if (credential == null) return BadRequest("Storage credential not found.");
+        if (credential.UserId != userId && !(credential.UserId == null && User.IsInRole("Admin"))) return Forbid();
+
         // 1. Validate duplicates/nesting within the same credential
         if (source.StorageCredentialId.HasValue)
         {
@@ -82,7 +89,6 @@ public class ScanController : ControllerBase
         }
 
         // Auto-assign owner
-        var userId = GetUserId();
         // If user is Admin (Id=1), maybe allow creating public sources? 
         // For now, let's make all created sources Private by default to ensure isolation.
         // Or if you want Admin's sources to be Public by default, check userId == 1.
@@ -162,6 +168,8 @@ public class ScanController : ControllerBase
     {
         var cred = await _context.StorageCredentials.FindAsync(request.CredentialId);
         if (cred == null) return NotFound("Credential not found");
+        var userId = GetUserId();
+        if (cred.UserId != userId && !(cred.UserId == null && User.IsInRole("Admin"))) return Forbid();
 
         var items = ((SmbService)_smbService).ListContents(cred, request.Path ?? "");
         return Ok(items);

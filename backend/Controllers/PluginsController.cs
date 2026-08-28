@@ -11,6 +11,7 @@ namespace WebMusic.Backend.Controllers;
 
 [ApiController]
 [Route("api/plugins")]
+[Authorize]
 public class PluginsController : ControllerBase
 {
     private readonly AppDbContext _context;

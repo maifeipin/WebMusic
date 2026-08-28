@@ -8,6 +8,7 @@ using System.Text;
 using Microsoft.Extensions.Caching.Memory;
 using WebMusic.Backend.Data;
 using WebMusic.Backend.Models;
+using WebMusic.Backend.Services;
 
 namespace WebMusic.Backend.Controllers;
 
@@ -57,15 +58,10 @@ public class AuthController : ControllerBase
             _cache.Remove(captchaKey);
         }
 
-        // For MVP, create admin user if not exists
-        if (!await _context.Users.AnyAsync())
-        {
-            _context.Users.Add(new User { Username = "admin", PasswordHash = "admin" }); // Plaintext for MVP/Demo
-            await _context.SaveChangesAsync();
-        }
-
         var user = await _context.Users.SingleOrDefaultAsync(u => u.Username == request.Username);
-        if (user == null || user.PasswordHash != request.Password)
+        var needsPasswordUpgrade = false;
+        var passwordValid = user != null && PasswordService.Verify(user.PasswordHash, request.Password, out needsPasswordUpgrade);
+        if (!passwordValid)
         {
             failedCount++;
             _cache.Set(failKey, failedCount, TimeSpan.FromMinutes(15));
@@ -80,7 +76,13 @@ public class AuthController : ControllerBase
         // Login Success
         _cache.Remove(failKey);
 
-        var token = GenerateJwtToken(user);
+        if (needsPasswordUpgrade)
+        {
+            user!.PasswordHash = PasswordService.Hash(request.Password);
+            await _context.SaveChangesAsync();
+        }
+
+        var token = GenerateJwtToken(user!);
         return Ok(new { token });
     }
 
@@ -159,12 +161,13 @@ public class AuthController : ControllerBase
         var user = await _context.Users.FindAsync(userId);
         if (user == null) return NotFound("User not found");
 
-        if (user.PasswordHash != request.OldPassword)
+        if (!PasswordService.Verify(user.PasswordHash, request.OldPassword, out _))
         {
             return BadRequest("Incorrect old password");
         }
 
-        user.PasswordHash = request.NewPassword;
+        if (request.NewPassword.Length < 12) return BadRequest("Password must be at least 12 characters.");
+        user.PasswordHash = PasswordService.Hash(request.NewPassword);
         await _context.SaveChangesAsync();
 
         return Ok(new { message = "Password updated successfully" });

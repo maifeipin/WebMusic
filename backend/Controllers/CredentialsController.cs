@@ -30,23 +30,30 @@ public class CredentialsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<StorageCredential>>> GetCredentials()
+    public async Task<IActionResult> GetCredentials()
     {
         var userId = GetUserId();
-        // Return only OWNED credentials (+ perhaps admin shared 1-18 if we wanted, but sticking to STRICT isolation for credentials is safer)
-        // Let's allow seeing UserId=NULL as "System Credentials" and UserId=current for "My Credentials"
-        return await _context.StorageCredentials
-            .Where(c => c.UserId == null || c.UserId == userId)
+        var isAdmin = User.IsInRole("Admin");
+        var credentials = await _context.StorageCredentials
+            .Where(c => c.UserId == userId || (isAdmin && c.UserId == null))
+            .Select(c => new { c.Id, c.Name, c.ProviderType, c.Host })
             .ToListAsync();
+        return Ok(credentials);
     }
 
     [HttpPost]
-    public async Task<ActionResult<StorageCredential>> AddCredential(StorageCredential credential)
+    public async Task<IActionResult> AddCredential(StorageCredential credential)
     {
         credential.UserId = GetUserId();
         _context.StorageCredentials.Add(credential);
         await _context.SaveChangesAsync();
-        return CreatedAtAction(nameof(GetCredentials), new { id = credential.Id }, credential);
+        return CreatedAtAction(nameof(GetCredentials), new { id = credential.Id }, new
+        {
+            credential.Id,
+            credential.Name,
+            credential.ProviderType,
+            credential.Host
+        });
     }
     
     [HttpDelete("{id}")]

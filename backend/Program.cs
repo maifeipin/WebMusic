@@ -71,6 +71,11 @@ var jwtKey = builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationExcep
 var jwtIssuer = builder.Configuration["Jwt:Issuer"];
 var jwtAudience = builder.Configuration["Jwt:Audience"];
 
+if (builder.Environment.IsProduction() && (jwtKey.Length < 32 || jwtKey.StartsWith("ChangeThisSecretKey", StringComparison.Ordinal)))
+{
+    throw new InvalidOperationException("A unique JWT_KEY of at least 32 characters is required in production.");
+}
+
 // Authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -149,6 +154,23 @@ using (var scope = app.Services.CreateScope())
     // Since I added tables, I need to force update.
     // I will delete the .db file via command line.
     db.Database.EnsureCreated();
+
+    if (!db.Users.Any())
+    {
+        var adminUsername = builder.Configuration["BootstrapAdmin:Username"];
+        var adminPassword = builder.Configuration["BootstrapAdmin:Password"];
+        if (string.IsNullOrWhiteSpace(adminUsername) || string.IsNullOrWhiteSpace(adminPassword) || adminPassword.Length < 12)
+        {
+            throw new InvalidOperationException("The first startup requires BOOTSTRAP_ADMIN_USERNAME and a BOOTSTRAP_ADMIN_PASSWORD of at least 12 characters.");
+        }
+
+        db.Users.Add(new WebMusic.Backend.Models.User
+        {
+            Username = adminUsername,
+            PasswordHash = WebMusic.Backend.Services.PasswordService.Hash(adminPassword)
+        });
+        db.SaveChanges();
+    }
 
 
 }
