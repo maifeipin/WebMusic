@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
-import { getUsers, adminResetPassword, createUser, deleteUser } from '../services/api';
+import { getUsers, adminResetPassword, createUser, deleteUser, getFavoritesEnrichmentPreview, startFavoritesEnrichment, getEnrichmentStatus } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { Shield, Key, User, Plus, Trash2 } from 'lucide-react';
+import { Shield, Key, User, Plus, Trash2, Sparkles, LoaderCircle } from 'lucide-react';
 
 export default function AdminPage() {
     const { username } = useAuth();
     const isAdmin = username === 'admin';
     const [users, setUsers] = useState<{ id: number, username: string }[]>([]);
     const [loading, setLoading] = useState(false);
+    const [enrichmentPreview, setEnrichmentPreview] = useState<number | null>(null);
+    const [enrichmentStatus, setEnrichmentStatus] = useState<{ batchId: string; total: number; processed: number; success: number; failed: number; status: string } | null>(null);
+    const [enrichmentStarting, setEnrichmentStarting] = useState(false);
 
     useEffect(() => {
         if (isAdmin) {
@@ -19,8 +22,40 @@ export default function AdminPage() {
                     // Don't alert on load, just log
                 })
                 .finally(() => setLoading(false));
+            getFavoritesEnrichmentPreview()
+                .then(result => setEnrichmentPreview(result.total))
+                .catch(err => console.error(err));
         }
     }, [isAdmin]);
+
+    useEffect(() => {
+        if (!enrichmentStatus?.batchId || enrichmentStatus.status === 'Completed') return;
+        const timer = window.setInterval(() => {
+            getEnrichmentStatus(enrichmentStatus.batchId)
+                .then(setEnrichmentStatus)
+                .catch(err => console.error(err));
+        }, 3000);
+        return () => window.clearInterval(timer);
+    }, [enrichmentStatus?.batchId, enrichmentStatus?.status]);
+
+    const handleFavoritesEnrichment = async () => {
+        if (!confirm(`Match and fill missing covers/lyrics for ${enrichmentPreview ?? 'eligible'} favorite songs? Existing metadata will not be overwritten.`)) return;
+        setEnrichmentStarting(true);
+        try {
+            const result = await startFavoritesEnrichment();
+            if (!result.batchId) {
+                setEnrichmentPreview(0);
+                alert(result.message);
+                return;
+            }
+            setEnrichmentStatus({ batchId: result.batchId, total: result.total, processed: 0, success: 0, failed: 0, status: 'Queued' });
+            setEnrichmentPreview(Math.max(0, (enrichmentPreview ?? result.total) - result.total));
+        } catch (e: any) {
+            alert('Failed to start enrichment: ' + (e.response?.data || e.message));
+        } finally {
+            setEnrichmentStarting(false);
+        }
+    };
 
     const handleReset = async (userId: number, userName: string) => {
         const newPass = prompt(`Enter new password for user '${userName}':`);
@@ -134,6 +169,36 @@ export default function AdminPage() {
                         ))}
                     </div>
                 )}
+            </div>
+
+            <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 max-w-2xl">
+                <div className="flex items-start justify-between gap-4">
+                    <div>
+                        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                            <Sparkles size={20} className="text-violet-400" /> Library enrichment
+                        </h2>
+                        <p className="text-sm text-gray-400 mt-2">
+                            Matches favorite tracks against MusicBrainz, then fills only missing cover art and lyrics. Existing fields are never overwritten.
+                        </p>
+                        {enrichmentStatus ? (
+                            <p className="text-sm text-violet-300 mt-3">
+                                {enrichmentStatus.status}: {enrichmentStatus.processed}/{enrichmentStatus.total} processed · {enrichmentStatus.success} updated · {enrichmentStatus.failed} failed
+                            </p>
+                        ) : (
+                            <p className="text-sm text-gray-500 mt-3">
+                                {enrichmentPreview === null ? 'Checking eligible favorites…' : `${enrichmentPreview} favorite songs need a cover or lyrics.`}
+                            </p>
+                        )}
+                    </div>
+                    <button
+                        onClick={handleFavoritesEnrichment}
+                        disabled={enrichmentStarting || enrichmentPreview === 0 || (enrichmentStatus?.status === 'Queued' || enrichmentStatus?.status === 'Processing')}
+                        className="shrink-0 flex items-center gap-1 px-3 py-2 bg-violet-600 hover:bg-violet-500 disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-lg text-sm font-bold transition"
+                    >
+                        {(enrichmentStarting || enrichmentStatus?.status === 'Queued' || enrichmentStatus?.status === 'Processing') && <LoaderCircle size={15} className="animate-spin" />}
+                        Enrich favorites
+                    </button>
+                </div>
             </div>
         </div>
     );

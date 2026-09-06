@@ -157,3 +157,23 @@ public class Lyric
     public string Version { get; set; } = "v1"; // e.g. "whisper-tiny"
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// An immutable audit trail for automatic metadata enrichment.  It deliberately
+/// records the external source and match score instead of silently overwriting
+/// user-curated data.
+/// </summary>
+public class MusicEnrichment
+{
+    [Key]
+    public int Id { get; set; }
+    public int MediaFileId { get; set; }
+    [JsonIgnore]
+    public MediaFile? MediaFile { get; set; }
+    public string Provider { get; set; } = string.Empty;
+    public string? ExternalId { get; set; }
+    public double Confidence { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string Details { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}

@@ -41,6 +41,10 @@ public class JobWorker : BackgroundService
                 {
                     await ProcessLyricsBatchJob(scope, lyricsJob, stoppingToken);
                 }
+                else if (job is FavoritesEnrichmentJob enrichmentJob)
+                {
+                    await ProcessFavoritesEnrichmentJob(scope, enrichmentJob, stoppingToken);
+                }
             }
             catch (Exception ex)
             {
@@ -198,5 +202,35 @@ public class JobWorker : BackgroundService
 
         _queue.UpdateAiStatus(job.BatchId, processed, success, failed, "Completed");
         _logger.LogInformation($"Lyrics Batch {job.BatchId} Finished.");
+    }
+
+    private async Task ProcessFavoritesEnrichmentJob(IServiceScope scope, FavoritesEnrichmentJob job, CancellationToken ct)
+    {
+        var enrichmentService = scope.ServiceProvider.GetRequiredService<MusicEnrichmentService>();
+        _queue.UpdateAiStatus(job.BatchId, 0, 0, 0, "Processing");
+
+        var processed = 0;
+        var success = 0;
+        var failed = 0;
+        foreach (var songId in job.SongIds)
+        {
+            if (ct.IsCancellationRequested) break;
+
+            try
+            {
+                if (await enrichmentService.EnrichMissingAssetsAsync(songId, ct)) success++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Music enrichment failed for song {SongId}", songId);
+                failed++;
+            }
+
+            processed++;
+            _queue.UpdateAiStatus(job.BatchId, processed, success, failed, "Processing");
+        }
+
+        _queue.UpdateAiStatus(job.BatchId, processed, success, failed, "Completed");
+        _logger.LogInformation("Favorites enrichment batch {BatchId} finished: {Success} succeeded, {Failed} failed.", job.BatchId, success, failed);
     }
 }

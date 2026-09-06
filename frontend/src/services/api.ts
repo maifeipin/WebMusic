@@ -116,6 +116,11 @@ export const optimizeLyrics = async (lrcContent: string, mediaId?: number) => {
 };
 export const applyTags = (updates: any[]) => api.post('/tags/apply', updates);
 
+// Conservative metadata enrichment for favorite tracks missing a cover or lyrics
+export const getFavoritesEnrichmentPreview = () => api.get<{ total: number; scope: string }>('/enrichment/favorites/preview').then(r => r.data);
+export const startFavoritesEnrichment = () => api.post<{ batchId: string | null; total: number; message: string }>('/enrichment/favorites/start').then(r => r.data);
+export const getEnrichmentStatus = (batchId: string) => api.get<{ batchId: string; total: number; processed: number; success: number; failed: number; status: string }>(`/enrichment/${batchId}`).then(r => r.data);
+
 // User Management (Admin)
 export const getUsers = () => api.get<{ id: number; username: string }[]>('/users').then(r => r.data);
 export const adminResetPassword = (id: number, newPassword: string) => api.post(`/users/${id}/reset-password`, { newPassword });

@@ -14,6 +14,7 @@ public class AppDbContext : DbContext
     public DbSet<PlayHistory> PlayHistories { get; set; }
     public DbSet<Favorite> Favorites { get; set; }
     public DbSet<Lyric> Lyrics { get; set; }
+    public DbSet<MusicEnrichment> MusicEnrichments { get; set; }
     public DbSet<Playlist> Playlists { get; set; }
     public DbSet<PlaylistSong> PlaylistSongs { get; set; }
     public DbSet<PluginDefinition> Plugins { get; set; }
@@ -32,5 +33,8 @@ public class AppDbContext : DbContext
             
         modelBuilder.Entity<MediaFile>()
             .HasIndex(m => m.Album);
+
+        modelBuilder.Entity<MusicEnrichment>()
+            .HasIndex(e => new { e.MediaFileId, e.CreatedAt });
     }
 }

@@ -22,6 +22,11 @@ public record LyricsBatchJob(
     string Language // Added language
 ) : IJobPayload;
 
+public record FavoritesEnrichmentJob(
+    string BatchId,
+    List<int> SongIds
+) : IJobPayload;
+
 public class BackgroundTaskQueue
 {
     private readonly Channel<IJobPayload> _queue;
@@ -55,6 +60,15 @@ public class BackgroundTaskQueue
                 BatchId = lyricsJob.BatchId, 
                 Total = lyricsJob.SongIds.Count,
                 Status = "Queued" 
+            };
+        }
+        else if (job is FavoritesEnrichmentJob enrichmentJob)
+        {
+            _aiJobStatus[enrichmentJob.BatchId] = new AiJobStatus
+            {
+                BatchId = enrichmentJob.BatchId,
+                Total = enrichmentJob.SongIds.Count,
+                Status = "Queued"
             };
         }
     }
