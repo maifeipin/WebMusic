@@ -68,6 +68,27 @@ public class MusicEnrichmentService
             return MusicEnrichmentOutcome.Skipped;
         }
 
+        var currentFingerprint = ComputeFingerprint(media.Title, media.Artist, media.Album);
+
+        // Check cooldown: bypass if metadata fingerprint has changed
+        var lastAttempt = await _context.EnrichmentAttempts
+            .Where(a => a.MediaFileId == mediaId)
+            .OrderByDescending(a => a.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (lastAttempt?.RetryAfter.HasValue == true && lastAttempt.RetryAfter.Value > DateTime.UtcNow)
+        {
+            if (lastAttempt.InputFingerprint == currentFingerprint)
+            {
+                await RecordAsync(mediaId, "MusicBrainz", null, 0, "Skipped",
+                    $"Under cooldown until {lastAttempt.RetryAfter.Value:yyyy-MM-dd HH:mm:ss} UTC (outcome: {lastAttempt.Outcome}).",
+                    cancellationToken, jobId, 200, 0, currentFingerprint, lastAttempt.RetryAfter);
+                return MusicEnrichmentOutcome.Skipped;
+            }
+            _logger.LogInformation("Media {MediaId} metadata changed from fingerprint {Old} to {New}; bypassing cooldown.",
+                mediaId, lastAttempt.InputFingerprint, currentFingerprint);
+        }
+
         int httpStatusCode = 200;
         int retryCount = 0;
 
@@ -79,44 +100,21 @@ public class MusicEnrichmentService
 
             if (mbResult.StatusCode != 200)
             {
-                await RecordAsync(mediaId, "MusicBrainz", null, 0, "Failed", mbResult.ErrorDetail ?? $"HTTP {mbResult.StatusCode}", cancellationToken, jobId, mbResult.StatusCode, retryCount);
+                var retryAfter = DateTime.UtcNow.AddHours(6);
+                await RecordAsync(mediaId, "MusicBrainz", null, 0, "Failed", mbResult.ErrorDetail ?? $"HTTP {mbResult.StatusCode}", cancellationToken, jobId, mbResult.StatusCode, retryCount, currentFingerprint, retryAfter);
                 return MusicEnrichmentOutcome.Failed;
             }
 
             var candidate = mbResult.Candidate;
             if (candidate == null || candidate.Confidence < MinimumConfidence)
             {
-                await RecordAsync(mediaId, "MusicBrainz", candidate?.RecordingId, candidate?.Confidence ?? 0, "Unmatched", "No candidate met the automatic-match threshold.", cancellationToken, jobId, 200, retryCount);
+                var retryAfter = DateTime.UtcNow.AddDays(30);
+                await RecordAsync(mediaId, "MusicBrainz", candidate?.RecordingId, candidate?.Confidence ?? 0, "Unmatched", "No candidate met the automatic-match threshold.", cancellationToken, jobId, 200, retryCount, currentFingerprint, retryAfter);
                 return MusicEnrichmentOutcome.Unmatched;
             }
 
-            // Record MediaIdentity if matched with high confidence
-            if (!string.IsNullOrEmpty(candidate.RecordingId))
-            {
-                var existingIdentity = await _context.MediaIdentities
-                    .FirstOrDefaultAsync(i => i.MediaFileId == media.Id && i.Provider == "MusicBrainz", cancellationToken);
-                if (existingIdentity == null)
-                {
-                    _context.MediaIdentities.Add(new MediaIdentity
-                    {
-                        MediaFileId = media.Id,
-                        Provider = "MusicBrainz",
-                        RecordingId = candidate.RecordingId,
-                        ReleaseId = candidate.ReleaseId,
-                        MatchMethod = "MetadataFuzzy",
-                        Confidence = Math.Round(candidate.Confidence, 4),
-                        Status = "approved",
-                        MatchedAt = DateTime.UtcNow
-                    });
-                }
-                else
-                {
-                    existingIdentity.RecordingId = candidate.RecordingId;
-                    existingIdentity.ReleaseId = candidate.ReleaseId;
-                    existingIdentity.Confidence = Math.Round(candidate.Confidence, 4);
-                    existingIdentity.LastVerifiedAt = DateTime.UtcNow;
-                }
-            }
+            string coverStatus = needsCover ? "Pending" : "Skipped";
+            string lyricsStatus = needsLyrics ? "Pending" : "Skipped";
 
             var changed = new List<string>();
             if (needsCover && !string.IsNullOrEmpty(candidate.ReleaseId))
@@ -126,6 +124,11 @@ public class MusicEnrichmentService
                 {
                     media.CoverArt = coverUrl;
                     changed.Add("cover");
+                    coverStatus = "Matched";
+                }
+                else
+                {
+                    coverStatus = "NoAsset";
                 }
             }
 
@@ -144,34 +147,77 @@ public class MusicEnrichmentService
                         CreatedAt = DateTime.UtcNow
                     });
                     changed.Add("lyrics");
+                    lyricsStatus = "Matched";
+                }
+                else
+                {
+                    lyricsStatus = "NoAsset";
+                }
+            }
+
+            // Record MediaIdentity if matched with high confidence
+            if (!string.IsNullOrEmpty(candidate.RecordingId))
+            {
+                var existingIdentity = await _context.MediaIdentities
+                    .FirstOrDefaultAsync(i => i.MediaFileId == media.Id && i.Provider == "MusicBrainz", cancellationToken);
+                if (existingIdentity == null)
+                {
+                    _context.MediaIdentities.Add(new MediaIdentity
+                    {
+                        MediaFileId = media.Id,
+                        Provider = "MusicBrainz",
+                        RecordingId = candidate.RecordingId,
+                        ReleaseId = candidate.ReleaseId,
+                        MatchMethod = "MetadataFuzzy",
+                        Confidence = Math.Round(candidate.Confidence, 4),
+                        Status = "approved",
+                        CoverStatus = coverStatus,
+                        LyricsStatus = lyricsStatus,
+                        MatchedAt = DateTime.UtcNow
+                    });
+                }
+                else
+                {
+                    existingIdentity.RecordingId = candidate.RecordingId;
+                    existingIdentity.ReleaseId = candidate.ReleaseId;
+                    existingIdentity.Confidence = Math.Round(candidate.Confidence, 4);
+                    existingIdentity.CoverStatus = coverStatus;
+                    existingIdentity.LyricsStatus = lyricsStatus;
+                    existingIdentity.LastVerifiedAt = DateTime.UtcNow;
                 }
             }
 
             await _context.SaveChangesAsync(cancellationToken);
+
+            var finalOutcome = changed.Count > 0 ? "Matched" : "MatchedWithoutAssets";
+            DateTime? finalRetryAfter = changed.Count > 0 ? null : DateTime.UtcNow.AddDays(14);
+
             await RecordAsync(
                 mediaId,
                 "MusicBrainz+CoverArtArchive+LRCLIB",
                 candidate.RecordingId,
                 candidate.Confidence,
-                changed.Count > 0 ? "Matched" : "MatchedWithoutAssets",
+                finalOutcome,
                 changed.Count > 0 ? $"Wrote {string.Join(" and ", changed)} without overwriting existing data." : "Recording was matched, but no missing asset was available from the selected providers.",
                 cancellationToken,
                 jobId,
                 200,
-                retryCount);
+                retryCount,
+                currentFingerprint,
+                finalRetryAfter);
             return changed.Count > 0 ? MusicEnrichmentOutcome.Updated : MusicEnrichmentOutcome.Unmatched;
         }
         catch (HttpRequestException ex)
         {
             var status = (int?)ex.StatusCode ?? 500;
             _logger.LogWarning(ex, "Automatic enrichment HTTP error for media {MediaId}", mediaId);
-            await RecordAsync(mediaId, "MusicBrainz+CoverArtArchive+LRCLIB", null, 0, "Failed", $"HTTP {status}: {ex.Message}", cancellationToken, jobId, status, retryCount);
+            await RecordAsync(mediaId, "MusicBrainz+CoverArtArchive+LRCLIB", null, 0, "Failed", $"HTTP {status}: {ex.Message}", cancellationToken, jobId, status, retryCount, currentFingerprint, DateTime.UtcNow.AddHours(6));
             return MusicEnrichmentOutcome.Failed;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Automatic enrichment failed for media {MediaId}", mediaId);
-            await RecordAsync(mediaId, "MusicBrainz+CoverArtArchive+LRCLIB", null, 0, "Failed", "Provider request failed; existing data was left unchanged.", cancellationToken, jobId, httpStatusCode != 200 ? httpStatusCode : 500, retryCount);
+            await RecordAsync(mediaId, "MusicBrainz+CoverArtArchive+LRCLIB", null, 0, "Failed", "Provider request failed; existing data was left unchanged.", cancellationToken, jobId, httpStatusCode != 200 ? httpStatusCode : 500, retryCount, currentFingerprint, DateTime.UtcNow.AddHours(6));
             return MusicEnrichmentOutcome.Failed;
         }
     }
@@ -322,6 +368,17 @@ public class MusicEnrichmentService
         return string.IsNullOrWhiteSpace(content) ? null : new LrclibLyrics(content, !string.IsNullOrWhiteSpace(synced));
     }
 
+    public static string ComputeFingerprint(string? title, string? artist, string? album)
+    {
+        var normalizedTitle = Normalize(title ?? string.Empty);
+        var normalizedArtist = Normalize(artist ?? string.Empty);
+        var normalizedAlbum = Normalize(album ?? string.Empty);
+        var raw = $"{normalizedTitle}|{normalizedArtist}|{normalizedAlbum}";
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(raw));
+        return Convert.ToHexString(hash)[..16].ToLowerInvariant();
+    }
+
     private async Task RecordAsync(
         int mediaId,
         string provider,
@@ -332,7 +389,9 @@ public class MusicEnrichmentService
         CancellationToken cancellationToken,
         string? jobId = null,
         int? httpStatus = null,
-        int retryCount = 0)
+        int retryCount = 0,
+        string? inputFingerprint = null,
+        DateTime? retryAfter = null)
     {
         _context.MusicEnrichments.Add(new MusicEnrichment
         {
@@ -353,11 +412,13 @@ public class MusicEnrichmentService
                 MediaFileId = mediaId,
                 Provider = provider,
                 RequestKey = externalId,
+                InputFingerprint = inputFingerprint,
                 HTTPStatus = httpStatus ?? (status == "Failed" ? 500 : 200),
                 Outcome = status,
                 Confidence = Math.Round(confidence, 4),
                 RetryCount = retryCount,
                 Detail = details,
+                RetryAfter = retryAfter,
                 CreatedAt = DateTime.UtcNow
             });
         }

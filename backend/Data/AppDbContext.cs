@@ -23,11 +23,29 @@ public class AppDbContext : DbContext
     public DbSet<MediaIdentity> MediaIdentities { get; set; }
     public DbSet<MediaTag> MediaTags { get; set; }
     public DbSet<TagEvidence> TagEvidences { get; set; }
+    public DbSet<EnrichmentJobItem> EnrichmentJobItems { get; set; }
+    public DbSet<ProviderQuotaLedger> ProviderQuotaLedgers { get; set; }
+    public DbSet<WorkerSubmission> WorkerSubmissions { get; set; }
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        base.ConfigureConventions(configurationBuilder);
+        configurationBuilder.Properties<DateTime>().HaveColumnType("timestamp with time zone");
+        configurationBuilder.Properties<DateTime?>().HaveColumnType("timestamp with time zone");
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
         
+        modelBuilder.Entity<Lyric>()
+            .Property(l => l.CreatedAt)
+            .HasColumnType("timestamp without time zone");
+
+        modelBuilder.Entity<PluginDefinition>()
+            .Property(p => p.CreatedAt)
+            .HasColumnType("timestamp without time zone");
+
         modelBuilder.Entity<User>().HasIndex(u => u.Username).IsUnique();
         
         modelBuilder.Entity<MediaFile>()
@@ -45,6 +63,12 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<EnrichmentJob>()
             .HasIndex(j => j.Status);
 
+        modelBuilder.Entity<EnrichmentJobItem>()
+            .HasIndex(i => new { i.JobId, i.Status });
+
+        modelBuilder.Entity<EnrichmentJobItem>()
+            .HasIndex(i => i.MediaFileId);
+
         modelBuilder.Entity<EnrichmentAttempt>()
             .HasIndex(a => new { a.JobId, a.CreatedAt });
 
@@ -61,6 +85,19 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<TagEvidence>()
             .HasIndex(e => e.MediaTagId);
+
+        modelBuilder.Entity<ProviderQuotaLedger>()
+            .HasKey(p => new { p.Provider, p.Date });
+
+        modelBuilder.Entity<WorkerSubmission>()
+            .HasIndex(w => new { w.ItemId, w.SubmissionId })
+            .IsUnique();
+
+        modelBuilder.Entity<WorkerSubmission>()
+            .HasOne(w => w.Item)
+            .WithMany()
+            .HasForeignKey(w => w.ItemId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
 

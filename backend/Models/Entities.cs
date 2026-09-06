@@ -10,6 +10,7 @@ public class User
     public string Username { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
     public bool IsAdmin { get; set; }
+    public string? Role { get; set; } = "User";
 }
 
 public class StorageCredential
@@ -190,11 +191,33 @@ public class EnrichmentJob
     public int Unmatched { get; set; }
     public int Skipped { get; set; }
     public int Failed { get; set; }
-    public int Cursor { get; set; }
+    public int Cursor { get; set; } // Batch in-flight progress index (0..Total)
+    public int? CatalogBookmarkId { get; set; } // Bookmark MediaFileId for catalog scans
     public string Status { get; set; } = "Queued"; // Queued, Processing, Completed, Failed, Paused
     public string SongIdsJson { get; set; } = "[]"; // Serialized song IDs for restart recovery
     public DateTime StartedAt { get; set; } = DateTime.UtcNow;
     public DateTime? FinishedAt { get; set; }
+}
+
+public class EnrichmentJobItem
+{
+    [Key]
+    public int Id { get; set; }
+    public string JobId { get; set; } = string.Empty;
+    public int MediaFileId { get; set; }
+    [JsonIgnore]
+    public MediaFile? MediaFile { get; set; }
+    public string Status { get; set; } = "Pending"; // Pending, Leased, Completed, Failed, Skipped
+    public string? InputFingerprint { get; set; }
+    public string CoverStatus { get; set; } = "Pending"; // Pending, Matched, NoAsset, Failed
+    public string LyricsStatus { get; set; } = "Pending"; // Pending, Matched, NoAsset, Failed
+    public string? WorkerNodeId { get; set; }
+    public DateTime? LeasedAt { get; set; }
+    public DateTime? LeaseExpiresAt { get; set; }
+    public DateTime? CompletedAt { get; set; }
+    public string? Outcome { get; set; }
+    public string? Detail { get; set; }
+    public string? StagedCoverPath { get; set; }
 }
 
 public class EnrichmentAttempt
@@ -207,11 +230,13 @@ public class EnrichmentAttempt
     public MediaFile? MediaFile { get; set; }
     public string Provider { get; set; } = string.Empty;
     public string? RequestKey { get; set; }
+    public string? InputFingerprint { get; set; }
     public int? HTTPStatus { get; set; }
     public string Outcome { get; set; } = string.Empty; // Updated, Unmatched, Skipped, Failed
     public double Confidence { get; set; }
     public int RetryCount { get; set; }
     public string Detail { get; set; } = string.Empty;
+    public DateTime? RetryAfter { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -231,6 +256,8 @@ public class MediaIdentity
     public string MatchMethod { get; set; } = "MetadataFuzzy";
     public double Confidence { get; set; }
     public string Status { get; set; } = "approved"; // approved, proposed, rejected
+    public string CoverStatus { get; set; } = "Pending"; // Pending, Matched, NoAsset, Failed
+    public string LyricsStatus { get; set; } = "Pending"; // Pending, Matched, NoAsset, Failed
     public DateTime MatchedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastVerifiedAt { get; set; }
 }
@@ -268,5 +295,27 @@ public class TagEvidence
     public DateTime RetrievedAt { get; set; } = DateTime.UtcNow;
     public DateTime? ExpiresAt { get; set; }
     public string? RawPayload { get; set; }                // JSON string
+}
+
+public class ProviderQuotaLedger
+{
+    public string Provider { get; set; } = "MusicBrainz";
+    public string Date { get; set; } = string.Empty; // "YYYY-MM-DD"
+    public int DailyLimit { get; set; } = 2000;
+    public int ReservedUnits { get; set; }
+    public int ConsumedUnits { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public class WorkerSubmission
+{
+    [Key]
+    public int Id { get; set; }
+    public int ItemId { get; set; }
+    [JsonIgnore]
+    public EnrichmentJobItem? Item { get; set; }
+    public string SubmissionId { get; set; } = string.Empty;
+    public string PayloadHash { get; set; } = string.Empty;
+    public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
 }
 

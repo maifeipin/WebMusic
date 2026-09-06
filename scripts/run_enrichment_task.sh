@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ==============================================================================
+# ⚠️ DEPRECATION NOTICE:
+# This script triggers legacy admin-driven favorites enrichment on the server.
+# It requires Admin privileges (enrichment-bot).
+# For distributed, rate-limited catalog enrichment, use:
+#   python3 scripts/catalog_worker.py --worker-id <node-id>
+# with a dedicated least-privilege Worker account (catalog-worker).
+# ==============================================================================
+
 # Configuration
 API_URL="${WEBMUSIC_URL:-https://music.maifeipin.com}"
 USERNAME="${BOT_USERNAME:-enrichment-bot}"
@@ -14,7 +23,8 @@ if [ -z "$PASSWORD" ]; then
   exit 1
 fi
 
-echo "=== 🤖 WebMusic Dedicated Enrichment Task Runner ==="
+echo "=== 🤖 WebMusic Dedicated Enrichment Task Runner (LEGACY) ==="
+echo "⚠️  NOTICE: This script runs the legacy server-side favorites enrichment flow."
 echo "Endpoint:        $API_URL"
 echo "Bot Username:    $USERNAME"
 echo "Target User ID:  $TARGET_USER_ID"

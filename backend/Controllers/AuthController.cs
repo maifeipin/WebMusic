@@ -125,11 +125,18 @@ public class AuthController : ControllerBase
         };
 
         // Determine Role
-        if (user.IsAdmin)
+        if (user.Role == "Worker")
+        {
+            claims.Add(new Claim(ClaimTypes.Role, "Worker"));
+            // Server-enforced identity: worker_node is ALWAYS strictly and tamper-proof bound to authenticated user.Username.
+            // Client-supplied node IDs in request body are NEVER accepted or trusted.
+            claims.Add(new Claim("worker_node", user.Username));
+        }
+        else if (user.Role == "Admin" || user.IsAdmin)
         {
             claims.Add(new Claim(ClaimTypes.Role, "Admin"));
         }
-        else if (user.Username == "demo")
+        else if (user.Username == "demo" || user.Role == "Demo")
         {
             claims.Add(new Claim(ClaimTypes.Role, "Demo"));
         }
@@ -142,7 +149,7 @@ public class AuthController : ControllerBase
             issuer: _configuration["Jwt:Issuer"],
             audience: _configuration["Jwt:Audience"],
             claims: claims,
-            expires: DateTime.Now.AddDays(7),
+            expires: user.Role == "Worker" ? DateTime.UtcNow.AddDays(1) : DateTime.UtcNow.AddDays(7),
             signingCredentials: creds
         );
 

@@ -41,14 +41,18 @@ backend/appsettings.json
 # Backups
 Test/backup/backups/
 *.sql
+!backend.Tests/Fixtures/*.sql
 
 AI/Lyrics/.venv
 /data/
-backend/data/
+backend/data/covers/
+backend/data/*.db
 data-protection-keys/
 .venv/
 __pycache__/
 *.pyc
+scratch/
+
 .DS_Store
 exports/
 backend.log
