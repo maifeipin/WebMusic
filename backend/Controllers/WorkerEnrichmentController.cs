@@ -204,8 +204,10 @@ public class WorkerEnrichmentController : ControllerBase
         {
             foreach (var spec in providerSpecs)
             {
-                var ledger = await _context.ProviderQuotaLedgers
-                    .FirstOrDefaultAsync(l => l.Provider == spec.Provider && l.Date == todayStr);
+                var ledger = _context.ProviderQuotaLedgers.Local
+                    .FirstOrDefault(l => l.Provider == spec.Provider && l.Date == todayStr)
+                    ?? await _context.ProviderQuotaLedgers
+                        .FirstOrDefaultAsync(l => l.Provider == spec.Provider && l.Date == todayStr);
 
                 if (ledger == null)
                 {
@@ -273,14 +275,20 @@ public class WorkerEnrichmentController : ControllerBase
             .ToDictionary(g => g.Key, g => g.Select(x => x.InputFingerprint!).ToHashSet());
 
         List<MediaFile> candidates;
-        if (request.SpecificMediaFileId.HasValue)
+        if (_context.Database.IsNpgsql())
         {
-            var targetId = request.SpecificMediaFileId.Value;
-            if (_context.Database.IsNpgsql())
+            List<int> rawCandidateIds;
+            if (request.SpecificMediaFileId.HasValue)
             {
-                var rawCandidateIds = await _context.Database.SqlQueryRaw<int>(
+                rawCandidateIds = await _context.Database.SqlQueryRaw<int>(
                     @"SELECT m.""Id"" FROM ""MediaFiles"" m
                       WHERE m.""Id"" = {0}
+                        AND m.""Title"" IS NOT NULL AND m.""Title"" != '' AND m.""Artist"" IS NOT NULL AND m.""Artist"" != ''
+                        AND NOT (m.""Title"" LIKE 'Unknown%') AND NOT (m.""Artist"" LIKE 'Unknown%')
+                        AND (
+                            m.""CoverArt"" IS NULL OR m.""CoverArt"" = ''
+                            OR NOT EXISTS (SELECT 1 FROM ""Lyrics"" l WHERE l.""MediaFileId"" = m.""Id"")
+                        )
                         AND NOT EXISTS (
                             SELECT 1 FROM ""EnrichmentJobItems"" i
                             WHERE i.""MediaFileId"" = m.""Id""
@@ -288,44 +296,34 @@ public class WorkerEnrichmentController : ControllerBase
                         )
                       LIMIT 1
                       FOR UPDATE SKIP LOCKED",
-                    targetId, DateTime.UtcNow
+                    request.SpecificMediaFileId.Value, DateTime.UtcNow
                 ).ToListAsync();
-
-                candidates = await _context.MediaFiles.Where(m => rawCandidateIds.Contains(m.Id)).ToListAsync();
             }
             else
             {
-                candidates = await _context.MediaFiles
-                    .Where(m => m.Id == targetId
-                             && !_context.EnrichmentJobItems.Any(i => i.MediaFileId == m.Id && ((i.Status == "Leased" || i.Status == "AwaitingAssets" || i.Status == "ProcessingSubmit") && i.LeaseExpiresAt > DateTime.UtcNow)))
-                    .Take(1)
-                    .ToListAsync();
+                rawCandidateIds = await _context.Database.SqlQueryRaw<int>(
+                    @"SELECT m.""Id"" FROM ""MediaFiles"" m
+                      WHERE m.""Title"" IS NOT NULL AND m.""Title"" != '' AND m.""Artist"" IS NOT NULL AND m.""Artist"" != ''
+                        AND NOT (m.""Title"" LIKE 'Unknown%') AND NOT (m.""Artist"" LIKE 'Unknown%')
+                        AND (
+                            m.""CoverArt"" IS NULL OR m.""CoverArt"" = ''
+                            OR NOT EXISTS (SELECT 1 FROM ""Lyrics"" l WHERE l.""MediaFileId"" = m.""Id"")
+                        )
+                        AND NOT EXISTS (
+                            SELECT 1 FROM ""EnrichmentJobItems"" i
+                            WHERE i.""MediaFileId"" = m.""Id""
+                              AND (i.""Status"" IN ('Leased', 'AwaitingAssets', 'ProcessingSubmit') AND i.""LeaseExpiresAt"" > {0})
+                        )
+                      ORDER BY
+                        (CASE WHEN EXISTS (SELECT 1 FROM ""Favorites"" f WHERE f.""MediaFileId"" = m.""Id"") THEN 1000 ELSE 0 END)
+                        + (CASE WHEN EXISTS (SELECT 1 FROM ""PlayHistories"" p WHERE p.""MediaFileId"" = m.""Id"" AND p.""PlayedAt"" >= {1}) THEN 200 ELSE 0 END)
+                        + LEAST(COALESCE((SELECT COUNT(*) * 10 FROM ""PlayHistories"" p WHERE p.""MediaFileId"" = m.""Id""), 0), 500) DESC,
+                        m.""Id"" ASC
+                      LIMIT {2}
+                      FOR UPDATE SKIP LOCKED",
+                    DateTime.UtcNow, cutoff30d, maxCanLease * 3
+                ).ToListAsync();
             }
-        }
-        else if (_context.Database.IsNpgsql())
-        {
-            var rawCandidateIds = await _context.Database.SqlQueryRaw<int>(
-                @"SELECT m.""Id"" FROM ""MediaFiles"" m
-                  WHERE m.""Title"" IS NOT NULL AND m.""Title"" != '' AND m.""Artist"" IS NOT NULL AND m.""Artist"" != ''
-                    AND NOT (m.""Title"" LIKE 'Unknown%') AND NOT (m.""Artist"" LIKE 'Unknown%')
-                    AND (
-                        m.""CoverArt"" IS NULL OR m.""CoverArt"" = ''
-                        OR NOT EXISTS (SELECT 1 FROM ""Lyrics"" l WHERE l.""MediaFileId"" = m.""Id"")
-                    )
-                    AND NOT EXISTS (
-                        SELECT 1 FROM ""EnrichmentJobItems"" i
-                        WHERE i.""MediaFileId"" = m.""Id""
-                          AND (i.""Status"" IN ('Leased', 'AwaitingAssets', 'ProcessingSubmit') AND i.""LeaseExpiresAt"" > {0})
-                    )
-                  ORDER BY
-                    (CASE WHEN EXISTS (SELECT 1 FROM ""Favorites"" f WHERE f.""MediaFileId"" = m.""Id"") THEN 1000 ELSE 0 END)
-                    + (CASE WHEN EXISTS (SELECT 1 FROM ""PlayHistories"" p WHERE p.""MediaFileId"" = m.""Id"" AND p.""PlayedAt"" >= {1}) THEN 200 ELSE 0 END)
-                    + LEAST(COALESCE((SELECT COUNT(*) * 10 FROM ""PlayHistories"" p WHERE p.""MediaFileId"" = m.""Id""), 0), 500) DESC,
-                    m.""Id"" ASC
-                  LIMIT {2}
-                  FOR UPDATE SKIP LOCKED",
-                DateTime.UtcNow, cutoff30d, maxCanLease * 3
-            ).ToListAsync();
 
             var mediaList = await _context.MediaFiles.Where(m => rawCandidateIds.Contains(m.Id)).ToListAsync();
             var mediaDict = mediaList.ToDictionary(m => m.Id);
@@ -346,11 +344,19 @@ public class WorkerEnrichmentController : ControllerBase
         }
         else
         {
-            var candidatesBase = await _context.MediaFiles
+            var query = _context.MediaFiles
                 .Where(m => !string.IsNullOrEmpty(m.Title) && !string.IsNullOrEmpty(m.Artist)
                          && !m.Title.StartsWith("Unknown") && !m.Artist.StartsWith("Unknown")
                          && (string.IsNullOrEmpty(m.CoverArt) || !_context.Lyrics.Any(l => l.MediaFileId == m.Id))
-                         && !_context.EnrichmentJobItems.Any(i => i.MediaFileId == m.Id && ((i.Status == "Leased" || i.Status == "AwaitingAssets" || i.Status == "ProcessingSubmit") && i.LeaseExpiresAt > DateTime.UtcNow)))
+                         && !_context.EnrichmentJobItems.Any(i => i.MediaFileId == m.Id && ((i.Status == "Leased" || i.Status == "AwaitingAssets" || i.Status == "ProcessingSubmit") && i.LeaseExpiresAt > DateTime.UtcNow)));
+
+            if (request.SpecificMediaFileId.HasValue)
+            {
+                var targetId = request.SpecificMediaFileId.Value;
+                query = query.Where(m => m.Id == targetId);
+            }
+
+            var candidatesBase = await query
                 .Select(m => new
                 {
                     Media = m,
@@ -386,7 +392,7 @@ public class WorkerEnrichmentController : ControllerBase
                 WorkerNodeId = workerNodeId,
                 Total = 0,
                 Message = request.SpecificMediaFileId.HasValue
-                    ? $"Specific media file {request.SpecificMediaFileId.Value} is unavailable, not found, or currently under an active lease."
+                    ? $"Specific media file {request.SpecificMediaFileId.Value} is ineligible (complete, in cooldown, or unknown tags), unavailable, or currently leased."
                     : "No eligible tracks available for leasing."
             });
         }

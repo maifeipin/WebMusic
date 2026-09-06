@@ -472,6 +472,120 @@ public class PostgreSqlIntegrationTests : IClassFixture<PostgreSqlFixture>
     }
 
     [Fact]
+    public async Task TargetedLease_PostgreSql_HonorsFullEligibilityAndRejection()
+    {
+        using var db = _fixture.CreateDbContext();
+        await ResetStateAsync(db);
+        var scanSource = await GetOrCreateScanSourceAsync(db);
+
+        // 1. Valid incomplete track
+        var validTrack = new MediaFile
+        {
+            ScanSourceId = scanSource.Id,
+            Title = "Adele Song",
+            Artist = "Adele",
+            FilePath = $"/adele/{Guid.NewGuid():N}.mp3"
+        };
+        db.MediaFiles.Add(validTrack);
+
+        // 2. Complete track (has cover and lyrics)
+        var completeTrack = new MediaFile
+        {
+            ScanSourceId = scanSource.Id,
+            Title = "Complete Song",
+            Artist = "Complete Artist",
+            CoverArt = "data/covers/some.jpg",
+            FilePath = $"/comp/{Guid.NewGuid():N}.mp3"
+        };
+        db.MediaFiles.Add(completeTrack);
+
+        // 3. Unknown title track
+        var unknownTrack = new MediaFile
+        {
+            ScanSourceId = scanSource.Id,
+            Title = "Unknown Track 1",
+            Artist = "Valid Artist",
+            FilePath = $"/unk/{Guid.NewGuid():N}.mp3"
+        };
+        db.MediaFiles.Add(unknownTrack);
+
+        // 4. Cooldown track
+        var cooldownTrack = new MediaFile
+        {
+            ScanSourceId = scanSource.Id,
+            Title = "Cooldown Song",
+            Artist = "Cooldown Artist",
+            Album = "Album X",
+            FilePath = $"/cool/{Guid.NewGuid():N}.mp3"
+        };
+        db.MediaFiles.Add(cooldownTrack);
+        await db.SaveChangesAsync();
+
+        db.Lyrics.Add(new Lyric
+        {
+            MediaFileId = completeTrack.Id,
+            Content = "[00:01.00] lyrics",
+            Source = "LRCLIB",
+            CreatedAt = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified)
+        });
+
+        var fp = MusicEnrichmentService.ComputeFingerprint("Cooldown Song", "Cooldown Artist", "Album X");
+        db.EnrichmentAttempts.Add(new EnrichmentAttempt
+        {
+            JobId = "job-cd",
+            MediaFileId = cooldownTrack.Id,
+            Provider = "MusicBrainz",
+            InputFingerprint = fp,
+            Outcome = "Failed",
+            RetryCount = 1,
+            RetryAfter = DateTime.UtcNow.AddDays(20),
+            CreatedAt = DateTime.UtcNow.AddDays(-10)
+        });
+        await db.SaveChangesAsync();
+
+        var controller = CreateWorkerController(db, workerNodeId: "worker-targeted");
+
+        // Positive test: valid track leases cleanly
+        var resValid = await controller.LeaseBatch(new WorkerLeaseRequest
+        {
+            WorkerNodeId = "worker-targeted",
+            SpecificMediaFileId = validTrack.Id
+        });
+        var batchValid = Assert.IsType<WorkerLeaseBatchResponse>(Assert.IsType<OkObjectResult>(resValid).Value);
+        Assert.Equal(1, batchValid.Total);
+        Assert.Equal(validTrack.Id, batchValid.Items.Single().MediaFileId);
+
+        // Negative 1: Complete track must be rejected
+        var resComp = await controller.LeaseBatch(new WorkerLeaseRequest
+        {
+            WorkerNodeId = "worker-targeted",
+            SpecificMediaFileId = completeTrack.Id
+        });
+        var batchComp = Assert.IsType<WorkerLeaseBatchResponse>(Assert.IsType<OkObjectResult>(resComp).Value);
+        Assert.Equal(0, batchComp.Total);
+        Assert.Contains("ineligible", batchComp.Message, StringComparison.OrdinalIgnoreCase);
+
+        // Negative 2: Unknown title track must be rejected
+        var resUnk = await controller.LeaseBatch(new WorkerLeaseRequest
+        {
+            WorkerNodeId = "worker-targeted",
+            SpecificMediaFileId = unknownTrack.Id
+        });
+        var batchUnk = Assert.IsType<WorkerLeaseBatchResponse>(Assert.IsType<OkObjectResult>(resUnk).Value);
+        Assert.Equal(0, batchUnk.Total);
+
+        // Negative 3: Cooldown track must be rejected
+        var resCool = await controller.LeaseBatch(new WorkerLeaseRequest
+        {
+            WorkerNodeId = "worker-targeted",
+            SpecificMediaFileId = cooldownTrack.Id
+        });
+        var batchCool = Assert.IsType<WorkerLeaseBatchResponse>(Assert.IsType<OkObjectResult>(resCool).Value);
+        Assert.Equal(0, batchCool.Total);
+        Assert.Contains("ineligible", batchCool.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task ConcurrentDifferentSubmissions_OnlyOneAcquiresCompletionRight()
     {
         using var db = _fixture.CreateDbContext();

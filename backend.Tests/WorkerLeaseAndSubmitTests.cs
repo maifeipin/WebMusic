@@ -280,7 +280,144 @@ public class WorkerLeaseAndSubmitTests
         var okResult2 = Assert.IsType<OkObjectResult>(res2);
         var val2 = Assert.IsType<WorkerLeaseBatchResponse>(okResult2.Value);
         Assert.Equal(0, val2.Total);
-        Assert.Contains("unavailable", val2.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ineligible", val2.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task LeaseBatch_Targeted_RejectsCompleteSong_WithCoverAndLyrics()
+    {
+        var dbName = Guid.NewGuid().ToString("N");
+        using var db = CreateInMemoryDbContext(dbName);
+
+        db.ScanSources.Add(new ScanSource { Id = 1, Name = "S", Path = "/m", Type = "local" });
+        db.MediaFiles.Add(new MediaFile
+        {
+            Id = 10,
+            ScanSourceId = 1,
+            Title = "Complete Song",
+            Artist = "Great Artist",
+            CoverArt = "data/covers/existing.jpg",
+            FilePath = "/m/10.mp3"
+        });
+        db.Lyrics.Add(new Lyric
+        {
+            Id = 1,
+            MediaFileId = 10,
+            Content = "[00:01.00] Hello world",
+            Source = "LRCLIB"
+        });
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db);
+
+        // Targeted lease for ID 10 must be rejected because it already has both cover and lyrics
+        var res = await controller.LeaseBatch(new WorkerLeaseRequest
+        {
+            WorkerNodeId = "worker-1",
+            SpecificMediaFileId = 10
+        });
+
+        var okResult = Assert.IsType<OkObjectResult>(res);
+        var val = Assert.IsType<WorkerLeaseBatchResponse>(okResult.Value);
+        Assert.Equal(0, val.Total);
+        Assert.Empty(val.Items);
+        Assert.Contains("ineligible", val.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task LeaseBatch_Targeted_RejectsCooldownSong_WithUnchangedMetadata()
+    {
+        var dbName = Guid.NewGuid().ToString("N");
+        using var db = CreateInMemoryDbContext(dbName);
+
+        db.ScanSources.Add(new ScanSource { Id = 1, Name = "S", Path = "/m", Type = "local" });
+        db.MediaFiles.Add(new MediaFile
+        {
+            Id = 20,
+            ScanSourceId = 1,
+            Title = "Cooldown Song",
+            Artist = "Cooldown Artist",
+            Album = "Cooldown Album",
+            FilePath = "/m/20.mp3"
+        });
+
+        var fp = MusicEnrichmentService.ComputeFingerprint("Cooldown Song", "Cooldown Artist", "Cooldown Album");
+        db.EnrichmentAttempts.Add(new EnrichmentAttempt
+        {
+            Id = 1,
+            JobId = "job-old",
+            MediaFileId = 20,
+            Provider = "MusicBrainz",
+            InputFingerprint = fp,
+            Outcome = "Failed",
+            RetryCount = 1,
+            RetryAfter = DateTime.UtcNow.AddDays(25), // Active 30-day cooldown
+            CreatedAt = DateTime.UtcNow.AddDays(-5)
+        });
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db);
+
+        // Targeted lease for ID 20 must be rejected due to active cooldown with identical fingerprint
+        var res = await controller.LeaseBatch(new WorkerLeaseRequest
+        {
+            WorkerNodeId = "worker-1",
+            SpecificMediaFileId = 20
+        });
+
+        var okResult = Assert.IsType<OkObjectResult>(res);
+        var val = Assert.IsType<WorkerLeaseBatchResponse>(okResult.Value);
+        Assert.Equal(0, val.Total);
+        Assert.Empty(val.Items);
+        Assert.Contains("ineligible", val.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task LeaseBatch_Targeted_RejectsUnknownTitleOrArtist()
+    {
+        var dbName = Guid.NewGuid().ToString("N");
+        using var db = CreateInMemoryDbContext(dbName);
+
+        db.ScanSources.Add(new ScanSource { Id = 1, Name = "S", Path = "/m", Type = "local" });
+        db.MediaFiles.Add(new MediaFile
+        {
+            Id = 30,
+            ScanSourceId = 1,
+            Title = "Unknown Title",
+            Artist = "Known Artist",
+            FilePath = "/m/30.mp3"
+        });
+        db.MediaFiles.Add(new MediaFile
+        {
+            Id = 31,
+            ScanSourceId = 1,
+            Title = "Known Title",
+            Artist = "Unknown Artist",
+            FilePath = "/m/31.mp3"
+        });
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db);
+
+        // Targeted lease for ID 30 (Unknown Title) must be rejected
+        var res1 = await controller.LeaseBatch(new WorkerLeaseRequest
+        {
+            WorkerNodeId = "worker-1",
+            SpecificMediaFileId = 30
+        });
+        var val1 = Assert.IsType<WorkerLeaseBatchResponse>(Assert.IsType<OkObjectResult>(res1).Value);
+        Assert.Equal(0, val1.Total);
+        Assert.Empty(val1.Items);
+
+        // Targeted lease for ID 31 (Unknown Artist) must be rejected
+        var res2 = await controller.LeaseBatch(new WorkerLeaseRequest
+        {
+            WorkerNodeId = "worker-1",
+            SpecificMediaFileId = 31
+        });
+        var val2 = Assert.IsType<WorkerLeaseBatchResponse>(Assert.IsType<OkObjectResult>(res2).Value);
+        Assert.Equal(0, val2.Total);
+        Assert.Empty(val2.Items);
     }
 
     [Fact]
