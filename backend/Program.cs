@@ -357,9 +357,14 @@ using (var scope = app.Services.CreateScope())
         db.SaveChanges();
     }
 
-    // Bootstrap Automation / Enrichment Bot Account
+    // Bootstrap Automation / Enrichment Bot Account (requires explicit secret)
     var botUsername = builder.Configuration["AutomationBot:Username"] ?? "enrichment-bot";
-    var botPassword = builder.Configuration["AutomationBot:Password"] ?? Environment.GetEnvironmentVariable("ENRICHMENT_BOT_PASSWORD") ?? "EnrichmentBot@2026!Auto";
+    var botPassword = builder.Configuration["AutomationBot:Password"] ?? Environment.GetEnvironmentVariable("ENRICHMENT_BOT_PASSWORD");
+    if (string.IsNullOrWhiteSpace(botPassword) || botPassword.Length < 12)
+    {
+        throw new InvalidOperationException("ENRICHMENT_BOT_PASSWORD or AutomationBot:Password must be set in environment (at least 12 characters). Default fallback passwords are strictly prohibited.");
+    }
+
     var botUser = db.Users.FirstOrDefault(u => u.Username == botUsername);
     if (botUser == null)
     {
@@ -371,9 +376,13 @@ using (var scope = app.Services.CreateScope())
         });
         db.SaveChanges();
     }
-    else if (!botUser.IsAdmin)
+    else
     {
-        botUser.IsAdmin = true;
+        botUser.PasswordHash = WebMusic.Backend.Services.PasswordService.Hash(botPassword);
+        if (!botUser.IsAdmin)
+        {
+            botUser.IsAdmin = true;
+        }
         db.SaveChanges();
     }
 }

@@ -32,7 +32,7 @@ public class EnrichmentController : ControllerBase
         var total = await EligibleFavorites(effectiveUserId).CountAsync();
         var scope = effectiveUserId > 0 
             ? $"Favorites missing a cover or lyric (user: {effectiveUserId})" 
-            : "All users favorites missing a cover or lyric";
+            : "All users' favorites missing a cover or lyric (not full library)";
         return Ok(new { total, scope, targetUserId = effectiveUserId, maxBatchSize = MaxBatchSize, defaultBatchSize = DefaultBatchSize });
     }
 
@@ -48,7 +48,7 @@ public class EnrichmentController : ControllerBase
         if (songIds.Count == 0) return Ok(new { batchId = (string?)null, total = 0, message = "No favorite songs need enrichment." });
 
         var batchId = Guid.NewGuid().ToString("N");
-        var scopeDesc = effectiveUserId > 0 ? $"Favorites:User{effectiveUserId}" : "Favorites:All";
+        var scopeDesc = effectiveUserId > 0 ? $"Favorites:User{effectiveUserId}" : "Favorites:AllUsers";
         var dbJob = new WebMusic.Backend.Models.EnrichmentJob
         {
             Id = batchId,
@@ -63,7 +63,7 @@ public class EnrichmentController : ControllerBase
         await _context.SaveChangesAsync();
 
         _queue.Enqueue(new FavoritesEnrichmentJob(batchId, songIds));
-        return Ok(new { batchId, total = songIds.Count, batchSize = effectiveBatchSize, targetUserId = effectiveUserId, message = $"Favorites enrichment started for {songIds.Count} song(s) (batch size clamped to max {MaxBatchSize})." });
+        return Ok(new { batchId, total = songIds.Count, batchSize = effectiveBatchSize, targetUserId = effectiveUserId, message = $"Favorites enrichment started for {songIds.Count} favorite song(s) of {(effectiveUserId > 0 ? $"user {effectiveUserId}" : "all users")} (batch size clamped to max {MaxBatchSize})." });
     }
 
     [HttpPost("favorites/retry-failed")]
@@ -91,7 +91,7 @@ public class EnrichmentController : ControllerBase
         if (songIds.Count == 0) return Ok(new { batchId = (string?)null, total = 0, message = "No recent external failures need retrying." });
 
         var batchId = Guid.NewGuid().ToString("N");
-        var scopeDesc = effectiveUserId > 0 ? $"RetryFailed:User{effectiveUserId}" : "RetryFailed:All";
+        var scopeDesc = effectiveUserId > 0 ? $"RetryFailed:User{effectiveUserId}" : "RetryFailed:AllUsers";
         var dbJob = new WebMusic.Backend.Models.EnrichmentJob
         {
             Id = batchId,
@@ -179,8 +179,8 @@ public class EnrichmentController : ControllerBase
         var job = await _context.EnrichmentJobs.FindAsync(batchId);
         if (job == null) return NotFound(new { message = "Job not found" });
 
-        // If not viewing all users and the job was requested by another user, restrict access
-        if (!allUsers && job.RequestedByUserId.HasValue && job.RequestedByUserId.Value != userId && !User.IsInRole("Admin"))
+        // Strict isolation: if not viewing all users and caller is not the job's requester, forbid access
+        if (!allUsers && job.RequestedByUserId.HasValue && job.RequestedByUserId.Value != userId)
         {
             return Forbid();
         }

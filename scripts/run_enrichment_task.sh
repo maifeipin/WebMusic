@@ -4,9 +4,15 @@ set -euo pipefail
 # Configuration
 API_URL="${WEBMUSIC_URL:-https://music.maifeipin.com}"
 USERNAME="${BOT_USERNAME:-enrichment-bot}"
-PASSWORD="${BOT_PASSWORD:-EnrichmentBot@2026!Auto}"
+PASSWORD="${BOT_PASSWORD:-}"
 TARGET_USER_ID="${TARGET_USER_ID:-1}"
 BATCH_SIZE="${BATCH_SIZE:-100}"
+
+if [ -z "$PASSWORD" ]; then
+  echo "❌ Error: BOT_PASSWORD environment variable must be set (no default password permitted)."
+  echo "Usage: BOT_PASSWORD='...' ./scripts/run_enrichment_task.sh"
+  exit 1
+fi
 
 echo "=== 🤖 WebMusic Dedicated Enrichment Task Runner ==="
 echo "Endpoint:        $API_URL"

@@ -28,6 +28,8 @@ services:
       - EnableApiRequestLogging=${ENABLE_API_LOGGING:-true}
       - BootstrapAdmin__Username=${BOOTSTRAP_ADMIN_USERNAME:-}
       - BootstrapAdmin__Password=${BOOTSTRAP_ADMIN_PASSWORD:-}
+      - AutomationBot__Username=${ENRICHMENT_BOT_USERNAME:-enrichment-bot}
+      - AutomationBot__Password=${ENRICHMENT_BOT_PASSWORD:-}
     ports:
       - "5080:8080"
     volumes:
