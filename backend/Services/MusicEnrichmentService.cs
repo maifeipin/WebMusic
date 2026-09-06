@@ -68,12 +68,25 @@ public class MusicEnrichmentService
             return MusicEnrichmentOutcome.Skipped;
         }
 
+        int httpStatusCode = 200;
+        int retryCount = 0;
+
         try
         {
-            var candidate = await FindMusicBrainzCandidateAsync(media, cancellationToken);
+            var mbResult = await FindMusicBrainzCandidateAsync(media, cancellationToken);
+            httpStatusCode = mbResult.StatusCode;
+            retryCount = mbResult.RetryCount;
+
+            if (mbResult.StatusCode != 200)
+            {
+                await RecordAsync(mediaId, "MusicBrainz", null, 0, "Failed", mbResult.ErrorDetail ?? $"HTTP {mbResult.StatusCode}", cancellationToken, jobId, mbResult.StatusCode, retryCount);
+                return MusicEnrichmentOutcome.Failed;
+            }
+
+            var candidate = mbResult.Candidate;
             if (candidate == null || candidate.Confidence < MinimumConfidence)
             {
-                await RecordAsync(mediaId, "MusicBrainz", candidate?.RecordingId, candidate?.Confidence ?? 0, "Unmatched", "No candidate met the automatic-match threshold.", cancellationToken, jobId);
+                await RecordAsync(mediaId, "MusicBrainz", candidate?.RecordingId, candidate?.Confidence ?? 0, "Unmatched", "No candidate met the automatic-match threshold.", cancellationToken, jobId, 200, retryCount);
                 return MusicEnrichmentOutcome.Unmatched;
             }
 
@@ -143,21 +156,28 @@ public class MusicEnrichmentService
                 changed.Count > 0 ? "Matched" : "MatchedWithoutAssets",
                 changed.Count > 0 ? $"Wrote {string.Join(" and ", changed)} without overwriting existing data." : "Recording was matched, but no missing asset was available from the selected providers.",
                 cancellationToken,
-                jobId);
+                jobId,
+                200,
+                retryCount);
             return changed.Count > 0 ? MusicEnrichmentOutcome.Updated : MusicEnrichmentOutcome.Unmatched;
+        }
+        catch (HttpRequestException ex)
+        {
+            var status = (int?)ex.StatusCode ?? 500;
+            _logger.LogWarning(ex, "Automatic enrichment HTTP error for media {MediaId}", mediaId);
+            await RecordAsync(mediaId, "MusicBrainz+CoverArtArchive+LRCLIB", null, 0, "Failed", $"HTTP {status}: {ex.Message}", cancellationToken, jobId, status, retryCount);
+            return MusicEnrichmentOutcome.Failed;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Automatic enrichment failed for media {MediaId}", mediaId);
-            await RecordAsync(mediaId, "MusicBrainz+CoverArtArchive+LRCLIB", null, 0, "Failed", "Provider request failed; existing data was left unchanged.", cancellationToken, jobId, 500);
+            await RecordAsync(mediaId, "MusicBrainz+CoverArtArchive+LRCLIB", null, 0, "Failed", "Provider request failed; existing data was left unchanged.", cancellationToken, jobId, httpStatusCode != 200 ? httpStatusCode : 500, retryCount);
             return MusicEnrichmentOutcome.Failed;
         }
     }
 
-
-    private async Task<MusicBrainzCandidate?> FindMusicBrainzCandidateAsync(MediaFile media, CancellationToken cancellationToken)
+    private async Task<MusicBrainzResult> FindMusicBrainzCandidateAsync(MediaFile media, CancellationToken cancellationToken)
     {
-        // MusicBrainz requires clients to stay at or below one request per second.
         var title = EscapeLucenePhrase(media.Title);
         var artist = EscapeLucenePhrase(media.Artist);
         var query = $"recording:\"{title}\" AND artist:\"{artist}\"";
@@ -167,20 +187,37 @@ public class MusicEnrichmentService
         client.DefaultRequestHeaders.UserAgent.Clear();
         client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("WebMusic", "1.0"));
         client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("(https://music.maifeipin.com)"));
+
+        int lastStatusCode = 200;
+        int retryCount = 0;
+
         for (var attempt = 1; attempt <= 2; attempt++)
         {
             await Task.Delay(attempt == 1 ? TimeSpan.FromMilliseconds(1500) : TimeSpan.FromSeconds(20), cancellationToken);
             using var response = await client.GetAsync(url, cancellationToken);
+            lastStatusCode = (int)response.StatusCode;
+
             if (response.StatusCode is HttpStatusCode.ServiceUnavailable or HttpStatusCode.TooManyRequests)
             {
-                if (attempt == 2) response.EnsureSuccessStatusCode();
+                retryCount = 1;
                 _logger.LogInformation("MusicBrainz returned {StatusCode}; retrying once after a cooldown.", response.StatusCode);
+                if (attempt == 2)
+                {
+                    return new MusicBrainzResult(null, lastStatusCode, retryCount, $"MusicBrainz returned {response.StatusCode} after retry cooldown.");
+                }
                 continue;
             }
-            response.EnsureSuccessStatusCode();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return new MusicBrainzResult(null, lastStatusCode, retryCount, $"MusicBrainz request failed with HTTP {lastStatusCode}.");
+            }
 
             using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
-            if (!document.RootElement.TryGetProperty("recordings", out var recordings)) return null;
+            if (!document.RootElement.TryGetProperty("recordings", out var recordings))
+            {
+                return new MusicBrainzResult(null, 200, retryCount, "No recordings field in response payload.");
+            }
 
             MusicBrainzCandidate? best = null;
             foreach (var item in recordings.EnumerateArray())
@@ -200,11 +237,12 @@ public class MusicEnrichmentService
                 if (best == null || candidate.Confidence > best.Confidence) best = candidate;
             }
 
-            return best;
+            return new MusicBrainzResult(best, 200, retryCount);
         }
 
-        return null;
+        return new MusicBrainzResult(null, lastStatusCode, retryCount, "Max retry attempts reached.");
     }
+
 
     private async Task<string?> DownloadCoverAsync(string releaseId, CancellationToken cancellationToken)
     {
@@ -284,7 +322,17 @@ public class MusicEnrichmentService
         return string.IsNullOrWhiteSpace(content) ? null : new LrclibLyrics(content, !string.IsNullOrWhiteSpace(synced));
     }
 
-    private async Task RecordAsync(int mediaId, string provider, string? externalId, double confidence, string status, string details, CancellationToken cancellationToken, string? jobId = null, int? httpStatus = null)
+    private async Task RecordAsync(
+        int mediaId,
+        string provider,
+        string? externalId,
+        double confidence,
+        string status,
+        string details,
+        CancellationToken cancellationToken,
+        string? jobId = null,
+        int? httpStatus = null,
+        int retryCount = 0)
     {
         _context.MusicEnrichments.Add(new MusicEnrichment
         {
@@ -308,7 +356,7 @@ public class MusicEnrichmentService
                 HTTPStatus = httpStatus ?? (status == "Failed" ? 500 : 200),
                 Outcome = status,
                 Confidence = Math.Round(confidence, 4),
-                RetryCount = 0,
+                RetryCount = retryCount,
                 Detail = details,
                 CreatedAt = DateTime.UtcNow
             });
@@ -375,5 +423,6 @@ public class MusicEnrichmentService
     private static string? GetNullableString(JsonElement element, string property) => element.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
     private sealed record MusicBrainzCandidate(string RecordingId, string? ReleaseId, double Confidence);
+    private sealed record MusicBrainzResult(MusicBrainzCandidate? Candidate, int StatusCode, int RetryCount, string? ErrorDetail = null);
     private sealed record LrclibLyrics(string Content, bool IsSynchronized);
 }

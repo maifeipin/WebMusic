@@ -15,6 +15,9 @@ public class EnrichmentController : ControllerBase
     private readonly AppDbContext _context;
     private readonly BackgroundTaskQueue _queue;
 
+    public const int MaxBatchSize = 100;
+    public const int DefaultBatchSize = 20;
+
     public EnrichmentController(AppDbContext context, BackgroundTaskQueue queue)
     {
         _context = context;
@@ -26,18 +29,15 @@ public class EnrichmentController : ControllerBase
     {
         var userId = GetUserId();
         var total = await EligibleFavorites(userId).CountAsync();
-        return Ok(new { total, scope = "Favorites missing a cover or lyric" });
+        return Ok(new { total, scope = "Favorites missing a cover or lyric", maxBatchSize = MaxBatchSize, defaultBatchSize = DefaultBatchSize });
     }
 
     [HttpPost("favorites/start")]
     public async Task<IActionResult> StartFavorites([FromQuery] int? batchSize = null)
     {
         var userId = GetUserId();
-        var query = EligibleFavorites(userId).Select(f => f.MediaFileId).Distinct();
-        if (batchSize.HasValue && batchSize.Value > 0)
-        {
-            query = query.Take(batchSize.Value);
-        }
+        var effectiveBatchSize = Math.Clamp(batchSize ?? DefaultBatchSize, 1, MaxBatchSize);
+        var query = EligibleFavorites(userId).Select(f => f.MediaFileId).Distinct().Take(effectiveBatchSize);
 
         var songIds = await query.ToListAsync();
         if (songIds.Count == 0) return Ok(new { batchId = (string?)null, total = 0, message = "No favorite songs need enrichment." });
@@ -57,25 +57,22 @@ public class EnrichmentController : ControllerBase
         await _context.SaveChangesAsync();
 
         _queue.Enqueue(new FavoritesEnrichmentJob(batchId, songIds));
-        return Ok(new { batchId, total = songIds.Count, message = $"Favorites enrichment started for {songIds.Count} song(s)." });
+        return Ok(new { batchId, total = songIds.Count, batchSize = effectiveBatchSize, message = $"Favorites enrichment started for {songIds.Count} song(s) (batch size clamped to max {MaxBatchSize})." });
     }
 
     [HttpPost("favorites/retry-failed")]
     public async Task<IActionResult> RetryRecentFailures([FromQuery] int? batchSize = null)
     {
         var userId = GetUserId();
+        var effectiveBatchSize = Math.Clamp(batchSize ?? DefaultBatchSize, 1, MaxBatchSize);
         var cutoff = DateTime.UtcNow.AddHours(-24);
         var query = _context.MusicEnrichments
             .Where(e => e.Status == "Failed" && e.CreatedAt >= cutoff)
             .Join(_context.Favorites.Where(f => f.UserId == userId), e => e.MediaFileId, f => f.MediaFileId, (e, _) => e)
             .Where(e => !_context.MusicEnrichments.Any(later => later.MediaFileId == e.MediaFileId && later.CreatedAt > e.CreatedAt && later.Status == "Matched"))
             .Select(e => e.MediaFileId)
-            .Distinct();
-
-        if (batchSize.HasValue && batchSize.Value > 0)
-        {
-            query = query.Take(batchSize.Value);
-        }
+            .Distinct()
+            .Take(effectiveBatchSize);
 
         var songIds = await query.ToListAsync();
         if (songIds.Count == 0) return Ok(new { batchId = (string?)null, total = 0, message = "No recent external failures need retrying." });
@@ -95,7 +92,7 @@ public class EnrichmentController : ControllerBase
         await _context.SaveChangesAsync();
 
         _queue.Enqueue(new FavoritesEnrichmentJob(batchId, songIds));
-        return Ok(new { batchId, total = songIds.Count, message = $"Retrying recent external failures for {songIds.Count} song(s)." });
+        return Ok(new { batchId, total = songIds.Count, batchSize = effectiveBatchSize, message = $"Retrying recent external failures for {songIds.Count} song(s) (batch size clamped to max {MaxBatchSize})." });
     }
 
     [HttpGet("{batchId}")]
@@ -108,6 +105,7 @@ public class EnrichmentController : ControllerBase
             {
                 batchId = dbJob.Id,
                 scope = dbJob.Scope,
+                requestedByUserId = dbJob.RequestedByUserId,
                 total = dbJob.Total,
                 processed = dbJob.Processed,
                 updated = dbJob.Updated,
@@ -126,15 +124,25 @@ public class EnrichmentController : ControllerBase
     }
 
     [HttpGet("jobs")]
-    public async Task<IActionResult> GetJobs([FromQuery] int limit = 20)
+    public async Task<IActionResult> GetJobs([FromQuery] int limit = 20, [FromQuery] bool allUsers = false)
     {
-        var jobs = await _context.EnrichmentJobs
+        var userId = GetUserId();
+        var query = _context.EnrichmentJobs.AsQueryable();
+
+        // Default to filtering by current user; allow all users only if explicitly requested by Admin
+        if (!allUsers || !User.IsInRole("Admin"))
+        {
+            query = query.Where(j => j.RequestedByUserId == userId);
+        }
+
+        var jobs = await query
             .OrderByDescending(j => j.StartedAt)
-            .Take(limit)
+            .Take(Math.Min(Math.Max(limit, 1), 100))
             .Select(j => new
             {
                 j.Id,
                 j.Scope,
+                j.RequestedByUserId,
                 j.Total,
                 j.Processed,
                 j.Updated,
@@ -151,12 +159,22 @@ public class EnrichmentController : ControllerBase
     }
 
     [HttpGet("attempts/{batchId}")]
-    public async Task<IActionResult> GetAttempts(string batchId, [FromQuery] int limit = 50)
+    public async Task<IActionResult> GetAttempts(string batchId, [FromQuery] int limit = 50, [FromQuery] bool allUsers = false)
     {
+        var userId = GetUserId();
+        var job = await _context.EnrichmentJobs.FindAsync(batchId);
+        if (job == null) return NotFound(new { message = "Job not found" });
+
+        // If not viewing all users and the job was requested by another user, restrict access
+        if (!allUsers && job.RequestedByUserId.HasValue && job.RequestedByUserId.Value != userId && !User.IsInRole("Admin"))
+        {
+            return Forbid();
+        }
+
         var attempts = await _context.EnrichmentAttempts
             .Where(a => a.JobId == batchId)
             .OrderByDescending(a => a.CreatedAt)
-            .Take(limit)
+            .Take(Math.Min(Math.Max(limit, 1), 200))
             .ToListAsync();
         return Ok(attempts);
     }

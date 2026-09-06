@@ -52,10 +52,12 @@ public class AppDbContext : DbContext
             .HasIndex(i => new { i.Provider, i.RecordingId });
 
         modelBuilder.Entity<MediaIdentity>()
-            .HasIndex(i => i.MediaFileId);
+            .HasIndex(i => new { i.MediaFileId, i.Provider })
+            .IsUnique();
 
         modelBuilder.Entity<MediaTag>()
-            .HasIndex(t => new { t.MediaFileId, t.Namespace, t.Key });
+            .HasIndex(t => new { t.MediaFileId, t.Namespace, t.Key })
+            .IsUnique();
 
         modelBuilder.Entity<TagEvidence>()
             .HasIndex(e => e.MediaTagId);

@@ -43,7 +43,9 @@ Test/backup/backups/
 *.sql
 
 AI/Lyrics/.venv
-data/
+/data/
+backend/data/
+data-protection-keys/
 .venv/
 __pycache__/
 *.pyc
