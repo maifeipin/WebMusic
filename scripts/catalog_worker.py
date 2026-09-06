@@ -18,6 +18,7 @@ import math
 import os
 import platform
 import re
+import socket
 import sys
 import threading
 import time
@@ -97,24 +98,28 @@ class WorkerClient:
     def _auth_headers(self):
         return {
             "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "User-Agent": f"WebMusic-CatalogWorker/2.0 ({self.node_id})"
         }
 
     def get_preview(self):
         url = f"{self.base_url}/api/enrichment/worker/preview"
         req = urllib.request.Request(url, headers=self._auth_headers())
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=60) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
-    def lease_batch(self, batch_size):
+    def lease_batch(self, batch_size, specific_media_file_id=None):
         url = f"{self.base_url}/api/enrichment/worker/lease-batch"
-        payload = json.dumps({
+        data_dict = {
             "workerNodeId": self.node_id,
             "batchSize": batch_size
-        }).encode("utf-8")
+        }
+        if specific_media_file_id is not None:
+            data_dict["specificMediaFileId"] = specific_media_file_id
+        payload = json.dumps(data_dict).encode("utf-8")
         req = urllib.request.Request(url, data=payload, headers=self._auth_headers())
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=60) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except urllib.error.HTTPError as e:
             err_body = e.read().decode("utf-8", errors="replace")
@@ -174,46 +179,70 @@ class WorkerClient:
         self.last_mb_request_time = time.time()
 
     def query_musicbrainz(self, title, artist, duration_seconds):
-        self._rate_limit_musicbrainz()
         clean_title = re.sub(r'["\\]', "", title)
         clean_artist = re.sub(r'["\\]', "", artist)
         query = f'recording:"{clean_title}" AND artist:"{clean_artist}"'
         encoded_query = urllib.parse.quote(query)
         url = f"https://musicbrainz.org/ws/2/recording/?fmt=json&limit=5&query={encoded_query}"
 
-        req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-        try:
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                recordings = data.get("recordings", [])
-                best_candidate = None
-                best_confidence = 0.0
+        max_retries = 1
+        retries_done = 0
 
-                for rec in recordings:
-                    cand_title = rec.get("title", "")
-                    credits = rec.get("artist-credit", [])
-                    cand_artist = ", ".join(c.get("name", "") for c in credits if isinstance(c, dict))
-                    cand_length_ms = rec.get("length")
-                    cand_duration = (cand_length_ms / 1000.0) if cand_length_ms else 0.0
+        for attempt in range(max_retries + 1):
+            self._rate_limit_musicbrainz()
+            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+            try:
+                with urllib.request.urlopen(req, timeout=20) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                    recordings = data.get("recordings", [])
+                    best_candidate = None
+                    best_confidence = 0.0
 
-                    confidence = calculate_confidence(title, artist, duration_seconds, cand_title, cand_artist, cand_duration)
-                    if confidence > best_confidence:
-                        best_confidence = confidence
-                        releases = rec.get("releases", [])
-                        release_id = releases[0].get("id") if releases else None
-                        best_candidate = {
-                            "recordingId": rec.get("id"),
-                            "releaseId": release_id,
-                            "confidence": round(confidence, 4),
-                            "title": cand_title,
-                            "artist": cand_artist
-                        }
+                    for rec in recordings:
+                        cand_title = rec.get("title", "")
+                        credits = rec.get("artist-credit", [])
+                        cand_artist = ", ".join(c.get("name", "") for c in credits if isinstance(c, dict))
+                        cand_length_ms = rec.get("length")
+                        cand_duration = (cand_length_ms / 1000.0) if cand_length_ms else 0.0
 
-                return 200, 0, best_candidate, "OK"
-        except urllib.error.HTTPError as e:
-            return e.code, 0, None, f"MusicBrainz HTTP {e.code}"
-        except Exception as e:
-            return 500, 0, None, str(e)
+                        confidence = calculate_confidence(title, artist, duration_seconds, cand_title, cand_artist, cand_duration)
+                        if confidence > best_confidence:
+                            best_confidence = confidence
+                            releases = rec.get("releases", [])
+                            release_id = releases[0].get("id") if releases else None
+                            best_candidate = {
+                                "recordingId": rec.get("id"),
+                                "releaseId": release_id,
+                                "confidence": round(confidence, 4),
+                                "title": cand_title,
+                                "artist": cand_artist
+                            }
+
+                    return 200, retries_done, best_candidate, "OK"
+
+            except urllib.error.HTTPError as e:
+                # HTTP error (e.g. 503, 502, 504, 429)
+                if e.code in (429, 502, 503, 504) and attempt < max_retries:
+                    retries_done += 1
+                    backoff = 2.0 * (attempt + 1)
+                    print(f"    ⏳ MusicBrainz HTTP {e.code}, retrying in {backoff:.1f}s (attempt {attempt + 1}/{max_retries})...")
+                    time.sleep(backoff)
+                    continue
+                return e.code, retries_done, None, f"MusicBrainz HTTP {e.code}"
+
+            except (urllib.error.URLError, TimeoutError, socket.timeout, ConnectionError, OSError) as e:
+                # Transport error (timeout, DNS failure, connection reset)
+                error_msg = f"Transport error: {type(e).__name__}: {e}"
+                if attempt < max_retries:
+                    retries_done += 1
+                    backoff = 2.0 * (attempt + 1)
+                    print(f"    ⏳ MusicBrainz transport error ({type(e).__name__}), retrying in {backoff:.1f}s (attempt {attempt + 1}/{max_retries})...")
+                    time.sleep(backoff)
+                    continue
+                return None, retries_done, None, error_msg
+
+            except Exception as e:
+                return None, retries_done, None, f"Unexpected error: {type(e).__name__}: {e}"
 
     def download_cover_art(self, release_id):
         if not release_id:
@@ -305,9 +334,14 @@ def calculate_confidence(title1, artist1, dur1, title2, artist2, dur2):
     return title_score * 0.55 + artist_score * 0.35 + dur_score * 0.10
 
 
-def run_worker_batch(client, batch_size=50):
-    print(f"\n--- 📦 Requesting Batch Lease (batchSize={batch_size}) ---")
-    lease = client.lease_batch(batch_size)
+def run_worker_batch(client, batch_size=50, target_id=None):
+    if target_id is not None:
+        print(f"\n--- 📦 Requesting Targeted Lease for MediaFile ID {target_id} ---")
+        lease = client.lease_batch(1, specific_media_file_id=target_id)
+    else:
+        print(f"\n--- 📦 Requesting Batch Lease (batchSize={batch_size}) ---")
+        lease = client.lease_batch(batch_size)
+
     if lease.get("quotaReached"):
         print(f"🛑 Quota reached: {lease.get('detail')}")
         return False, 0
@@ -355,9 +389,12 @@ def run_worker_batch(client, batch_size=50):
                     "outcome": "Failed",
                     "httpStatus": status_code,
                     "retryCount": retries,
-                    "detail": detail
+                    "detail": detail,
+                    "mbRequestsCount": retries + 1,
+                    "caaRequestsCount": 0,
+                    "lrcRequestsCount": 0
                 })
-                print(f"    ❌ MusicBrainz query failed: {detail}")
+                print(f"    ❌ MusicBrainz query failed (status={status_code}, retries={retries}): {detail}")
                 continue
 
             if not candidate or candidate["confidence"] < 0.90:
@@ -369,9 +406,12 @@ def run_worker_batch(client, batch_size=50):
                     "confidence": conf,
                     "httpStatus": 200,
                     "retryCount": retries,
-                    "detail": f"Confidence {conf:.2f} < 0.90 threshold."
+                    "detail": f"Confidence {conf:.2f} < 0.90 threshold.",
+                    "mbRequestsCount": retries + 1,
+                    "caaRequestsCount": 0,
+                    "lrcRequestsCount": 0
                 })
-                print(f"    ⚠️ Unmatched (Confidence {conf:.2f})")
+                print(f"    ⚠️ Unmatched (Confidence {conf:.2f}, retries={retries})")
                 continue
 
             # Matched! Check assets
@@ -413,7 +453,7 @@ def run_worker_batch(client, batch_size=50):
                 "caaRequestsCount": 1 if (needs_cover and release_id) else 0,
                 "lrcRequestsCount": 1 if needs_lyrics else 0
             })
-            print(f"    ✅ Result: {outcome}")
+            print(f"    ✅ Result: {outcome} (retries={retries})")
 
     finally:
         stop_heartbeat.set()
@@ -438,6 +478,7 @@ def main():
     parser.add_argument("--password", default=BOT_PASSWORD, help="Bot password (or BOT_PASSWORD env var)")
     parser.add_argument("--node-id", default=DEFAULT_WORKER_NODE_ID, help=f"Worker node ID (default: {DEFAULT_WORKER_NODE_ID})")
     parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE, help=f"Batch size (default: {DEFAULT_BATCH_SIZE})")
+    parser.add_argument("--target-id", type=int, default=None, help="Specific MediaFile ID to lease and test (single-song mode)")
     parser.add_argument("--preview", action="store_true", help="Preview catalog statistics and top prioritized tracks, then exit")
     parser.add_argument("--dry-run", action="store_true", help="Authenticate, lease preview, do not execute external calls")
     parser.add_argument("--run-once", action="store_true", help="Process a single batch, then exit")
@@ -445,9 +486,9 @@ def main():
 
     args = parser.parse_args()
 
-    password = args.password or os.environ.get("BOT_PASSWORD", "")
+    password = args.password or os.environ.get("WORKER_SECRET") or os.environ.get("BOT_PASSWORD", "")
     if not password:
-        print("❌ Error: Bot password must be specified via BOT_PASSWORD or --password.")
+        print("❌ Error: Worker secret must be specified via WORKER_SECRET, BOT_PASSWORD, or --password.")
         sys.exit(1)
 
     client = WorkerClient(args.url, args.username, password, args.node_id)
@@ -459,6 +500,12 @@ def main():
         print(f"Total Eligible Candidates: {preview.get('totalEligible')}")
         print(f"Completed Today (Global): {preview.get('completedToday')} / {preview.get('dailyQuota')}")
         print(f"Remaining Global Quota:   {preview.get('remainingToday')}")
+
+        providers = preview.get("providers", {})
+        if providers:
+            print("\nProvider Daily Quota Status:")
+            for p_name, p_info in providers.items():
+                print(f"  {p_name:18s}: Limit={p_info.get('dailyLimit')}, Consumed={p_info.get('consumed')}, Reserved={p_info.get('reserved')}, Remaining={p_info.get('remaining')}")
         print("\nTop Prioritized Tracks:")
         for t in preview.get("samplePrioritizedTracks", []):
             print(f"  [Score: {t['score']:4d}] ID {t['id']}: '{t['title']}' - '{t['artist']}' (Needs: {'Cover ' if t['needsCover'] else ''}{'Lyrics' if t['needsLyrics'] else ''})")
@@ -473,6 +520,10 @@ def main():
 
     # Live execution requires PID lock
     with LocalPidLock(PID_FILE):
+        if args.target_id is not None:
+            run_worker_batch(client, batch_size=1, target_id=args.target_id)
+            sys.exit(0)
+
         if args.run_once:
             run_worker_batch(client, args.batch_size)
             sys.exit(0)

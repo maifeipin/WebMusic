@@ -295,6 +295,7 @@ public class WorkerLeaseRequest
 {
     public string WorkerNodeId { get; set; } = "worker-default";
     public int? BatchSize { get; set; }
+    public int? SpecificMediaFileId { get; set; }
 }
 
 public class WorkerHeartbeatRequest

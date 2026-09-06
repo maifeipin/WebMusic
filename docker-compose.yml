@@ -30,6 +30,8 @@ services:
       - BootstrapAdmin__Password=${BOOTSTRAP_ADMIN_PASSWORD:-}
       - AutomationBot__Username=${ENRICHMENT_BOT_USERNAME:-enrichment-bot}
       - AutomationBot__Password=${ENRICHMENT_BOT_PASSWORD:-}
+      - ENRICHMENT_WORKER_SECRET=${ENRICHMENT_WORKER_SECRET:-}
+      - ENRICHMENT_WORKER_NODES=${ENRICHMENT_WORKER_NODES:-}
     ports:
       - "5080:8080"
     volumes:

@@ -242,4 +242,109 @@ public class WorkerLeaseAndSubmitTests
         var refreshedJob = await db.EnrichmentJobs.FindAsync("batch-2");
         Assert.Equal(1, refreshedJob!.Processed);
     }
+
+    [Fact]
+    public async Task LeaseBatch_WithSpecificMediaFileId_LeasesTargetedItem()
+    {
+        var dbName = Guid.NewGuid().ToString("N");
+        using var db = CreateInMemoryDbContext(dbName);
+
+        db.ScanSources.Add(new ScanSource { Id = 1, Name = "S", Path = "/m", Type = "local" });
+        db.MediaFiles.Add(new MediaFile { Id = 5, ScanSourceId = 1, Title = "Target Song", Artist = "Target Artist", FilePath = "/m/5.mp3" });
+        db.MediaFiles.Add(new MediaFile { Id = 6, ScanSourceId = 1, Title = "Other Song", Artist = "Other Artist", FilePath = "/m/6.mp3" });
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db);
+
+        // Targeted lease for ID 5
+        var res = await controller.LeaseBatch(new WorkerLeaseRequest
+        {
+            WorkerNodeId = "worker-1",
+            SpecificMediaFileId = 5
+        });
+
+        var okResult = Assert.IsType<OkObjectResult>(res);
+        var val = Assert.IsType<WorkerLeaseBatchResponse>(okResult.Value);
+        Assert.Equal(1, val.Total);
+        Assert.Single(val.Items);
+        Assert.Equal(5, val.Items[0].MediaFileId);
+
+        // Targeted lease for ID 5 while leased should fail with 0 items
+        var controller2 = CreateController(db, workerNodeId: "worker-2");
+        var res2 = await controller2.LeaseBatch(new WorkerLeaseRequest
+        {
+            WorkerNodeId = "worker-2",
+            SpecificMediaFileId = 5
+        });
+
+        var okResult2 = Assert.IsType<OkObjectResult>(res2);
+        var val2 = Assert.IsType<WorkerLeaseBatchResponse>(okResult2.Value);
+        Assert.Equal(0, val2.Total);
+        Assert.Contains("unavailable", val2.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SubmitBatch_WithNullHttpStatus_RecordsNullInEnrichmentAttempts()
+    {
+        var dbName = Guid.NewGuid().ToString("N");
+        using var db = CreateInMemoryDbContext(dbName);
+
+        db.ScanSources.Add(new ScanSource { Id = 1, Name = "S", Path = "/m", Type = "local" });
+        db.MediaFiles.Add(new MediaFile { Id = 50, ScanSourceId = 1, Title = "Timeout Song", Artist = "Timeout Artist", FilePath = "/m/50.mp3" });
+
+        var job = new EnrichmentJob
+        {
+            Id = "batch-timeout",
+            Scope = "Catalog:WorkerLease:worker-1",
+            Total = 1,
+            Status = "Processing",
+            StartedAt = DateTime.UtcNow
+        };
+        db.EnrichmentJobs.Add(job);
+
+        var item = new EnrichmentJobItem
+        {
+            Id = 500,
+            JobId = "batch-timeout",
+            MediaFileId = 50,
+            WorkerNodeId = "worker-1",
+            Status = "Leased",
+            LeasedAt = DateTime.UtcNow,
+            LeaseExpiresAt = DateTime.UtcNow.AddMinutes(15)
+        };
+        db.EnrichmentJobItems.Add(item);
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db);
+        var request = new WorkerSubmitBatchRequest
+        {
+            BatchId = "batch-timeout",
+            WorkerNodeId = "worker-1",
+            SubmissionId = Guid.NewGuid().ToString(),
+            Results = new List<WorkerItemSubmission>
+            {
+                new WorkerItemSubmission
+                {
+                    ItemId = 500,
+                    MediaFileId = 50,
+                    Outcome = "Failed",
+                    HttpStatus = null, // Transport error: DNS/timeout/connection reset
+                    RetryCount = 1,
+                    Detail = "Transport error: URLError: <urlopen error timed out>"
+                }
+            }
+        };
+
+        var res = await controller.SubmitBatch(request);
+        var submitRes = Assert.IsType<WorkerSubmitBatchResponse>(Assert.IsType<OkObjectResult>(res).Value);
+        Assert.Equal(1, submitRes.Processed);
+        Assert.Equal(1, submitRes.Failed);
+
+        var attempt = await db.EnrichmentAttempts.FirstOrDefaultAsync(a => a.MediaFileId == 50);
+        Assert.NotNull(attempt);
+        Assert.Null(attempt!.HTTPStatus); // Strictly null, never 200 or 500
+        Assert.Equal(1, attempt.RetryCount);
+        Assert.Equal("Failed", attempt.Outcome);
+        Assert.Contains("timed out", attempt.Detail);
+    }
 }

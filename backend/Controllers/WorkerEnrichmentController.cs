@@ -139,7 +139,9 @@ public class WorkerEnrichmentController : ControllerBase
     {
         var callerUserId = GetUserId();
         var workerNodeId = GetWorkerNodeId();
-        var requestedBatchSize = Math.Clamp(request.BatchSize ?? DefaultBatchSize, 1, MaxBatchSize);
+        var requestedBatchSize = request.SpecificMediaFileId.HasValue
+            ? 1
+            : Math.Clamp(request.BatchSize ?? DefaultBatchSize, 1, MaxBatchSize);
 
         // Reconcile orphan covers and abandoned staged files
         await CoverPromotionReconciler.ReconcileOrphanCoversAsync(_context, _environment);
@@ -271,7 +273,36 @@ public class WorkerEnrichmentController : ControllerBase
             .ToDictionary(g => g.Key, g => g.Select(x => x.InputFingerprint!).ToHashSet());
 
         List<MediaFile> candidates;
-        if (_context.Database.IsNpgsql())
+        if (request.SpecificMediaFileId.HasValue)
+        {
+            var targetId = request.SpecificMediaFileId.Value;
+            if (_context.Database.IsNpgsql())
+            {
+                var rawCandidateIds = await _context.Database.SqlQueryRaw<int>(
+                    @"SELECT m.""Id"" FROM ""MediaFiles"" m
+                      WHERE m.""Id"" = {0}
+                        AND NOT EXISTS (
+                            SELECT 1 FROM ""EnrichmentJobItems"" i
+                            WHERE i.""MediaFileId"" = m.""Id""
+                              AND (i.""Status"" IN ('Leased', 'AwaitingAssets', 'ProcessingSubmit') AND i.""LeaseExpiresAt"" > {1})
+                        )
+                      LIMIT 1
+                      FOR UPDATE SKIP LOCKED",
+                    targetId, DateTime.UtcNow
+                ).ToListAsync();
+
+                candidates = await _context.MediaFiles.Where(m => rawCandidateIds.Contains(m.Id)).ToListAsync();
+            }
+            else
+            {
+                candidates = await _context.MediaFiles
+                    .Where(m => m.Id == targetId
+                             && !_context.EnrichmentJobItems.Any(i => i.MediaFileId == m.Id && ((i.Status == "Leased" || i.Status == "AwaitingAssets" || i.Status == "ProcessingSubmit") && i.LeaseExpiresAt > DateTime.UtcNow)))
+                    .Take(1)
+                    .ToListAsync();
+            }
+        }
+        else if (_context.Database.IsNpgsql())
         {
             var rawCandidateIds = await _context.Database.SqlQueryRaw<int>(
                 @"SELECT m.""Id"" FROM ""MediaFiles"" m
@@ -354,7 +385,9 @@ public class WorkerEnrichmentController : ControllerBase
                 BatchId = null,
                 WorkerNodeId = workerNodeId,
                 Total = 0,
-                Message = "No eligible tracks available for leasing."
+                Message = request.SpecificMediaFileId.HasValue
+                    ? $"Specific media file {request.SpecificMediaFileId.Value} is unavailable, not found, or currently under an active lease."
+                    : "No eligible tracks available for leasing."
             });
         }
 
@@ -806,7 +839,7 @@ public class WorkerEnrichmentController : ControllerBase
                 Provider = "MusicBrainz+CoverArtArchive+LRCLIB",
                 RequestKey = res.RecordingId,
                 InputFingerprint = fingerprint,
-                HTTPStatus = res.HttpStatus ?? 200,
+                HTTPStatus = res.HttpStatus,
                 Outcome = finalOutcome,
                 Confidence = Math.Round(res.Confidence, 4),
                 RetryCount = res.RetryCount,
