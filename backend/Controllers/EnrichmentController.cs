@@ -110,11 +110,17 @@ public class EnrichmentController : ControllerBase
     }
 
     [HttpGet("{batchId}")]
-    public async Task<IActionResult> GetStatus(string batchId)
+    public async Task<IActionResult> GetStatus(string batchId, [FromQuery] bool allUsers = false)
     {
         var dbJob = await _context.EnrichmentJobs.FindAsync(batchId);
         if (dbJob != null)
         {
+            var userId = GetUserId();
+            if (!allUsers && dbJob.RequestedByUserId.HasValue && dbJob.RequestedByUserId.Value != userId)
+            {
+                return Forbid();
+            }
+
             return Ok(new
             {
                 batchId = dbJob.Id,
