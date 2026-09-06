@@ -15,7 +15,8 @@ docker compose up -d --no-build backend frontend
 echo "🧹 Cleaning up dangling images..."
 docker image prune -f
 
-echo "🩺 Verifying health endpoints..."
+echo "🩺 Verifying health endpoints (waiting for startup)..."
+sleep 3
 frontend_code=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8090/)
 backend_code=$(curl -sS -o /dev/null -w '%{http_code}' 'http://127.0.0.1:5080/api/media?page=1&pageSize=1')
 
