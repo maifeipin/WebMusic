@@ -48,4 +48,5 @@ data/
 __pycache__/
 *.pyc
 .DS_Store
+exports/
 backend.log

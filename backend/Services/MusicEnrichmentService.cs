@@ -17,9 +17,12 @@ namespace WebMusic.Backend.Services;
 public enum MusicEnrichmentOutcome
 {
     Updated,
-    NoChange,
-    Failed
+    Unmatched,
+    Skipped,
+    Failed,
+    NoChange
 }
+
 
 public class MusicEnrichmentService
 {
@@ -42,27 +45,27 @@ public class MusicEnrichmentService
         _logger = logger;
     }
 
-    public async Task<MusicEnrichmentOutcome> EnrichMissingAssetsAsync(int mediaId, CancellationToken cancellationToken)
+    public async Task<MusicEnrichmentOutcome> EnrichMissingAssetsAsync(int mediaId, CancellationToken cancellationToken, string? jobId = null)
     {
         var media = await _context.MediaFiles.FindAsync(new object[] { mediaId }, cancellationToken);
         if (media == null)
         {
-            await RecordAsync(mediaId, "MusicBrainz", null, 0, "Skipped", "Media file no longer exists.", cancellationToken);
-            return MusicEnrichmentOutcome.NoChange;
+            await RecordAsync(mediaId, "MusicBrainz", null, 0, "Skipped", "Media file no longer exists.", cancellationToken, jobId);
+            return MusicEnrichmentOutcome.Skipped;
         }
 
         var needsCover = string.IsNullOrWhiteSpace(media.CoverArt);
         var needsLyrics = !await _context.Lyrics.AnyAsync(l => l.MediaFileId == mediaId, cancellationToken);
         if (!needsCover && !needsLyrics)
         {
-            await RecordAsync(mediaId, "WebMusic", null, 1, "Skipped", "Cover and lyrics already exist.", cancellationToken);
-            return MusicEnrichmentOutcome.NoChange;
+            await RecordAsync(mediaId, "WebMusic", null, 1, "Skipped", "Cover and lyrics already exist.", cancellationToken, jobId);
+            return MusicEnrichmentOutcome.Skipped;
         }
 
         if (IsUnknown(media.Title) || IsUnknown(media.Artist))
         {
-            await RecordAsync(mediaId, "MusicBrainz", null, 0, "Skipped", "Title or artist is missing, so no automatic match was attempted.", cancellationToken);
-            return MusicEnrichmentOutcome.NoChange;
+            await RecordAsync(mediaId, "MusicBrainz", null, 0, "Skipped", "Title or artist is missing, so no automatic match was attempted.", cancellationToken, jobId);
+            return MusicEnrichmentOutcome.Skipped;
         }
 
         try
@@ -70,8 +73,36 @@ public class MusicEnrichmentService
             var candidate = await FindMusicBrainzCandidateAsync(media, cancellationToken);
             if (candidate == null || candidate.Confidence < MinimumConfidence)
             {
-                await RecordAsync(mediaId, "MusicBrainz", candidate?.RecordingId, candidate?.Confidence ?? 0, "Unmatched", "No candidate met the automatic-match threshold.", cancellationToken);
-                return MusicEnrichmentOutcome.NoChange;
+                await RecordAsync(mediaId, "MusicBrainz", candidate?.RecordingId, candidate?.Confidence ?? 0, "Unmatched", "No candidate met the automatic-match threshold.", cancellationToken, jobId);
+                return MusicEnrichmentOutcome.Unmatched;
+            }
+
+            // Record MediaIdentity if matched with high confidence
+            if (!string.IsNullOrEmpty(candidate.RecordingId))
+            {
+                var existingIdentity = await _context.MediaIdentities
+                    .FirstOrDefaultAsync(i => i.MediaFileId == media.Id && i.Provider == "MusicBrainz", cancellationToken);
+                if (existingIdentity == null)
+                {
+                    _context.MediaIdentities.Add(new MediaIdentity
+                    {
+                        MediaFileId = media.Id,
+                        Provider = "MusicBrainz",
+                        RecordingId = candidate.RecordingId,
+                        ReleaseId = candidate.ReleaseId,
+                        MatchMethod = "MetadataFuzzy",
+                        Confidence = Math.Round(candidate.Confidence, 4),
+                        Status = "approved",
+                        MatchedAt = DateTime.UtcNow
+                    });
+                }
+                else
+                {
+                    existingIdentity.RecordingId = candidate.RecordingId;
+                    existingIdentity.ReleaseId = candidate.ReleaseId;
+                    existingIdentity.Confidence = Math.Round(candidate.Confidence, 4);
+                    existingIdentity.LastVerifiedAt = DateTime.UtcNow;
+                }
             }
 
             var changed = new List<string>();
@@ -111,16 +142,18 @@ public class MusicEnrichmentService
                 candidate.Confidence,
                 changed.Count > 0 ? "Matched" : "MatchedWithoutAssets",
                 changed.Count > 0 ? $"Wrote {string.Join(" and ", changed)} without overwriting existing data." : "Recording was matched, but no missing asset was available from the selected providers.",
-                cancellationToken);
-            return changed.Count > 0 ? MusicEnrichmentOutcome.Updated : MusicEnrichmentOutcome.NoChange;
+                cancellationToken,
+                jobId);
+            return changed.Count > 0 ? MusicEnrichmentOutcome.Updated : MusicEnrichmentOutcome.Unmatched;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Automatic enrichment failed for media {MediaId}", mediaId);
-            await RecordAsync(mediaId, "MusicBrainz+CoverArtArchive+LRCLIB", null, 0, "Failed", "Provider request failed; existing data was left unchanged.", cancellationToken);
+            await RecordAsync(mediaId, "MusicBrainz+CoverArtArchive+LRCLIB", null, 0, "Failed", "Provider request failed; existing data was left unchanged.", cancellationToken, jobId, 500);
             return MusicEnrichmentOutcome.Failed;
         }
     }
+
 
     private async Task<MusicBrainzCandidate?> FindMusicBrainzCandidateAsync(MediaFile media, CancellationToken cancellationToken)
     {
@@ -251,7 +284,7 @@ public class MusicEnrichmentService
         return string.IsNullOrWhiteSpace(content) ? null : new LrclibLyrics(content, !string.IsNullOrWhiteSpace(synced));
     }
 
-    private async Task RecordAsync(int mediaId, string provider, string? externalId, double confidence, string status, string details, CancellationToken cancellationToken)
+    private async Task RecordAsync(int mediaId, string provider, string? externalId, double confidence, string status, string details, CancellationToken cancellationToken, string? jobId = null, int? httpStatus = null)
     {
         _context.MusicEnrichments.Add(new MusicEnrichment
         {
@@ -263,8 +296,27 @@ public class MusicEnrichmentService
             Details = details,
             CreatedAt = DateTime.UtcNow
         });
+
+        if (!string.IsNullOrEmpty(jobId))
+        {
+            _context.EnrichmentAttempts.Add(new EnrichmentAttempt
+            {
+                JobId = jobId,
+                MediaFileId = mediaId,
+                Provider = provider,
+                RequestKey = externalId,
+                HTTPStatus = httpStatus ?? (status == "Failed" ? 500 : 200),
+                Outcome = status,
+                Confidence = Math.Round(confidence, 4),
+                RetryCount = 0,
+                Detail = details,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
         await _context.SaveChangesAsync(cancellationToken);
     }
+
 
     private static double CalculateConfidence(MediaFile media, string title, string artist, TimeSpan duration)
     {

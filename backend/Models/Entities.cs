@@ -177,3 +177,96 @@ public class MusicEnrichment
     public string Details { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
+
+public class EnrichmentJob
+{
+    [Key]
+    public string Id { get; set; } = string.Empty; // BatchId
+    public string Scope { get; set; } = "Favorites";
+    public int? RequestedByUserId { get; set; }
+    public int Total { get; set; }
+    public int Processed { get; set; }
+    public int Updated { get; set; }
+    public int Unmatched { get; set; }
+    public int Skipped { get; set; }
+    public int Failed { get; set; }
+    public int Cursor { get; set; }
+    public string Status { get; set; } = "Queued"; // Queued, Processing, Completed, Failed, Paused
+    public string SongIdsJson { get; set; } = "[]"; // Serialized song IDs for restart recovery
+    public DateTime StartedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? FinishedAt { get; set; }
+}
+
+public class EnrichmentAttempt
+{
+    [Key]
+    public int Id { get; set; }
+    public string JobId { get; set; } = string.Empty;
+    public int MediaFileId { get; set; }
+    [JsonIgnore]
+    public MediaFile? MediaFile { get; set; }
+    public string Provider { get; set; } = string.Empty;
+    public string? RequestKey { get; set; }
+    public int? HTTPStatus { get; set; }
+    public string Outcome { get; set; } = string.Empty; // Updated, Unmatched, Skipped, Failed
+    public double Confidence { get; set; }
+    public int RetryCount { get; set; }
+    public string Detail { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public class MediaIdentity
+{
+    [Key]
+    public int Id { get; set; }
+    public int MediaFileId { get; set; }
+    [JsonIgnore]
+    public MediaFile? MediaFile { get; set; }
+    public string Provider { get; set; } = "MusicBrainz";
+    public string? RecordingId { get; set; }
+    public string? ReleaseId { get; set; }
+    public string? ArtistId { get; set; }
+    public string? ISRC { get; set; }
+    public string? AcoustId { get; set; }
+    public string MatchMethod { get; set; } = "MetadataFuzzy";
+    public double Confidence { get; set; }
+    public string Status { get; set; } = "approved"; // approved, proposed, rejected
+    public DateTime MatchedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? LastVerifiedAt { get; set; }
+}
+
+public class MediaTag
+{
+    [Key]
+    public int Id { get; set; }
+    public int MediaFileId { get; set; }
+    [JsonIgnore]
+    public MediaFile? MediaFile { get; set; }
+    public string Namespace { get; set; } = string.Empty; // chart / popularity / soundtrack / cultural / genre
+    public string Key { get; set; } = string.Empty;       // peak / listeners / classic 等
+    public string Value { get; set; } = string.Empty;
+    public double? NumericValue { get; set; }
+    public double Confidence { get; set; } = 1.0;
+    public string Status { get; set; } = "approved";      // proposed / approved / rejected
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    [JsonIgnore]
+    public List<TagEvidence> Evidences { get; set; } = new();
+}
+
+public class TagEvidence
+{
+    [Key]
+    public int Id { get; set; }
+    public int MediaTagId { get; set; }
+    [JsonIgnore]
+    public MediaTag? MediaTag { get; set; }
+    public string Source { get; set; } = string.Empty;     // musicbrainz / billboard / spotify / lastfm / tmdb
+    public string? SourceId { get; set; }
+    public string? EvidenceUrl { get; set; }
+    public string? EvidenceText { get; set; }
+    public DateTime RetrievedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? ExpiresAt { get; set; }
+    public string? RawPayload { get; set; }                // JSON string
+}
+

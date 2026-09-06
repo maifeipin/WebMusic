@@ -9,8 +9,9 @@ export default function AdminPage() {
     const [users, setUsers] = useState<{ id: number, username: string }[]>([]);
     const [loading, setLoading] = useState(false);
     const [enrichmentPreview, setEnrichmentPreview] = useState<number | null>(null);
-    const [enrichmentStatus, setEnrichmentStatus] = useState<{ batchId: string; total: number; processed: number; success: number; failed: number; status: string } | null>(null);
+    const [enrichmentStatus, setEnrichmentStatus] = useState<{ batchId: string; total: number; processed: number; success?: number; updated?: number; failed: number; status: string } | null>(null);
     const [enrichmentStarting, setEnrichmentStarting] = useState(false);
+
 
     useEffect(() => {
         if (isAdmin) {
@@ -198,7 +199,7 @@ export default function AdminPage() {
                         </p>
                         {enrichmentStatus ? (
                             <p className="text-sm text-violet-300 mt-3">
-                                {enrichmentStatus.status}: {enrichmentStatus.processed}/{enrichmentStatus.total} processed · {enrichmentStatus.success} updated · {enrichmentStatus.failed} failed
+                                {enrichmentStatus.status}: {enrichmentStatus.processed}/{enrichmentStatus.total} processed · {enrichmentStatus.updated ?? enrichmentStatus.success ?? 0} updated · {enrichmentStatus.failed} failed
                             </p>
                         ) : (
                             <p className="text-sm text-gray-500 mt-3">

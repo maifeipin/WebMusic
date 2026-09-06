@@ -1,6 +1,9 @@
 using WebMusic.Backend.Services;
 using Newtonsoft.Json;
 using Microsoft.EntityFrameworkCore;
+using WebMusic.Backend.Data;
+using WebMusic.Backend.Models;
+using System.Text.Json;
 
 namespace WebMusic.Backend.Services;
 
@@ -23,11 +26,48 @@ public class JobWorker : BackgroundService
     {
         _logger.LogInformation("JobWorker started.");
 
+        // Recover unfinished enrichment jobs from database on startup
+        try
+        {
+            using var startupScope = _scopeFactory.CreateScope();
+            var db = startupScope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var unfinishedJobs = await db.EnrichmentJobs
+                .Where(j => j.Status == "Processing" || j.Status == "Queued")
+                .ToListAsync(stoppingToken);
+
+            foreach (var unfinishedJob in unfinishedJobs)
+            {
+                _logger.LogInformation("Resuming unfinished enrichment job {JobId} from cursor {Cursor}/{Total}", unfinishedJob.Id, unfinishedJob.Cursor, unfinishedJob.Total);
+                List<int> songIds = new();
+                try
+                {
+                    songIds = System.Text.Json.JsonSerializer.Deserialize<List<int>>(unfinishedJob.SongIdsJson) ?? new();
+                }
+                catch { }
+
+                if (songIds.Count > 0)
+                {
+                    _queue.Enqueue(new FavoritesEnrichmentJob(unfinishedJob.Id, songIds));
+                }
+                else
+                {
+                    unfinishedJob.Status = "Failed";
+                    unfinishedJob.FinishedAt = DateTime.UtcNow;
+                    await db.SaveChangesAsync(stoppingToken);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to recover unfinished enrichment jobs on startup.");
+        }
+
         await foreach (var job in _queue.ReadAllAsync(stoppingToken))
         {
             try
             {
                 using var scope = _scopeFactory.CreateScope();
+
 
                 if (job is ScanJob scanJob)
                 {
@@ -207,32 +247,75 @@ public class JobWorker : BackgroundService
     private async Task ProcessFavoritesEnrichmentJob(IServiceScope scope, FavoritesEnrichmentJob job, CancellationToken ct)
     {
         var enrichmentService = scope.ServiceProvider.GetRequiredService<MusicEnrichmentService>();
-        _queue.UpdateAiStatus(job.BatchId, 0, 0, 0, "Processing");
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        var processed = 0;
-        var success = 0;
-        var failed = 0;
-        foreach (var songId in job.SongIds)
+        // Load or initialize DB job record
+        var dbJob = await db.EnrichmentJobs.FindAsync(new object[] { job.BatchId }, ct);
+        if (dbJob == null)
         {
-            if (ct.IsCancellationRequested) break;
+            dbJob = new EnrichmentJob
+            {
+                Id = job.BatchId,
+                Scope = "Favorites",
+                Total = job.SongIds.Count,
+                Status = "Processing",
+                SongIdsJson = System.Text.Json.JsonSerializer.Serialize(job.SongIds),
+                StartedAt = DateTime.UtcNow
+            };
+            db.EnrichmentJobs.Add(dbJob);
+            await db.SaveChangesAsync(ct);
+        }
+        else
+        {
+            dbJob.Status = "Processing";
+            await db.SaveChangesAsync(ct);
+        }
+
+        _queue.UpdateAiStatus(job.BatchId, dbJob.Processed, dbJob.Updated, dbJob.Failed, "Processing");
+
+        // Resume from cursor
+        var startIndex = dbJob.Cursor;
+        for (int i = startIndex; i < job.SongIds.Count; i++)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                dbJob.Status = "Paused";
+                await db.SaveChangesAsync(CancellationToken.None);
+                break;
+            }
+
+            var songId = job.SongIds[i];
 
             try
             {
-                var outcome = await enrichmentService.EnrichMissingAssetsAsync(songId, ct);
-                if (outcome == MusicEnrichmentOutcome.Updated) success++;
-                else if (outcome == MusicEnrichmentOutcome.Failed) failed++;
+                var outcome = await enrichmentService.EnrichMissingAssetsAsync(songId, ct, job.BatchId);
+                if (outcome == MusicEnrichmentOutcome.Updated) dbJob.Updated++;
+                else if (outcome == MusicEnrichmentOutcome.Unmatched) dbJob.Unmatched++;
+                else if (outcome == MusicEnrichmentOutcome.Skipped) dbJob.Skipped++;
+                else if (outcome == MusicEnrichmentOutcome.Failed) dbJob.Failed++;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Music enrichment failed for song {SongId}", songId);
-                failed++;
+                dbJob.Failed++;
             }
 
-            processed++;
-            _queue.UpdateAiStatus(job.BatchId, processed, success, failed, "Processing");
+            dbJob.Processed++;
+            dbJob.Cursor = i + 1;
+
+            await db.SaveChangesAsync(ct);
+            _queue.UpdateAiStatus(job.BatchId, dbJob.Processed, dbJob.Updated, dbJob.Failed, "Processing");
         }
 
-        _queue.UpdateAiStatus(job.BatchId, processed, success, failed, "Completed");
-        _logger.LogInformation("Favorites enrichment batch {BatchId} finished: {Success} succeeded, {Failed} failed.", job.BatchId, success, failed);
+        if (!ct.IsCancellationRequested)
+        {
+            dbJob.Status = "Completed";
+            dbJob.FinishedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+            _queue.UpdateAiStatus(job.BatchId, dbJob.Processed, dbJob.Updated, dbJob.Failed, "Completed");
+            _logger.LogInformation("Favorites enrichment batch {BatchId} finished: {Updated} updated, {Unmatched} unmatched, {Skipped} skipped, {Failed} failed.",
+                job.BatchId, dbJob.Updated, dbJob.Unmatched, dbJob.Skipped, dbJob.Failed);
+        }
     }
 }
+

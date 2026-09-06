@@ -18,6 +18,11 @@ public class AppDbContext : DbContext
     public DbSet<Playlist> Playlists { get; set; }
     public DbSet<PlaylistSong> PlaylistSongs { get; set; }
     public DbSet<PluginDefinition> Plugins { get; set; }
+    public DbSet<EnrichmentJob> EnrichmentJobs { get; set; }
+    public DbSet<EnrichmentAttempt> EnrichmentAttempts { get; set; }
+    public DbSet<MediaIdentity> MediaIdentities { get; set; }
+    public DbSet<MediaTag> MediaTags { get; set; }
+    public DbSet<TagEvidence> TagEvidences { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -36,5 +41,24 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<MusicEnrichment>()
             .HasIndex(e => new { e.MediaFileId, e.CreatedAt });
+
+        modelBuilder.Entity<EnrichmentJob>()
+            .HasIndex(j => j.Status);
+
+        modelBuilder.Entity<EnrichmentAttempt>()
+            .HasIndex(a => new { a.JobId, a.CreatedAt });
+
+        modelBuilder.Entity<MediaIdentity>()
+            .HasIndex(i => new { i.Provider, i.RecordingId });
+
+        modelBuilder.Entity<MediaIdentity>()
+            .HasIndex(i => i.MediaFileId);
+
+        modelBuilder.Entity<MediaTag>()
+            .HasIndex(t => new { t.MediaFileId, t.Namespace, t.Key });
+
+        modelBuilder.Entity<TagEvidence>()
+            .HasIndex(e => e.MediaTagId);
     }
 }
+
