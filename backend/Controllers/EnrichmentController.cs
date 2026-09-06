@@ -25,29 +25,35 @@ public class EnrichmentController : ControllerBase
     }
 
     [HttpGet("favorites/preview")]
-    public async Task<IActionResult> PreviewFavorites()
+    public async Task<IActionResult> PreviewFavorites([FromQuery] int? targetUserId = null)
     {
-        var userId = GetUserId();
-        var total = await EligibleFavorites(userId).CountAsync();
-        return Ok(new { total, scope = "Favorites missing a cover or lyric", maxBatchSize = MaxBatchSize, defaultBatchSize = DefaultBatchSize });
+        var currentUserId = GetUserId();
+        var effectiveUserId = (targetUserId.HasValue && User.IsInRole("Admin")) ? targetUserId.Value : currentUserId;
+        var total = await EligibleFavorites(effectiveUserId).CountAsync();
+        var scope = effectiveUserId > 0 
+            ? $"Favorites missing a cover or lyric (user: {effectiveUserId})" 
+            : "All users favorites missing a cover or lyric";
+        return Ok(new { total, scope, targetUserId = effectiveUserId, maxBatchSize = MaxBatchSize, defaultBatchSize = DefaultBatchSize });
     }
 
     [HttpPost("favorites/start")]
-    public async Task<IActionResult> StartFavorites([FromQuery] int? batchSize = null)
+    public async Task<IActionResult> StartFavorites([FromQuery] int? batchSize = null, [FromQuery] int? targetUserId = null)
     {
-        var userId = GetUserId();
+        var callerUserId = GetUserId();
+        var effectiveUserId = (targetUserId.HasValue && User.IsInRole("Admin")) ? targetUserId.Value : callerUserId;
         var effectiveBatchSize = Math.Clamp(batchSize ?? DefaultBatchSize, 1, MaxBatchSize);
-        var query = EligibleFavorites(userId).Select(f => f.MediaFileId).Distinct().Take(effectiveBatchSize);
+        var query = EligibleFavorites(effectiveUserId).Select(f => f.MediaFileId).Distinct().Take(effectiveBatchSize);
 
         var songIds = await query.ToListAsync();
         if (songIds.Count == 0) return Ok(new { batchId = (string?)null, total = 0, message = "No favorite songs need enrichment." });
 
         var batchId = Guid.NewGuid().ToString("N");
+        var scopeDesc = effectiveUserId > 0 ? $"Favorites:User{effectiveUserId}" : "Favorites:All";
         var dbJob = new WebMusic.Backend.Models.EnrichmentJob
         {
             Id = batchId,
-            Scope = "Favorites",
-            RequestedByUserId = userId,
+            Scope = scopeDesc,
+            RequestedByUserId = callerUserId,
             Total = songIds.Count,
             Status = "Queued",
             SongIdsJson = System.Text.Json.JsonSerializer.Serialize(songIds),
@@ -57,18 +63,25 @@ public class EnrichmentController : ControllerBase
         await _context.SaveChangesAsync();
 
         _queue.Enqueue(new FavoritesEnrichmentJob(batchId, songIds));
-        return Ok(new { batchId, total = songIds.Count, batchSize = effectiveBatchSize, message = $"Favorites enrichment started for {songIds.Count} song(s) (batch size clamped to max {MaxBatchSize})." });
+        return Ok(new { batchId, total = songIds.Count, batchSize = effectiveBatchSize, targetUserId = effectiveUserId, message = $"Favorites enrichment started for {songIds.Count} song(s) (batch size clamped to max {MaxBatchSize})." });
     }
 
     [HttpPost("favorites/retry-failed")]
-    public async Task<IActionResult> RetryRecentFailures([FromQuery] int? batchSize = null)
+    public async Task<IActionResult> RetryRecentFailures([FromQuery] int? batchSize = null, [FromQuery] int? targetUserId = null)
     {
-        var userId = GetUserId();
+        var callerUserId = GetUserId();
+        var effectiveUserId = (targetUserId.HasValue && User.IsInRole("Admin")) ? targetUserId.Value : callerUserId;
         var effectiveBatchSize = Math.Clamp(batchSize ?? DefaultBatchSize, 1, MaxBatchSize);
         var cutoff = DateTime.UtcNow.AddHours(-24);
+        var favoritesQuery = _context.Favorites.AsQueryable();
+        if (effectiveUserId > 0)
+        {
+            favoritesQuery = favoritesQuery.Where(f => f.UserId == effectiveUserId);
+        }
+
         var query = _context.MusicEnrichments
             .Where(e => e.Status == "Failed" && e.CreatedAt >= cutoff)
-            .Join(_context.Favorites.Where(f => f.UserId == userId), e => e.MediaFileId, f => f.MediaFileId, (e, _) => e)
+            .Join(favoritesQuery, e => e.MediaFileId, f => f.MediaFileId, (e, _) => e)
             .Where(e => !_context.MusicEnrichments.Any(later => later.MediaFileId == e.MediaFileId && later.CreatedAt > e.CreatedAt && later.Status == "Matched"))
             .Select(e => e.MediaFileId)
             .Distinct()
@@ -78,11 +91,12 @@ public class EnrichmentController : ControllerBase
         if (songIds.Count == 0) return Ok(new { batchId = (string?)null, total = 0, message = "No recent external failures need retrying." });
 
         var batchId = Guid.NewGuid().ToString("N");
+        var scopeDesc = effectiveUserId > 0 ? $"RetryFailed:User{effectiveUserId}" : "RetryFailed:All";
         var dbJob = new WebMusic.Backend.Models.EnrichmentJob
         {
             Id = batchId,
-            Scope = "RetryFailed",
-            RequestedByUserId = userId,
+            Scope = scopeDesc,
+            RequestedByUserId = callerUserId,
             Total = songIds.Count,
             Status = "Queued",
             SongIdsJson = System.Text.Json.JsonSerializer.Serialize(songIds),
@@ -92,7 +106,7 @@ public class EnrichmentController : ControllerBase
         await _context.SaveChangesAsync();
 
         _queue.Enqueue(new FavoritesEnrichmentJob(batchId, songIds));
-        return Ok(new { batchId, total = songIds.Count, batchSize = effectiveBatchSize, message = $"Retrying recent external failures for {songIds.Count} song(s) (batch size clamped to max {MaxBatchSize})." });
+        return Ok(new { batchId, total = songIds.Count, batchSize = effectiveBatchSize, targetUserId = effectiveUserId, message = $"Retrying recent external failures for {songIds.Count} song(s) (batch size clamped to max {MaxBatchSize})." });
     }
 
     [HttpGet("{batchId}")]
@@ -179,10 +193,16 @@ public class EnrichmentController : ControllerBase
         return Ok(attempts);
     }
 
-    private IQueryable<WebMusic.Backend.Models.Favorite> EligibleFavorites(int userId) => _context.Favorites
-        .Where(f => f.UserId == userId)
-        .Where(f => f.MediaFile != null &&
+    private IQueryable<WebMusic.Backend.Models.Favorite> EligibleFavorites(int userId)
+    {
+        var query = _context.Favorites.AsQueryable();
+        if (userId > 0)
+        {
+            query = query.Where(f => f.UserId == userId);
+        }
+        return query.Where(f => f.MediaFile != null &&
                     (string.IsNullOrEmpty(f.MediaFile.CoverArt) || !_context.Lyrics.Any(l => l.MediaFileId == f.MediaFileId)));
+    }
 
     private int GetUserId() => int.TryParse(User.FindFirst("sub")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId) ? userId : 0;
 }

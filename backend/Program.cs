@@ -339,7 +339,6 @@ using (var scope = app.Services.CreateScope())
         );");
     }
 
-
     if (!db.Users.Any())
     {
         var adminUsername = builder.Configuration["BootstrapAdmin:Username"];
@@ -358,7 +357,25 @@ using (var scope = app.Services.CreateScope())
         db.SaveChanges();
     }
 
-
+    // Bootstrap Automation / Enrichment Bot Account
+    var botUsername = builder.Configuration["AutomationBot:Username"] ?? "enrichment-bot";
+    var botPassword = builder.Configuration["AutomationBot:Password"] ?? Environment.GetEnvironmentVariable("ENRICHMENT_BOT_PASSWORD") ?? "EnrichmentBot@2026!Auto";
+    var botUser = db.Users.FirstOrDefault(u => u.Username == botUsername);
+    if (botUser == null)
+    {
+        db.Users.Add(new WebMusic.Backend.Models.User
+        {
+            Username = botUsername,
+            PasswordHash = WebMusic.Backend.Services.PasswordService.Hash(botPassword),
+            IsAdmin = true
+        });
+        db.SaveChanges();
+    }
+    else if (!botUser.IsAdmin)
+    {
+        botUser.IsAdmin = true;
+        db.SaveChanges();
+    }
 }
 
 app.UseCors("AllowAll");
