@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getUsers, adminResetPassword, createUser, deleteUser, getFavoritesEnrichmentPreview, startFavoritesEnrichment, getEnrichmentStatus } from '../services/api';
+import { getUsers, adminResetPassword, createUser, deleteUser, getFavoritesEnrichmentPreview, startFavoritesEnrichment, retryFailedFavoritesEnrichment, getEnrichmentStatus } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { Shield, Key, User, Plus, Trash2, Sparkles, LoaderCircle } from 'lucide-react';
 
@@ -52,6 +52,22 @@ export default function AdminPage() {
             setEnrichmentPreview(Math.max(0, (enrichmentPreview ?? result.total) - result.total));
         } catch (e: any) {
             alert('Failed to start enrichment: ' + (e.response?.data || e.message));
+        } finally {
+            setEnrichmentStarting(false);
+        }
+    };
+
+    const handleRetryFailures = async () => {
+        setEnrichmentStarting(true);
+        try {
+            const result = await retryFailedFavoritesEnrichment();
+            if (!result.batchId) {
+                alert(result.message);
+                return;
+            }
+            setEnrichmentStatus({ batchId: result.batchId, total: result.total, processed: 0, success: 0, failed: 0, status: 'Queued' });
+        } catch (e: any) {
+            alert('Failed to retry enrichment: ' + (e.response?.data || e.message));
         } finally {
             setEnrichmentStarting(false);
         }
@@ -198,6 +214,15 @@ export default function AdminPage() {
                         {(enrichmentStarting || enrichmentStatus?.status === 'Queued' || enrichmentStatus?.status === 'Processing') && <LoaderCircle size={15} className="animate-spin" />}
                         Enrich favorites
                     </button>
+                    {enrichmentStatus?.status === 'Completed' && enrichmentStatus.failed > 0 && (
+                        <button
+                            onClick={handleRetryFailures}
+                            disabled={enrichmentStarting}
+                            className="shrink-0 px-3 py-2 bg-gray-700 hover:bg-violet-500 disabled:text-gray-500 text-white rounded-lg text-sm font-bold transition"
+                        >
+                            Retry failures
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

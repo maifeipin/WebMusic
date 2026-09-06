@@ -41,6 +41,25 @@ public class EnrichmentController : ControllerBase
         return Ok(new { batchId, total = songIds.Count, message = "Favorites enrichment started." });
     }
 
+    [HttpPost("favorites/retry-failed")]
+    public async Task<IActionResult> RetryRecentFailures()
+    {
+        var userId = GetUserId();
+        var cutoff = DateTime.UtcNow.AddHours(-24);
+        var songIds = await _context.MusicEnrichments
+            .Where(e => e.Status == "Failed" && e.CreatedAt >= cutoff)
+            .Join(_context.Favorites.Where(f => f.UserId == userId), e => e.MediaFileId, f => f.MediaFileId, (e, _) => e)
+            .Where(e => !_context.MusicEnrichments.Any(later => later.MediaFileId == e.MediaFileId && later.CreatedAt > e.CreatedAt && later.Status == "Matched"))
+            .Select(e => e.MediaFileId)
+            .Distinct()
+            .ToListAsync();
+        if (songIds.Count == 0) return Ok(new { batchId = (string?)null, total = 0, message = "No recent external failures need retrying." });
+
+        var batchId = Guid.NewGuid().ToString("N");
+        _queue.Enqueue(new FavoritesEnrichmentJob(batchId, songIds));
+        return Ok(new { batchId, total = songIds.Count, message = "Retrying recent external failures." });
+    }
+
     [HttpGet("{batchId}")]
     public IActionResult GetStatus(string batchId)
     {

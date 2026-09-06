@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -13,6 +14,13 @@ namespace WebMusic.Backend.Services;
 /// tracks. It never overwrites existing covers or lyrics and records every
 /// outcome for review.
 /// </summary>
+public enum MusicEnrichmentOutcome
+{
+    Updated,
+    NoChange,
+    Failed
+}
+
 public class MusicEnrichmentService
 {
     private const double MinimumConfidence = 0.90;
@@ -34,13 +42,13 @@ public class MusicEnrichmentService
         _logger = logger;
     }
 
-    public async Task<bool> EnrichMissingAssetsAsync(int mediaId, CancellationToken cancellationToken)
+    public async Task<MusicEnrichmentOutcome> EnrichMissingAssetsAsync(int mediaId, CancellationToken cancellationToken)
     {
         var media = await _context.MediaFiles.FindAsync(new object[] { mediaId }, cancellationToken);
         if (media == null)
         {
             await RecordAsync(mediaId, "MusicBrainz", null, 0, "Skipped", "Media file no longer exists.", cancellationToken);
-            return false;
+            return MusicEnrichmentOutcome.NoChange;
         }
 
         var needsCover = string.IsNullOrWhiteSpace(media.CoverArt);
@@ -48,13 +56,13 @@ public class MusicEnrichmentService
         if (!needsCover && !needsLyrics)
         {
             await RecordAsync(mediaId, "WebMusic", null, 1, "Skipped", "Cover and lyrics already exist.", cancellationToken);
-            return false;
+            return MusicEnrichmentOutcome.NoChange;
         }
 
         if (IsUnknown(media.Title) || IsUnknown(media.Artist))
         {
             await RecordAsync(mediaId, "MusicBrainz", null, 0, "Skipped", "Title or artist is missing, so no automatic match was attempted.", cancellationToken);
-            return false;
+            return MusicEnrichmentOutcome.NoChange;
         }
 
         try
@@ -63,7 +71,7 @@ public class MusicEnrichmentService
             if (candidate == null || candidate.Confidence < MinimumConfidence)
             {
                 await RecordAsync(mediaId, "MusicBrainz", candidate?.RecordingId, candidate?.Confidence ?? 0, "Unmatched", "No candidate met the automatic-match threshold.", cancellationToken);
-                return false;
+                return MusicEnrichmentOutcome.NoChange;
             }
 
             var changed = new List<string>();
@@ -104,20 +112,19 @@ public class MusicEnrichmentService
                 changed.Count > 0 ? "Matched" : "MatchedWithoutAssets",
                 changed.Count > 0 ? $"Wrote {string.Join(" and ", changed)} without overwriting existing data." : "Recording was matched, but no missing asset was available from the selected providers.",
                 cancellationToken);
-            return changed.Count > 0;
+            return changed.Count > 0 ? MusicEnrichmentOutcome.Updated : MusicEnrichmentOutcome.NoChange;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Automatic enrichment failed for media {MediaId}", mediaId);
             await RecordAsync(mediaId, "MusicBrainz+CoverArtArchive+LRCLIB", null, 0, "Failed", "Provider request failed; existing data was left unchanged.", cancellationToken);
-            return false;
+            return MusicEnrichmentOutcome.Failed;
         }
     }
 
     private async Task<MusicBrainzCandidate?> FindMusicBrainzCandidateAsync(MediaFile media, CancellationToken cancellationToken)
     {
         // MusicBrainz requires clients to stay at or below one request per second.
-        await Task.Delay(TimeSpan.FromMilliseconds(1100), cancellationToken);
         var title = EscapeLucenePhrase(media.Title);
         var artist = EscapeLucenePhrase(media.Artist);
         var query = $"recording:\"{title}\" AND artist:\"{artist}\"";
@@ -127,31 +134,43 @@ public class MusicEnrichmentService
         client.DefaultRequestHeaders.UserAgent.Clear();
         client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("WebMusic", "1.0"));
         client.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("(https://music.maifeipin.com)"));
-        using var response = await client.GetAsync(url, cancellationToken);
-        response.EnsureSuccessStatusCode();
-
-        using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
-        if (!document.RootElement.TryGetProperty("recordings", out var recordings)) return null;
-
-        MusicBrainzCandidate? best = null;
-        foreach (var item in recordings.EnumerateArray())
+        for (var attempt = 1; attempt <= 2; attempt++)
         {
-            var candidateTitle = GetString(item, "title");
-            var candidateArtist = item.TryGetProperty("artist-credit", out var credit)
-                ? string.Join(", ", credit.EnumerateArray().Select(entry => GetString(entry, "name")))
-                : string.Empty;
-            var candidateDuration = item.TryGetProperty("length", out var length) && length.TryGetInt64(out var milliseconds)
-                ? TimeSpan.FromMilliseconds(milliseconds)
-                : TimeSpan.Zero;
-            var confidence = CalculateConfidence(media, candidateTitle, candidateArtist, candidateDuration);
-            var releaseId = item.TryGetProperty("releases", out var releases) && releases.GetArrayLength() > 0
-                ? GetString(releases[0], "id")
-                : null;
-            var candidate = new MusicBrainzCandidate(GetString(item, "id"), releaseId, confidence);
-            if (best == null || candidate.Confidence > best.Confidence) best = candidate;
+            await Task.Delay(attempt == 1 ? TimeSpan.FromMilliseconds(1500) : TimeSpan.FromSeconds(20), cancellationToken);
+            using var response = await client.GetAsync(url, cancellationToken);
+            if (response.StatusCode is HttpStatusCode.ServiceUnavailable or HttpStatusCode.TooManyRequests)
+            {
+                if (attempt == 2) response.EnsureSuccessStatusCode();
+                _logger.LogInformation("MusicBrainz returned {StatusCode}; retrying once after a cooldown.", response.StatusCode);
+                continue;
+            }
+            response.EnsureSuccessStatusCode();
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync(cancellationToken));
+            if (!document.RootElement.TryGetProperty("recordings", out var recordings)) return null;
+
+            MusicBrainzCandidate? best = null;
+            foreach (var item in recordings.EnumerateArray())
+            {
+                var candidateTitle = GetString(item, "title");
+                var candidateArtist = item.TryGetProperty("artist-credit", out var credit)
+                    ? string.Join(", ", credit.EnumerateArray().Select(entry => GetString(entry, "name")))
+                    : string.Empty;
+                var candidateDuration = item.TryGetProperty("length", out var length) && length.TryGetInt64(out var milliseconds)
+                    ? TimeSpan.FromMilliseconds(milliseconds)
+                    : TimeSpan.Zero;
+                var confidence = CalculateConfidence(media, candidateTitle, candidateArtist, candidateDuration);
+                var releaseId = item.TryGetProperty("releases", out var releases) && releases.GetArrayLength() > 0
+                    ? GetString(releases[0], "id")
+                    : null;
+                var candidate = new MusicBrainzCandidate(GetString(item, "id"), releaseId, confidence);
+                if (best == null || candidate.Confidence > best.Confidence) best = candidate;
+            }
+
+            return best;
         }
 
-        return best;
+        return null;
     }
 
     private async Task<string?> DownloadCoverAsync(string releaseId, CancellationToken cancellationToken)

@@ -119,6 +119,7 @@ export const applyTags = (updates: any[]) => api.post('/tags/apply', updates);
 // Conservative metadata enrichment for favorite tracks missing a cover or lyrics
 export const getFavoritesEnrichmentPreview = () => api.get<{ total: number; scope: string }>('/enrichment/favorites/preview').then(r => r.data);
 export const startFavoritesEnrichment = () => api.post<{ batchId: string | null; total: number; message: string }>('/enrichment/favorites/start').then(r => r.data);
+export const retryFailedFavoritesEnrichment = () => api.post<{ batchId: string | null; total: number; message: string }>('/enrichment/favorites/retry-failed').then(r => r.data);
 export const getEnrichmentStatus = (batchId: string) => api.get<{ batchId: string; total: number; processed: number; success: number; failed: number; status: string }>(`/enrichment/${batchId}`).then(r => r.data);
 
 // User Management (Admin)

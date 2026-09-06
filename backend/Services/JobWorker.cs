@@ -218,7 +218,9 @@ public class JobWorker : BackgroundService
 
             try
             {
-                if (await enrichmentService.EnrichMissingAssetsAsync(songId, ct)) success++;
+                var outcome = await enrichmentService.EnrichMissingAssetsAsync(songId, ct);
+                if (outcome == MusicEnrichmentOutcome.Updated) success++;
+                else if (outcome == MusicEnrichmentOutcome.Failed) failed++;
             }
             catch (Exception ex)
             {
