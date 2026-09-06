@@ -68,34 +68,68 @@ public class MusicEnrichmentService
             return MusicEnrichmentOutcome.Skipped;
         }
 
+        var cutoff = DateTime.UtcNow.AddDays(-30);
+
+        // Solidification check 1: If recently marked Unmatched, skip to avoid redundant requests
+        var recentUnmatched = await _context.EnrichmentAttempts
+            .AsNoTracking()
+            .AnyAsync(a => a.MediaFileId == mediaId && a.Outcome == "Unmatched" && a.CreatedAt >= cutoff, cancellationToken);
+        if (recentUnmatched)
+        {
+            await RecordAsync(mediaId, "MusicBrainz", null, 0, "Skipped", "Recently attempted and unmatched; skipped to avoid redundant queries.", cancellationToken, jobId, 200, 0);
+            return MusicEnrichmentOutcome.Skipped;
+        }
+
+        // Solidification check 2: If recently marked MatchedWithoutAssets, skip to avoid redundant requests
+        var recentNoAssets = await _context.EnrichmentAttempts
+            .AsNoTracking()
+            .AnyAsync(a => a.MediaFileId == mediaId && a.Outcome == "MatchedWithoutAssets" && a.CreatedAt >= cutoff, cancellationToken);
+        if (recentNoAssets)
+        {
+            await RecordAsync(mediaId, "MusicBrainz", null, 1.0, "Skipped", "Recently matched without available assets; skipped to avoid redundant queries.", cancellationToken, jobId, 200, 0);
+            return MusicEnrichmentOutcome.Skipped;
+        }
+
         int httpStatusCode = 200;
         int retryCount = 0;
 
         try
         {
-            var mbResult = await FindMusicBrainzCandidateAsync(media, cancellationToken);
-            httpStatusCode = mbResult.StatusCode;
-            retryCount = mbResult.RetryCount;
+            // Check if MediaIdentity already exists for this track
+            var existingIdentity = await _context.MediaIdentities
+                .FirstOrDefaultAsync(i => i.MediaFileId == media.Id && i.Provider == "MusicBrainz", cancellationToken);
 
-            if (mbResult.StatusCode != 200)
+            MusicBrainzCandidate? candidate = null;
+            if (existingIdentity != null && !string.IsNullOrEmpty(existingIdentity.RecordingId))
             {
-                await RecordAsync(mediaId, "MusicBrainz", null, 0, "Failed", mbResult.ErrorDetail ?? $"HTTP {mbResult.StatusCode}", cancellationToken, jobId, mbResult.StatusCode, retryCount);
-                return MusicEnrichmentOutcome.Failed;
+                // Re-use already confirmed identity without hitting MusicBrainz search API
+                candidate = new MusicBrainzCandidate(
+                    existingIdentity.RecordingId,
+                    existingIdentity.ReleaseId,
+                    existingIdentity.Confidence > 0 ? existingIdentity.Confidence : 1.0
+                );
             }
-
-            var candidate = mbResult.Candidate;
-            if (candidate == null || candidate.Confidence < MinimumConfidence)
+            else
             {
-                await RecordAsync(mediaId, "MusicBrainz", candidate?.RecordingId, candidate?.Confidence ?? 0, "Unmatched", "No candidate met the automatic-match threshold.", cancellationToken, jobId, 200, retryCount);
-                return MusicEnrichmentOutcome.Unmatched;
-            }
+                var mbResult = await FindMusicBrainzCandidateAsync(media, cancellationToken);
+                httpStatusCode = mbResult.StatusCode;
+                retryCount = mbResult.RetryCount;
 
-            // Record MediaIdentity if matched with high confidence
-            if (!string.IsNullOrEmpty(candidate.RecordingId))
-            {
-                var existingIdentity = await _context.MediaIdentities
-                    .FirstOrDefaultAsync(i => i.MediaFileId == media.Id && i.Provider == "MusicBrainz", cancellationToken);
-                if (existingIdentity == null)
+                if (mbResult.StatusCode != 200)
+                {
+                    await RecordAsync(mediaId, "MusicBrainz", null, 0, "Failed", mbResult.ErrorDetail ?? $"HTTP {mbResult.StatusCode}", cancellationToken, jobId, mbResult.StatusCode, retryCount);
+                    return MusicEnrichmentOutcome.Failed;
+                }
+
+                candidate = mbResult.Candidate;
+                if (candidate == null || candidate.Confidence < MinimumConfidence)
+                {
+                    await RecordAsync(mediaId, "MusicBrainz", candidate?.RecordingId, candidate?.Confidence ?? 0, "Unmatched", "No candidate met the automatic-match threshold.", cancellationToken, jobId, 200, retryCount);
+                    return MusicEnrichmentOutcome.Unmatched;
+                }
+
+                // Record newly discovered MediaIdentity
+                if (!string.IsNullOrEmpty(candidate.RecordingId))
                 {
                     _context.MediaIdentities.Add(new MediaIdentity
                     {
@@ -108,13 +142,6 @@ public class MusicEnrichmentService
                         Status = "approved",
                         MatchedAt = DateTime.UtcNow
                     });
-                }
-                else
-                {
-                    existingIdentity.RecordingId = candidate.RecordingId;
-                    existingIdentity.ReleaseId = candidate.ReleaseId;
-                    existingIdentity.Confidence = Math.Round(candidate.Confidence, 4);
-                    existingIdentity.LastVerifiedAt = DateTime.UtcNow;
                 }
             }
 

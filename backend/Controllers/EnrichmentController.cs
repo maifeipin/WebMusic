@@ -199,15 +199,110 @@ public class EnrichmentController : ControllerBase
         return Ok(attempts);
     }
 
+    [HttpGet("catalog/preview")]
+    public async Task<IActionResult> PreviewCatalog([FromQuery] int? cursor = null, [FromQuery] int sampleLimit = 5)
+    {
+        var query = EligibleCatalog(cursor);
+        var totalCount = await query.CountAsync();
+        var sampleTracks = await query
+            .OrderBy(m => m.Id)
+            .Take(Math.Min(Math.Max(sampleLimit, 1), 50))
+            .Select(m => new { m.Id, m.Title, m.Artist, m.Album })
+            .ToListAsync();
+
+        var nextCursor = sampleTracks.Count > 0 ? sampleTracks.Max(s => s.Id) : (cursor ?? 0);
+
+        return Ok(new
+        {
+            cursor = cursor ?? 0,
+            nextCursor,
+            totalEligible = totalCount,
+            sample = sampleTracks
+        });
+    }
+
+    [HttpPost("catalog/start")]
+    public async Task<IActionResult> StartCatalog([FromQuery] int? batchSize = null, [FromQuery] int? cursor = null)
+    {
+        var callerUserId = GetUserId();
+        var effectiveBatchSize = Math.Clamp(batchSize ?? DefaultBatchSize, 1, MaxBatchSize);
+        var query = EligibleCatalog(cursor).OrderBy(m => m.Id).Take(effectiveBatchSize);
+
+        var songIds = await query.Select(m => m.Id).ToListAsync();
+        if (songIds.Count == 0)
+        {
+            return Ok(new { batchId = (string?)null, total = 0, cursor = cursor ?? 0, message = "No catalog songs eligible for enrichment from the specified cursor." });
+        }
+
+        var batchId = Guid.NewGuid().ToString("N");
+        var nextCursor = songIds.Max();
+        var dbJob = new WebMusic.Backend.Models.EnrichmentJob
+        {
+            Id = batchId,
+            Scope = "Catalog:Scan",
+            RequestedByUserId = callerUserId,
+            Total = songIds.Count,
+            Cursor = nextCursor,
+            Status = "Queued",
+            SongIdsJson = System.Text.Json.JsonSerializer.Serialize(songIds),
+            StartedAt = DateTime.UtcNow
+        };
+        _context.EnrichmentJobs.Add(dbJob);
+        await _context.SaveChangesAsync();
+
+        _queue.Enqueue(new FavoritesEnrichmentJob(batchId, songIds));
+        return Ok(new
+        {
+            batchId,
+            scope = "Catalog:Scan",
+            total = songIds.Count,
+            batchSize = effectiveBatchSize,
+            cursor = cursor ?? 0,
+            nextCursor,
+            message = $"Catalog enrichment started for {songIds.Count} tracks starting from cursor {cursor ?? 0} (next cursor: {nextCursor})."
+        });
+    }
+
+    [HttpPost("catalog/resume")]
+    public async Task<IActionResult> ResumeCatalog([FromQuery] int? batchSize = null)
+    {
+        var lastJob = await _context.EnrichmentJobs
+            .Where(j => j.Scope == "Catalog:Scan")
+            .OrderByDescending(j => j.StartedAt)
+            .FirstOrDefaultAsync();
+
+        var cursor = lastJob?.Cursor ?? 0;
+        return await StartCatalog(batchSize, cursor);
+    }
+
     private IQueryable<WebMusic.Backend.Models.Favorite> EligibleFavorites(int userId)
     {
+        var cutoff = DateTime.UtcNow.AddDays(-30);
         var query = _context.Favorites.AsQueryable();
         if (userId > 0)
         {
             query = query.Where(f => f.UserId == userId);
         }
         return query.Where(f => f.MediaFile != null &&
-                    (string.IsNullOrEmpty(f.MediaFile.CoverArt) || !_context.Lyrics.Any(l => l.MediaFileId == f.MediaFileId)));
+                    !string.IsNullOrWhiteSpace(f.MediaFile.Title) && !string.IsNullOrWhiteSpace(f.MediaFile.Artist) &&
+                    (string.IsNullOrEmpty(f.MediaFile.CoverArt) || !_context.Lyrics.Any(l => l.MediaFileId == f.MediaFileId)) &&
+                    !_context.EnrichmentAttempts.Any(a => a.MediaFileId == f.MediaFileId && (a.Outcome == "Unmatched" || a.Outcome == "MatchedWithoutAssets") && a.CreatedAt >= cutoff));
+    }
+
+    private IQueryable<WebMusic.Backend.Models.MediaFile> EligibleCatalog(int? cursor = null)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-30);
+        var query = _context.MediaFiles.AsQueryable();
+
+        if (cursor.HasValue && cursor.Value > 0)
+        {
+            query = query.Where(m => m.Id > cursor.Value);
+        }
+
+        return query
+            .Where(m => !string.IsNullOrWhiteSpace(m.Title) && !string.IsNullOrWhiteSpace(m.Artist))
+            .Where(m => string.IsNullOrEmpty(m.CoverArt) || !_context.Lyrics.Any(l => l.MediaFileId == m.Id))
+            .Where(m => !_context.EnrichmentAttempts.Any(a => a.MediaFileId == m.Id && (a.Outcome == "Unmatched" || a.Outcome == "MatchedWithoutAssets") && a.CreatedAt >= cutoff));
     }
 
     private int GetUserId() => int.TryParse(User.FindFirst("sub")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId) ? userId : 0;
