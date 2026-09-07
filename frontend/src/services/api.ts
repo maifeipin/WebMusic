@@ -120,7 +120,7 @@ export const applyTags = (updates: any[]) => api.post('/tags/apply', updates);
 export const getFavoritesEnrichmentPreview = () => api.get<{ total: number; scope: string }>('/enrichment/favorites/preview').then(r => r.data);
 export const startFavoritesEnrichment = (batchSize?: number) => api.post<{ batchId: string | null; total: number; message: string }>(`/enrichment/favorites/start${batchSize ? `?batchSize=${batchSize}` : ''}`).then(r => r.data);
 export const retryFailedFavoritesEnrichment = (batchSize?: number) => api.post<{ batchId: string | null; total: number; message: string }>(`/enrichment/favorites/retry-failed${batchSize ? `?batchSize=${batchSize}` : ''}`).then(r => r.data);
-export const getEnrichmentStatus = (batchId: string) => api.get<{ batchId: string; total: number; processed: number; success?: number; updated?: number; failed: number; unmatched?: number; skipped?: number; cursor?: number; status: string }>(`/enrichment/${batchId}`).then(r => r.data);
+export const getEnrichmentStatus = (batchId: string) => api.get<{ batchId: string; total: number; processed: number; success?: number; updated?: number; matchedWithoutAssets?: number; failed: number; unmatched?: number; skipped?: number; cursor?: number; status: string }>(`/enrichment/${batchId}`).then(r => r.data);
 
 
 // User Management (Admin)

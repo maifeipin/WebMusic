@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Moq;
 using Testcontainers.PostgreSql;
 using WebMusic.Backend.Controllers;
@@ -302,6 +304,8 @@ public class PostgreSqlIntegrationTests : IClassFixture<PostgreSqlFixture>
         var submit1 = Assert.IsType<WorkerSubmitBatchResponse>(ok1.Value);
         Assert.Equal(1, submit1.Processed);
         Assert.Equal(0, submit1.IgnoredOrExpired);
+        Assert.Equal(1, submit1.MatchedWithoutAssets);
+        Assert.Equal(0, submit1.Unmatched);
 
         // Verify WorkerSubmissions table recorded the unique submission
         var subRecord = await db.WorkerSubmissions.FirstOrDefaultAsync(s => s.ItemId == leasedItem.ItemId && s.SubmissionId == submissionId);
@@ -319,6 +323,8 @@ public class PostgreSqlIntegrationTests : IClassFixture<PostgreSqlFixture>
         // Verify database counters are NOT doubled
         var job = await db.EnrichmentJobs.FindAsync(leaseBatch.BatchId);
         Assert.Equal(1, job!.Processed);
+        Assert.Equal(1, job.MatchedWithoutAssets);
+        Assert.Equal(0, job.Unmatched);
     }
 
     [Fact]
@@ -932,6 +938,136 @@ public class PostgreSqlIntegrationTests : IClassFixture<PostgreSqlFixture>
 
             Assert.False(result.Success);
             Assert.Contains(result.Errors, e => e.Contains("uniqueness mismatch"));
+        }
+        finally
+        {
+            using var masterDb = _fixture.CreateDbContext();
+            await masterDb.Database.ExecuteSqlRawAsync($"DROP DATABASE IF EXISTS \"{dbName}\" WITH (FORCE);");
+        }
+    }
+
+    [Fact]
+    public async Task Migration_AddMatchedWithoutAssets_UpBackfillsHistoricalJobs_AndDownCompensatesUnmatched()
+    {
+        var dbName = $"webmusic_migration_backfill_{Guid.NewGuid():N}";
+        var masterConnStr = _fixture.Container.GetConnectionString();
+
+        using (var masterDb = _fixture.CreateDbContext())
+        {
+            await masterDb.Database.ExecuteSqlRawAsync($"CREATE DATABASE \"{dbName}\";");
+        }
+
+        try
+        {
+            var connStr = new Npgsql.NpgsqlConnectionStringBuilder(masterConnStr) { Database = dbName }.ConnectionString;
+            var fixturePath = Path.Combine(AppContext.BaseDirectory, "Fixtures", "media_prod_schema.sql");
+            var rawLines = await File.ReadAllLinesAsync(fixturePath);
+            var sql = string.Join("\n", rawLines.Where(l => !l.TrimStart().StartsWith("\\")));
+
+            await using (var conn = new Npgsql.NpgsqlConnection(connStr))
+            {
+                await conn.OpenAsync();
+                await using var cmd = new Npgsql.NpgsqlCommand(sql, conn);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(connStr).Options;
+            using var db = new AppDbContext(options);
+
+            // 1. Mark baseline migration
+            await db.Database.ExecuteSqlRawAsync(@"
+                CREATE TABLE IF NOT EXISTS ""__EFMigrationsHistory"" (
+                    ""MigrationId"" character varying(150) NOT NULL PRIMARY KEY,
+                    ""ProductVersion"" character varying(32) NOT NULL
+                );
+                INSERT INTO ""__EFMigrationsHistory"" (""MigrationId"", ""ProductVersion"")
+                VALUES ('20260906112053_Initial_EnrichmentBaseline', '8.0.10')
+                ON CONFLICT DO NOTHING;
+            ");
+
+            // 2. Migrate to previous migration (before AddMatchedWithoutAssetsToEnrichmentJob)
+            var migrator = db.Database.GetService<IMigrator>();
+            await migrator.MigrateAsync("20260906122244_HardenWorkerProtocolAndProviderLedger");
+
+            // Verify MatchedWithoutAssets column does NOT exist yet in pre-migration schema
+            var preColCheck = await db.Database.SqlQueryRaw<int>(@"
+                SELECT 1 AS ""Value""
+                FROM information_schema.columns
+                WHERE table_name = 'EnrichmentJobs' AND column_name = 'MatchedWithoutAssets'
+            ").AnyAsync();
+            Assert.False(preColCheck, "MatchedWithoutAssets column must NOT exist before migration");
+
+            // 3. Insert historical data:
+            // Job 1 had 2 tracks: 1 was MatchedWithoutAssets, 1 was truly Unmatched.
+            // Old code counted both as Unmatched, so Unmatched = 2.
+            await db.Database.ExecuteSqlRawAsync(@"
+                INSERT INTO ""EnrichmentJobs"" (""Id"", ""Scope"", ""Total"", ""Processed"", ""Updated"", ""Unmatched"", ""Skipped"", ""Failed"", ""Cursor"", ""Status"", ""SongIdsJson"", ""StartedAt"")
+                VALUES ('job-hist-1', 'Catalog', 2, 2, 0, 2, 0, 0, 2, 'Completed', '[]', NOW());
+
+                INSERT INTO ""EnrichmentJobs"" (""Id"", ""Scope"", ""Total"", ""Processed"", ""Updated"", ""Unmatched"", ""Skipped"", ""Failed"", ""Cursor"", ""Status"", ""SongIdsJson"", ""StartedAt"")
+                VALUES ('job-hist-2', 'Catalog', 1, 1, 0, 1, 0, 0, 1, 'Completed', '[]', NOW());
+            ");
+
+            // Insert attempts: job-hist-1 has 1 MatchedWithoutAssets, 1 Unmatched.
+            // job-hist-2 has 1 MatchedWithoutAssets (like ID 99).
+            await db.Database.ExecuteSqlRawAsync(@"
+                INSERT INTO ""EnrichmentAttempts"" (""JobId"", ""MediaFileId"", ""Provider"", ""Outcome"", ""Confidence"", ""RetryCount"", ""Detail"", ""CreatedAt"")
+                VALUES ('job-hist-1', 991, 'MusicBrainz', 'MatchedWithoutAssets', 0.95, 0, 'No cover', NOW());
+
+                INSERT INTO ""EnrichmentAttempts"" (""JobId"", ""MediaFileId"", ""Provider"", ""Outcome"", ""Confidence"", ""RetryCount"", ""Detail"", ""CreatedAt"")
+                VALUES ('job-hist-1', 992, 'MusicBrainz', 'Unmatched', 0.30, 0, 'Score too low', NOW());
+
+                INSERT INTO ""EnrichmentAttempts"" (""JobId"", ""MediaFileId"", ""Provider"", ""Outcome"", ""Confidence"", ""RetryCount"", ""Detail"", ""CreatedAt"")
+                VALUES ('job-hist-2', 99, 'MusicBrainz', 'MatchedWithoutAssets', 1.00, 0, 'No cover or lyrics', NOW());
+            ");
+
+            // 4. Upgrade: Apply new migration containing the data repair SQL
+            await migrator.MigrateAsync("20260907074500_AddMatchedWithoutAssetsToEnrichmentJob");
+
+            // 5. Assert: Column exists and data has been correctly backfilled
+            var postColCheck = await db.Database.SqlQueryRaw<int>(@"
+                SELECT 1 AS ""Value""
+                FROM information_schema.columns
+                WHERE table_name = 'EnrichmentJobs' AND column_name = 'MatchedWithoutAssets'
+            ").AnyAsync();
+            Assert.True(postColCheck, "MatchedWithoutAssets column must exist after migration");
+
+            var job1AfterUp = await db.Database.SqlQueryRaw<int>(@"
+                SELECT ""MatchedWithoutAssets"" AS ""Value"" FROM ""EnrichmentJobs"" WHERE ""Id"" = 'job-hist-1'
+            ").SingleAsync();
+            var job1UnmatchedAfterUp = await db.Database.SqlQueryRaw<int>(@"
+                SELECT ""Unmatched"" AS ""Value"" FROM ""EnrichmentJobs"" WHERE ""Id"" = 'job-hist-1'
+            ").SingleAsync();
+            Assert.Equal(1, job1AfterUp);
+            Assert.Equal(1, job1UnmatchedAfterUp); // 2 - 1 = 1
+
+            var job2AfterUp = await db.Database.SqlQueryRaw<int>(@"
+                SELECT ""MatchedWithoutAssets"" AS ""Value"" FROM ""EnrichmentJobs"" WHERE ""Id"" = 'job-hist-2'
+            ").SingleAsync();
+            var job2UnmatchedAfterUp = await db.Database.SqlQueryRaw<int>(@"
+                SELECT ""Unmatched"" AS ""Value"" FROM ""EnrichmentJobs"" WHERE ""Id"" = 'job-hist-2'
+            ").SingleAsync();
+            Assert.Equal(1, job2AfterUp);
+            Assert.Equal(0, job2UnmatchedAfterUp); // 1 - 1 = 0
+
+            // 6. Rollback: Down migration restores legacy semantics
+            await migrator.MigrateAsync("20260906122244_HardenWorkerProtocolAndProviderLedger");
+
+            var postRollbackColCheck = await db.Database.SqlQueryRaw<int>(@"
+                SELECT 1 AS ""Value""
+                FROM information_schema.columns
+                WHERE table_name = 'EnrichmentJobs' AND column_name = 'MatchedWithoutAssets'
+            ").AnyAsync();
+            Assert.False(postRollbackColCheck, "MatchedWithoutAssets column must be removed after rollback");
+
+            var job1AfterDown = await db.Database.SqlQueryRaw<int>(@"
+                SELECT ""Unmatched"" AS ""Value"" FROM ""EnrichmentJobs"" WHERE ""Id"" = 'job-hist-1'
+            ").SingleAsync();
+            var job2AfterDown = await db.Database.SqlQueryRaw<int>(@"
+                SELECT ""Unmatched"" AS ""Value"" FROM ""EnrichmentJobs"" WHERE ""Id"" = 'job-hist-2'
+            ").SingleAsync();
+            Assert.Equal(2, job1AfterDown); // Restored to 2
+            Assert.Equal(1, job2AfterDown); // Restored to 1
         }
         finally
         {

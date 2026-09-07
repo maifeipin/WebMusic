@@ -290,6 +290,7 @@ public class JobWorker : BackgroundService
             {
                 var outcome = await enrichmentService.EnrichMissingAssetsAsync(songId, ct, job.BatchId);
                 if (outcome == MusicEnrichmentOutcome.Updated) dbJob.Updated++;
+                else if (outcome == MusicEnrichmentOutcome.MatchedWithoutAssets) dbJob.MatchedWithoutAssets++;
                 else if (outcome == MusicEnrichmentOutcome.Unmatched) dbJob.Unmatched++;
                 else if (outcome == MusicEnrichmentOutcome.Skipped) dbJob.Skipped++;
                 else if (outcome == MusicEnrichmentOutcome.Failed) dbJob.Failed++;
@@ -313,8 +314,8 @@ public class JobWorker : BackgroundService
             dbJob.FinishedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
             _queue.UpdateAiStatus(job.BatchId, dbJob.Processed, dbJob.Updated, dbJob.Failed, "Completed");
-            _logger.LogInformation("Favorites enrichment batch {BatchId} finished: {Updated} updated, {Unmatched} unmatched, {Skipped} skipped, {Failed} failed.",
-                job.BatchId, dbJob.Updated, dbJob.Unmatched, dbJob.Skipped, dbJob.Failed);
+            _logger.LogInformation("Favorites enrichment batch {BatchId} finished: {Updated} updated, {MatchedWithoutAssets} matched without assets, {Unmatched} unmatched, {Skipped} skipped, {Failed} failed.",
+                job.BatchId, dbJob.Updated, dbJob.MatchedWithoutAssets, dbJob.Unmatched, dbJob.Skipped, dbJob.Failed);
         }
     }
 }

@@ -464,6 +464,7 @@ def run_worker_batch(client, batch_size=50, target_id=None):
           f"Processed={submit_resp.get('processed')}, "
           f"IgnoredOrExpired={submit_resp.get('ignoredOrExpired')}, "
           f"Updated={submit_resp.get('updated')}, "
+          f"MatchedWithoutAssets={submit_resp.get('matchedWithoutAssets', 0)}, "
           f"Unmatched={submit_resp.get('unmatched')}, "
           f"Skipped={submit_resp.get('skipped')}, "
           f"Failed={submit_resp.get('failed')}")

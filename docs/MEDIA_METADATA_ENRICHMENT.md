@@ -10,6 +10,13 @@
 
 现有 Genre 数据存在大小写不统一、未知值和来源水印，例如 `Unknown Genre`、`POP/pop`、`[60yp.com分享]`。正式 enrichment 前必须先清洗标准化。
 
+### 当前落地状态（2026-09-07）
+
+- MEDIA 已采用正式 EF Core baseline 与增量 Migration；Worker 的租约、心跳、审计、Provider 配额账本及封面暂存流程均由 MEDIA 后端协调。
+- 外部请求只由 Mac/NAS Worker 发起；MEDIA 不直接访问 MusicBrainz、Cover Art Archive 或 LRCLIB。
+- 当前预览候选约为 109,000 首。已完成一次 10 首 Mac 试跑：7 首低置信度 `Unmatched`、3 首 MusicBrainz 传输超时；随后对 ID 99 做了定向验证，审计真实结果为 `MatchedWithoutAssets`（MusicBrainz 高置信度命中、CAA 已查询、但没有可写入资源）。协议、冷却和审计已验证；自动封面或歌词的实际写入仍须另选有可用资源的高置信歌曲验证。
+- 所有后续 Worker 批次必须手动启动；未通过单曲正向验证与错误率门槛前，不扩大批量或启用 NAS 并发。
+
 ## 目标
 
 扫描 NAS 后，为每个媒体文件建立：
@@ -154,11 +161,12 @@ NAS 扫描
 ## 与现有代码的衔接
 
 - `backend/Services/ScannerService.cs`：继续负责扫描和读取 ID3，不在扫描过程中同步调用所有外部 API；
-- `backend/Models/Entities.cs`：新增 Identity、Tag、Evidence 实体及迁移；
+- `backend/Models/Entities.cs`：保存 Identity、Tag、Evidence、Job、JobItem、Attempt 与 Provider 配额账本；后续结构变更必须走 EF Core Migration；
+- `backend/Controllers/WorkerEnrichmentController.cs`：MEDIA 侧的 Worker 专用 API，负责候选租约、心跳、配额预留、结果校验和落库；
+- `scripts/catalog_worker.py`：运行于 Mac/NAS，实际发起 MusicBrainz、CAA、LRCLIB 请求并提交结果；
+- `JobWorker`：仅保留旧收藏夹 enrichment 兼容流程，不承担全库外部请求；
 - `backend/Services/TagService.cs`：保留 Gemini，用于候选整理和元数据清洗；
-- `backend/Controllers/TagsController.cs`：增加 enrichment 启动、状态查询和审核接口；
-- `JobWorker`：增加批量 enrichment 队列、重试和限流；
-- 前端 Tag Manager：展示标签、来源、证据 URL、置信度和审核状态。
+- 前端 Tag Manager / 网易插件：展示候选、来源、证据 URL、置信度与人工审核结果。
 
 ## 分阶段实施
 
@@ -201,14 +209,11 @@ NAS 扫描
 
 ### 首批验证结论
 
-2026-09 的收藏曲目验证范围为 70 首“缺封面或歌词”的收藏歌曲：
+2026-09 已完成两次受控验证：
 
-- 20 首成功补齐至少一项资源；
-- 新增 11 张封面、18 条歌词；
-- 26 首因匹配置信度不足而安全跳过；
-- 6 首身份匹配成功，但开放源没有可补资源；
-- 3 首基础标题/艺人缺失，未尝试外部查询；
-- MusicBrainz 曾出现临时 `503`，因此任务必须支持 `Retry-After`/退避重试和仅失败项重跑。
+- 收藏夹批次共 53 首：9 首 `Matched`、9 首 `MatchedWithoutAssets`、32 首 `Unmatched`、3 首 `Skipped`、0 首 `Failed`；
+- Mac Worker 首批 10 首：7 首低置信度 `Unmatched`、3 首 MusicBrainz 传输超时；租约、心跳、幂等提交与配额预留均已验证；
+- 自动封面上传、歌词写入及 CAA/LRCLIB 实际消耗仍须通过一首高置信目标歌曲的定向正向验证后，才能扩大批量。
 
 这说明“高阈值自动写入 + 审计记录”可行，但全量任务的核心不是吞吐量，而是避免把错误元数据传播到 11 万条记录。
 
@@ -226,7 +231,7 @@ NAS 扫描
 
 ### 数据库演进
 
-现有 `MusicEnrichments` 是一次处理审计表。全量实施前，新增下列表，并通过正式 EF Migration 管理，禁止继续依赖 `EnsureCreated` 的临时建表：
+现有 `MusicEnrichments` 是一次处理审计表。基础表和 Worker 协议表已通过 baseline + 正式 EF Migration 落地；后续所有结构变更都必须继续使用 Migration，禁止重新引入 `EnsureCreated` 或启动期拼接 DDL：
 
 ```text
 MediaIdentity
@@ -272,13 +277,65 @@ MediaTag / TagEvidence
 
 ### 外部服务策略
 
-1. **MusicBrainz**：基础身份主源。请求间隔至少 1.5 秒；HTTP `429/503` 优先遵守 `Retry-After`，否则冷却 20 秒后仅重试一次。连续三次失败时暂停整个 Provider 队列，而不是继续冲击服务。
+1. **MusicBrainz**：基础身份主源。当前 Worker 请求间隔至少 1.5 秒；传输异常必须以 `HTTPStatus = NULL` 审计，真实 HTTP 状态不得伪造为 500。最多一次带退避重试、`Retry-After` 解析和 Provider 连续失败自动暂停属于扩容前必须完成并验证的能力。
 2. **Cover Art Archive**：只在已获得 MusicBrainz Release ID 后请求。下载封面须校验 MIME 类型、最大 5 MB，并保存到 `/app/data/covers`，数据库仅保存本地 API URL。
 3. **LRCLIB**：只给已通过身份匹配的歌曲查询；优先同步歌词，普通歌词也可保存但须标记 `plain`。404 是“无结果”，不是失败。
 4. **Chromaprint/AcoustID**：部署到能访问音频文件的 Mac/NAS worker。只处理 P3 和人工发起的疑难曲；音频指纹不依赖文件编码，适合去重与识别。
 5. **STT**：只作兜底。截取首尾片段，得到文本后与候选歌词比较；不能仅凭转写直接覆盖歌名、艺人或歌词。
 6. **Last.fm**：用于补充“热度、Top Tags、用户标签、历史周榜”等标签证据，不用于音乐身份主匹配、音频流或封面下载。个人/非商业曲库可免费申请 API Key；商业、研究或超出默认限额的用途必须事先联系 Last.fm 获得书面许可。需缓存响应、遵守其动态限流、公开展示时标注并链接 Last.fm，且缓存的 Last.fm 数据总量默认不超过 100 MB。将 `api_key` 存入 worker 的机密配置，绝不返回给前端或写入审计日志。
 7. **网易/QQ 等插件**：只能作为人工候选和展示来源，不能作为无授权全量抓取的核心数据源。
+
+### 私有 MusicBrainz 镜像：部署前置条件与边界
+
+私有镜像的目的，是把**身份检索**从公共 MusicBrainz API 转到内网数据库；它不能替代 CAA 封面和 LRCLIB 歌词服务，也不能自动提高匹配置信度。现有 Mac/NAS Worker、MEDIA 协调 API、网易人工确认链路都保留，只将 Worker 的“MusicBrainz 搜索”Provider 切换为 `LocalMusicBrainz`。
+
+部署前必须满足以下条件：
+
+1. **独立宿主机与私网暴露**：使用独立 Linux 主机（优先 VPS1、NAS 或专用 VPS，不与 MEDIA 业务库混部）；只通过 Tailscale/内网访问，不开放 MusicBrainz Web/API 到公网。MEDIA 与 Mac/NAS 只允许访问镜像的内网地址。
+2. **持久化与容量演练**：官方完整服务最低要求为 Linux 和 60GB 以上可用磁盘，但这只是最低门槛。上线前必须在目标盘完成一次“下载 → 校验 → 导入 → 建索引 → 备份 → 恢复”演练，并预留数据库、索引、下载临时文件和至少一份可恢复备份的空间；不可只按 60GB 购买或分配磁盘。
+3. **运行时基础设施**：Docker Compose、持久化 PostgreSQL 卷、独立备份目录、磁盘/内存/导入耗时监控、日志轮转及失败告警。数据库卷不得与 WebMusic 的业务 PostgreSQL 共用。
+4. **数据集和许可证决策**：仅做歌曲、艺人、专辑身份匹配时，优先使用核心 `mbdump`；若需要用户标签、流派关联和搜索派生数据，则还需要 `mbdump-derived`。核心数据为 CC0；派生数据为 CC BY-NC-SA，部署前必须确认本项目用途与后续展示/再分发方式相容。
+5. **更新策略先定后装**：POC 阶段使用固定快照并记录 `snapshot_date`；稳定后再二选一：每周/双周维护窗口导入快照，或申请 Live Data Feed 令牌并做增量复制。不可让 Worker 直接对公网 MusicBrainz 作全库回退扫描。
+6. **应用接入开关**：新增 `MusicBrainz:BaseUrl`、`MusicBrainz:Mode=public|local` 和健康检查；Provider、匹配置信度、数据集版本、快照日期必须写入 `MediaIdentity`/`EnrichmentAttempt`。切换必须先只读 shadow-run 比对，不允许直接批量写库。
+7. **安全与验收门禁**：镜像服务账号最小权限；密码只放部署机 secret；备份加密并纳入现有 VPS1 备份流程。上线前以 100 首冻结样本对比公共 API 与本地镜像的候选/置信度，人工抽检后才能开启自动写入。
+
+建议的实施顺序：
+
+```text
+阶段 A：在非 MEDIA 宿主机以固定快照部署官方 MusicBrainz Docker，且不接入生产 Worker
+  → 完成导入、查询性能、备份恢复、私网访问及许可证核验
+阶段 B：WebMusic 新增 LocalMusicBrainz Provider 与 shadow-run
+  → 对冻结 100 首仅记录本地/公网候选差异，不写 MediaFile
+阶段 C：人工确认阈值与数据质量
+  → 仅把 P0/P1 身份查询切到本地镜像；CAA/LRCLIB 继续严格限流
+阶段 D：稳定后启用快照或 Live Data Feed 同步，并保留一键切回公共 API 的开关
+```
+
+本地镜像上线后，全库的**身份候选检索**不再受当前 1,000 首/日 MusicBrainz 账本限制；但封面和歌词仍需要按照各自 Provider 的配额、重试和版权边界分批处理。因此它会显著缩短“匹配扫描”阶段，不能承诺让 11 万首都自动获得封面或歌词。
+
+参考：MusicBrainz 官方完整服务部署要求、数据库下载与复制说明分别见 <https://musicbrainz.org/doc/MusicBrainz_Server/Setup>、<https://musicbrainz.org/doc/MusicBrainz_Database/Download>、<https://musicbrainz.org/doc/Live_Data_Feed>。
+
+### 网易插件与自动 Worker 的收口
+
+网易容器与 Worker 可以并行运行，但只能有一条统一的数据写入与审计链路：
+
+```text
+MusicBrainz / CAA / LRCLIB
+  → Mac/NAS Worker 自动高置信补全
+  → 仅补空字段，写 Attempt / Identity / 资源来源
+
+网易插件
+  → 用户搜索、预览候选、人工选择版本
+  → 后端以 NeteaseManual 来源写入同一套审计与资源记录
+```
+
+规则如下：
+
+1. MusicBrainz 是自动身份主源；网易不是全库自动 fallback，也不进入批量 Worker 队列；
+2. 网易人工确认时须保存网易歌曲 ID、操作者、确认时间、候选快照，并标记来源为 `NeteaseManual`；
+3. 人工确认歌词或封面优先级高于自动结果。自动 Worker 仅补空，绝不覆盖人工确认内容；
+4. 对 MusicBrainz `Unmatched` 的歌曲，管理界面可提供“用网易搜索”入口，但必须预览并人工确认；
+5. 后续新增统一的 `EnrichmentCandidate`/审核记录，保存网易、MusicBrainz、STT 的候选、接受与拒绝结果；`MediaIdentity`、`Lyrics`、`CoverArt` 只保存最终采用结果。
 
 ### 批量调度与容量控制
 
@@ -294,10 +351,13 @@ Last.fm：独立低优先级队列；缓存命中优先，按其响应限额动�
 失败退避：20 秒、60 秒，随后暂停 Provider
 断点：每处理 1 首持久化 Job.Cursor
 运行窗口：每日 01:00–07:00，避开用户使用高峰
-每日上限：2,000 首基础匹配；P3 声纹最多 200 首
+MusicBrainz 账本：每日最多 2,000 个请求单位；租约按每首最坏 2 个单位预留，因此自动基础匹配硬上限为约 1,000 首/日
+P3 声纹：最多 200 首/日
 ```
 
-以 1.5 秒/首估算，单个 MusicBrainz worker 每日有效处理约 2,000–3,000 首；11.5 万首基础扫描需要约 6–8 周。该速度有意保守，以保护公共服务并保持可控质量。
+以当前 Provider 配额账本计算，MusicBrainz 每日 2,000 请求单位、每首最坏预留 2 个单位，故全局最多约 1,000 首/日；Mac 与 NAS 并行不会提高这一全局上限。按当前约 109,000 个候选计算，完成一次全库自动扫描约需 109–111 个自然日（约 16 周、3.5–4 个月）。1.5 秒/请求的节点限速不是当前瓶颈；它只要求单节点每天约 25–50 分钟的 MusicBrainz 请求时间，实际时长再受重试、CAA/LRCLIB、运行窗口影响。
+
+这里的“完成一次扫描”指每首都获得一次自动判定或审计结果，并不承诺每首都成功补齐封面和歌词：低置信度歌曲会安全标记为 `Unmatched`，已准确识别但无可用资源的歌曲标记为 `MatchedWithoutAssets`，均保留来源与审计记录；网易插件继续是人工预览、确认和写入的独立通道，不会被自动 Worker 覆盖或调用。
 
 ### 每个批次的执行步骤
 
@@ -306,7 +366,7 @@ Last.fm：独立低优先级队列；缓存命中优先，按其响应限额动�
 3. 执行身份匹配，并持久化每次请求的结果、状态码与置信度。
 4. 仅对 `approved/auto-approved` 身份补齐封面、歌词；不改现有非空字段。
 5. 生成批次报告：处理数、成功数、Provider 错误率、匹配置信度分布、Top 失败原因。
-6. 若 Provider 503/429 比例超过 5%，自动暂停，次日或冷却后从 Cursor 恢复。
+6. 当前阶段只记录 Provider 失败率并人工暂停；自动按失败率暂停、`Retry-After` 和 Provider 熔断须在扩容前补齐。
 7. 每批随机抽检至少 20 首自动匹配结果；误匹配超过 1% 时停止下一批并提高阈值。
 
 ### 人工审核界面
@@ -318,7 +378,7 @@ Tag Manager / Admin 页需要增加：
 - 批次报告与 Provider 健康状态；
 - “仅重试临时失败”按钮，绝不默认重跑 Unmatched；
 - 每首歌的 enrichment 历史和回滚到处理前字段；
-- `dry-run` 模式：只写 Attempt，不写 CoverArt/Lyric/Identity。
+- `--preview` / `--dry-run`：只鉴权并读取候选、配额与优先级样本，不认领租约、不写 Attempt、不调用外部 Provider。
 
 ### 标签与榜单的第二阶段
 
@@ -355,4 +415,10 @@ cultural.classic.score = 0.91
 
 ### 下一步建议
 
-先完成 A 阶段的两个缺口：将 Job 状态从内存迁移到数据库，以及在重启后恢复未完成批次。随后以 P0/P1 每日 2,000 首的额度运行一周，审查误匹配和 Provider 健康指标，再决定是否部署 Chromaprint worker 与启动 P2/P3。
+下一步顺序：
+
+1. 完成并部署“定向租约完整门禁 + 传输异常真实审计 + 单次退避重试”修复；
+2. 以一首已知高置信歌曲做定向正向验证，覆盖封面暂存晋升、歌词写入和 CAA/LRCLIB 消耗；
+3. 由 Mac 再执行 10 首试跑。只有失败率不高于 10% 时，才扩至每批 20 首；
+4. NAS 节点仅在 Mac 两批稳定后加入，且使用独立 Worker 凭据；
+5. 连续稳定运行后，才评估每日 2,000 首额度、Chromaprint 与 P2/P3 队列。

@@ -132,6 +132,7 @@ public class EnrichmentController : ControllerBase
                 total = dbJob.Total,
                 processed = dbJob.Processed,
                 updated = dbJob.Updated,
+                matchedWithoutAssets = dbJob.MatchedWithoutAssets,
                 unmatched = dbJob.Unmatched,
                 skipped = dbJob.Skipped,
                 failed = dbJob.Failed,
@@ -169,6 +170,7 @@ public class EnrichmentController : ControllerBase
                 j.Total,
                 j.Processed,
                 j.Updated,
+                j.MatchedWithoutAssets,
                 j.Unmatched,
                 j.Skipped,
                 j.Failed,
@@ -362,6 +364,7 @@ public class WorkerSubmitBatchResponse
     public int Processed { get; set; }
     public int IgnoredOrExpired { get; set; }
     public int Updated { get; set; }
+    public int MatchedWithoutAssets { get; set; }
     public int Unmatched { get; set; }
     public int Skipped { get; set; }
     public int Failed { get; set; }

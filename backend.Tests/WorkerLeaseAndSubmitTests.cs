@@ -484,4 +484,91 @@ public class WorkerLeaseAndSubmitTests
         Assert.Equal("Failed", attempt.Outcome);
         Assert.Contains("timed out", attempt.Detail);
     }
+
+    [Fact]
+    public async Task SubmitBatch_DifferentiatesMatchedWithoutAssets_FromUnmatched()
+    {
+        var dbName = Guid.NewGuid().ToString("N");
+        using var db = CreateInMemoryDbContext(dbName);
+
+        var job = new EnrichmentJob
+        {
+            Id = "batch-separation",
+            Total = 2,
+            Processed = 0,
+            Updated = 0,
+            MatchedWithoutAssets = 0,
+            Unmatched = 0,
+            Status = "Processing"
+        };
+        db.EnrichmentJobs.Add(job);
+
+        db.ScanSources.Add(new ScanSource { Id = 1, Name = "S", Path = "/m", Type = "local" });
+        db.MediaFiles.Add(new MediaFile { Id = 601, ScanSourceId = 1, Title = "Identified Song", Artist = "Known Artist", FilePath = "/m/601.mp3" });
+        db.MediaFiles.Add(new MediaFile { Id = 602, ScanSourceId = 1, Title = "Obscure Song", Artist = "Obscure Artist", FilePath = "/m/602.mp3" });
+
+        db.EnrichmentJobItems.Add(new EnrichmentJobItem
+        {
+            Id = 6010,
+            JobId = "batch-separation",
+            MediaFileId = 601,
+            WorkerNodeId = "worker-1",
+            Status = "Leased",
+            LeaseExpiresAt = DateTime.UtcNow.AddMinutes(15)
+        });
+        db.EnrichmentJobItems.Add(new EnrichmentJobItem
+        {
+            Id = 6020,
+            JobId = "batch-separation",
+            MediaFileId = 602,
+            WorkerNodeId = "worker-1",
+            Status = "Leased",
+            LeaseExpiresAt = DateTime.UtcNow.AddMinutes(15)
+        });
+        await db.SaveChangesAsync();
+
+        var controller = CreateController(db);
+        var request = new WorkerSubmitBatchRequest
+        {
+            BatchId = "batch-separation",
+            WorkerNodeId = "worker-1",
+            SubmissionId = Guid.NewGuid().ToString(),
+            Results = new List<WorkerItemSubmission>
+            {
+                new WorkerItemSubmission
+                {
+                    ItemId = 6010,
+                    MediaFileId = 601,
+                    Outcome = "MatchedWithoutAssets",
+                    RecordingId = "rec-601",
+                    Confidence = 0.99,
+                    Detail = "Matched without assets"
+                },
+                new WorkerItemSubmission
+                {
+                    ItemId = 6020,
+                    MediaFileId = 602,
+                    Outcome = "Unmatched",
+                    Confidence = 0.35,
+                    Detail = "No candidate above threshold"
+                }
+            }
+        };
+
+        var res = await controller.SubmitBatch(request);
+        var submitRes = Assert.IsType<WorkerSubmitBatchResponse>(Assert.IsType<OkObjectResult>(res).Value);
+
+        Assert.Equal(2, submitRes.Processed);
+        Assert.Equal(0, submitRes.Updated);
+        Assert.Equal(1, submitRes.MatchedWithoutAssets);
+        Assert.Equal(1, submitRes.Unmatched);
+        Assert.Equal(0, submitRes.Failed);
+
+        var refreshedJob = await db.EnrichmentJobs.FindAsync("batch-separation");
+        Assert.NotNull(refreshedJob);
+        Assert.Equal(2, refreshedJob!.Processed);
+        Assert.Equal(1, refreshedJob.MatchedWithoutAssets);
+        Assert.Equal(1, refreshedJob.Unmatched);
+        Assert.Equal(0, refreshedJob.Updated);
+    }
 }

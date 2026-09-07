@@ -17,6 +17,7 @@ namespace WebMusic.Backend.Services;
 public enum MusicEnrichmentOutcome
 {
     Updated,
+    MatchedWithoutAssets,
     Unmatched,
     Skipped,
     Failed,
@@ -205,7 +206,7 @@ public class MusicEnrichmentService
                 retryCount,
                 currentFingerprint,
                 finalRetryAfter);
-            return changed.Count > 0 ? MusicEnrichmentOutcome.Updated : MusicEnrichmentOutcome.Unmatched;
+            return changed.Count > 0 ? MusicEnrichmentOutcome.Updated : MusicEnrichmentOutcome.MatchedWithoutAssets;
         }
         catch (HttpRequestException ex)
         {

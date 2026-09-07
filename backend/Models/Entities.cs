@@ -188,6 +188,7 @@ public class EnrichmentJob
     public int Total { get; set; }
     public int Processed { get; set; }
     public int Updated { get; set; }
+    public int MatchedWithoutAssets { get; set; }
     public int Unmatched { get; set; }
     public int Skipped { get; set; }
     public int Failed { get; set; }

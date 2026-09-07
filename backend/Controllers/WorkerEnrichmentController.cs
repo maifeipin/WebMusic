@@ -615,6 +615,7 @@ public class WorkerEnrichmentController : ControllerBase
         using var tx = await _context.Database.BeginTransactionAsync();
 
         int updatedCount = 0;
+        int matchedWithoutAssetsCount = 0;
         int unmatchedCount = 0;
         int skippedCount = 0;
         int failedCount = 0;
@@ -818,7 +819,7 @@ public class WorkerEnrichmentController : ControllerBase
             {
                 finalOutcome = "MatchedWithoutAssets";
                 retryAfter = DateTime.UtcNow.AddDays(14);
-                unmatchedCount++;
+                matchedWithoutAssetsCount++;
             }
             else if (res.Outcome == "Unmatched")
             {
@@ -877,6 +878,7 @@ public class WorkerEnrichmentController : ControllerBase
 
         // Update Job counters strictly based on actually transitioned items
         job.Updated += updatedCount;
+        job.MatchedWithoutAssets += matchedWithoutAssetsCount;
         job.Unmatched += unmatchedCount;
         job.Skipped += skippedCount;
         job.Failed += failedCount;
@@ -948,6 +950,7 @@ public class WorkerEnrichmentController : ControllerBase
             Processed = actuallyProcessedCount,
             IgnoredOrExpired = ignoredOrExpiredCount,
             Updated = updatedCount,
+            MatchedWithoutAssets = matchedWithoutAssetsCount,
             Unmatched = unmatchedCount,
             Skipped = skippedCount,
             Failed = failedCount,
