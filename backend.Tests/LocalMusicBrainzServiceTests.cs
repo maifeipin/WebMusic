@@ -413,4 +413,106 @@ public class LocalMusicBrainzServiceTests
 
         Assert.True(confidence >= 0.95);
     }
+
+    [Theory]
+    [InlineData("Take a bow", "Take a Bow (Indasoul mix)", null)]
+    [InlineData("Poker Face", "Poker Face (Glam as You mix)", null)]
+    [InlineData("Better In Time", "Better in Time", "single mix")]
+    [InlineData("Song", "Song (DJ Mix)", null)]
+    [InlineData("Track", "Track (Radio Edit)", null)]
+    [InlineData("Track", "Track", "airplay mix")]
+    [InlineData("Classic", "Classic (Re-recording)", null)]
+    public void IsDerivativeOrClip_DetectsMixAndVersionTags(string target, string candidate, string? disambiguation)
+    {
+        var isDeriv = LocalMusicBrainzService.IsDerivativeOrClip(target, candidate, disambiguation, TimeSpan.FromSeconds(200));
+        Assert.True(isDeriv, $"Expected derivative detected for candidate '{candidate}' (disambig: '{disambiguation}')");
+    }
+
+    [Fact]
+    public void Regression_Sample109_TakeABow_IndasoulMix_NotHighConfidence()
+    {
+        // Media ID 109: Madonna — Take a bow (318.0s) vs Take a Bow (Indasoul mix) (295.2s)
+        var isDeriv = LocalMusicBrainzService.IsDerivativeOrClip(
+            "Take a bow",
+            "Take a Bow (Indasoul mix)",
+            null,
+            TimeSpan.FromSeconds(295.2)
+        );
+        Assert.True(isDeriv);
+
+        var conf = LocalMusicBrainzService.CalculateConfidence(
+            targetTitle: "Take a bow",
+            targetArtist: "Madonna",
+            targetDuration: TimeSpan.FromSeconds(318.0),
+            candidateTitle: "Take a Bow (Indasoul mix)",
+            candidateArtist: "Madonna",
+            candidateDuration: TimeSpan.FromSeconds(295.2),
+            isDerivative: isDeriv
+        );
+
+        Assert.True(conf < 0.85, $"Sample 109 confidence {conf} must be < 0.85 (must not be HighConfidence)");
+    }
+
+    [Fact]
+    public void Regression_Sample133087_You_Vs_ThinkingOfYou_Rejected()
+    {
+        // Media ID 133087: Future of Forestry — You vs Thinking of You
+        var titleSimilarity = LocalMusicBrainzService.Similarity("You", "Thinking of You");
+        Assert.True(titleSimilarity < 0.50, $"Short title 'You' vs 'Thinking of You' similarity {titleSimilarity} must be < 0.50");
+
+        var conf = LocalMusicBrainzService.CalculateConfidence(
+            targetTitle: "You",
+            targetArtist: "Future of Forestry",
+            targetDuration: TimeSpan.FromSeconds(240),
+            candidateTitle: "Thinking of You",
+            candidateArtist: "Future of Forestry",
+            candidateDuration: TimeSpan.FromSeconds(240),
+            isDerivative: false
+        );
+
+        Assert.Equal(0.0, conf); // Title similarity < 0.80 rejects immediately
+    }
+
+    [Fact]
+    public void Regression_Sample133441_PokerFace_GlamAsYouMix_NotHighConfidence()
+    {
+        // Media ID 133441: Lady Gaga — Poker Face vs Poker Face (Glam as You mix)
+        var isDeriv = LocalMusicBrainzService.IsDerivativeOrClip(
+            "Poker Face",
+            "Poker Face (Glam as You mix)",
+            null,
+            TimeSpan.FromSeconds(237)
+        );
+        Assert.True(isDeriv);
+
+        var conf = LocalMusicBrainzService.CalculateConfidence(
+            targetTitle: "Poker Face",
+            targetArtist: "Lady Gaga",
+            targetDuration: TimeSpan.FromSeconds(237),
+            candidateTitle: "Poker Face (Glam as You mix)",
+            candidateArtist: "Lady Gaga",
+            candidateDuration: TimeSpan.FromSeconds(237),
+            isDerivative: isDeriv
+        );
+
+        Assert.True(conf < 0.85, $"Sample 133441 confidence {conf} must be < 0.85 (must not be HighConfidence)");
+    }
+
+    [Fact]
+    public void Regression_Samples1699And97370_MissingDuration_CapsAtProposed()
+    {
+        // When MusicBrainz candidate has no duration (TimeSpan.Zero), confidence must cap at <= 0.80
+        var conf = LocalMusicBrainzService.CalculateConfidence(
+            targetTitle: "盛夏的果实",
+            targetArtist: "莫文蔚",
+            targetDuration: TimeSpan.FromSeconds(252),
+            candidateTitle: "盛夏的果实",
+            candidateArtist: "莫文蔚",
+            candidateDuration: TimeSpan.Zero, // Missing duration in candidate
+            isDerivative: false
+        );
+
+        Assert.True(conf <= 0.80, $"Missing duration confidence {conf} must cap at <= 0.80");
+        Assert.True(conf < LocalMusicBrainzService.HighConfidenceThreshold, "Must not reach HighConfidence");
+    }
 }

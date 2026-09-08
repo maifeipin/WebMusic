@@ -525,6 +525,12 @@ public class LocalMusicBrainzService : ILocalMusicBrainzService
             baseScore *= 0.80;
         }
 
+        // Hard gate: If candidate or target lacks duration evidence, cap confidence at 0.80 (must not reach HighConfidence >= 0.85)
+        if (targetDuration <= TimeSpan.Zero || candidateDuration <= TimeSpan.Zero)
+        {
+            baseScore = Math.Min(baseScore, 0.80);
+        }
+
         return Math.Round(Math.Clamp(baseScore, 0.0, 1.0), 4);
     }
 
@@ -538,10 +544,30 @@ public class LocalMusicBrainzService : ILocalMusicBrainzService
         var candNorm = Normalize(candidateTitle);
         var disNorm = Normalize(disambiguation ?? string.Empty);
 
-        string[] derivativeKeywords = { "live", "remix", "karaoke", "instrumental", "acoustic", "demo", "edit", "clip", "preview", "ringtone", "short" };
+        string[] derivativeKeywords =
+        {
+            "live", "remix", "karaoke", "instrumental", "acoustic", "demo", "edit", "clip", "preview", "ringtone", "short",
+            "djmix", "radioedit", "airplaymix", "singlemix", "rerecording", "rerecorded"
+        };
 
         bool targetHas = derivativeKeywords.Any(k => targetNorm.Contains(k, StringComparison.OrdinalIgnoreCase));
         bool candHas = derivativeKeywords.Any(k => candNorm.Contains(k, StringComparison.OrdinalIgnoreCase) || disNorm.Contains(k, StringComparison.OrdinalIgnoreCase));
+
+        // Detect "mix", "edit", "version", "re-recording" as standalone words
+        bool HasVersionWord(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return false;
+            return System.Text.RegularExpressions.Regex.IsMatch(
+                text,
+                @"\b(mix|remix|dj\s+mix|radio\s+edit|airplay\s+mix|single\s+mix|re-?recording|rerecorded)\b",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase
+            );
+        }
+
+        if (!HasVersionWord(targetTitle) && (HasVersionWord(candidateTitle) || HasVersionWord(disambiguation ?? string.Empty)))
+        {
+            candHas = true;
+        }
 
         // Mismatch: candidate is derivative/live but target was original release
         if (!targetHas && candHas) return true;
@@ -558,7 +584,14 @@ public class LocalMusicBrainzService : ILocalMusicBrainzService
         var b = Normalize(right);
         if (a == b) return 1.0;
         if (a.Length == 0 || b.Length == 0) return 0.0;
-        if (a.Contains(b, StringComparison.Ordinal) || b.Contains(a, StringComparison.Ordinal)) return 0.92;
+
+        // Prevent naive short substring bypass (e.g. 'You' matching 'Thinking of You')
+        var minLen = Math.Min(a.Length, b.Length);
+        var maxLen = Math.Max(a.Length, b.Length);
+        if (minLen >= 6 && (double)minLen / maxLen >= 0.80 && (a.Contains(b, StringComparison.Ordinal) || b.Contains(a, StringComparison.Ordinal)))
+        {
+            return 0.92;
+        }
 
         var previous = Enumerable.Range(0, b.Length + 1).ToArray();
         for (var i = 1; i <= a.Length; i++)
