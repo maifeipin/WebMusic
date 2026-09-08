@@ -26,6 +26,8 @@ public class AppDbContext : DbContext
     public DbSet<EnrichmentJobItem> EnrichmentJobItems { get; set; }
     public DbSet<ProviderQuotaLedger> ProviderQuotaLedgers { get; set; }
     public DbSet<WorkerSubmission> WorkerSubmissions { get; set; }
+    public DbSet<IdentityImportBatch> IdentityImportBatches { get; set; }
+    public DbSet<IdentityImportItem> IdentityImportItems { get; set; }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -98,6 +100,20 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(w => w.ItemId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<IdentityImportBatch>()
+            .HasIndex(b => b.BatchTag)
+            .IsUnique();
+
+        modelBuilder.Entity<IdentityImportBatch>()
+            .HasIndex(b => b.Status);
+
+        modelBuilder.Entity<IdentityImportItem>()
+            .HasIndex(i => new { i.BatchId, i.MediaFileId })
+            .IsUnique();
+
+        modelBuilder.Entity<IdentityImportItem>()
+            .HasIndex(i => i.MediaFileId);
     }
 }
 

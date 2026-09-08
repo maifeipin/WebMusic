@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.Extensions.Configuration;
 using Moq;
 using Testcontainers.PostgreSql;
 using WebMusic.Backend.Controllers;
@@ -1242,5 +1243,441 @@ public class PostgreSqlIntegrationTests : IClassFixture<PostgreSqlFixture>
             if (File.Exists(tempReportFile)) File.Delete(tempReportFile);
             if (Directory.Exists(tempCoverDir)) Directory.Delete(tempCoverDir, true);
         }
+    }
+
+    private (string reportId, Microsoft.Extensions.Configuration.IConfiguration config) CreateIntegrationTestReport(string reportId, List<ShadowRunAuditItem> items, List<int>? approvedIds = null)
+    {
+        var cleanId = IdentityImportService.NormalizeReportId(reportId);
+        var tempDir = Path.Combine(Path.GetTempPath(), "webmusic_itest_reports_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        var reportPath = Path.Combine(tempDir, $"{cleanId}.json");
+        var report = new ShadowRunReport(
+            Mode: "SHADOW_RUN_ZERO_WRITE",
+            TargetNode: "http://127.0.0.1:5050",
+            Timestamp: DateTime.UtcNow,
+            Summary: new ShadowRunSummary(
+                TotalEvaluated: items.Count,
+                HighConfidence: items.Count(i => i.Outcome == "HighConfidence"),
+                HighConfidenceRate: 1.0,
+                Proposed: 0,
+                ProposedRate: 0,
+                Unmatched: 0,
+                UnmatchedRate: 0,
+                Failed: 0,
+                DerivativeOrClip: 0,
+                AverageElapsedMs: 10
+            ),
+            Samples: new Dictionary<string, List<ShadowRunAuditItem>>
+            {
+                ["highConfidence"] = items.Where(i => i.Outcome == "HighConfidence").ToList()
+            },
+            AllItems: items,
+            HighConfidenceSha256: "itest_high_conf_sha256"
+        );
+        var json = System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(reportPath, json);
+
+        var auditPath = Path.Combine(tempDir, $"{cleanId}_audit.md");
+        var idsList = approvedIds ?? items.Where(i => i.Outcome == "HighConfidence").Select(i => i.MediaId).ToList();
+        var auditContent = $@"# Audit Record
+- Report: {cleanId}
+
+## 可写入候选 ({idsList.Count})
+```text
+{string.Join(", ", idsList)}
+```
+";
+        File.WriteAllText(auditPath, auditContent);
+
+        var config = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["IdentityImport:ReportsDirectory"] = tempDir
+            })
+            .Build();
+
+        return (cleanId, config);
+    }
+
+    [Fact]
+    public async Task IdentityImport_Migration_UpDown_Succeeds()
+    {
+        using var db = _fixture.CreateDbContext();
+        var migrator = db.Database.GetService<IMigrator>();
+
+        // Rollback down to previous migration
+        await migrator.MigrateAsync("20260907074500_AddMatchedWithoutAssetsToEnrichmentJob");
+
+        var hasBatchesDown = await db.Database.SqlQueryRaw<bool>(
+            @"SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'IdentityImportBatches') AS ""Value"""
+        ).FirstAsync();
+        Assert.False(hasBatchesDown, "IdentityImportBatches table must not exist after migration Down");
+
+        var hasItemsDown = await db.Database.SqlQueryRaw<bool>(
+            @"SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'IdentityImportItems') AS ""Value"""
+        ).FirstAsync();
+        Assert.False(hasItemsDown, "IdentityImportItems table must not exist after migration Down");
+
+        // Re-apply migration Up to latest
+        await migrator.MigrateAsync();
+
+        var hasBatchesUp = await db.Database.SqlQueryRaw<bool>(
+            @"SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'IdentityImportBatches') AS ""Value"""
+        ).FirstAsync();
+        Assert.True(hasBatchesUp, "IdentityImportBatches table must exist after migration Up");
+
+        var hasItemsUp = await db.Database.SqlQueryRaw<bool>(
+            @"SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'IdentityImportItems') AS ""Value"""
+        ).FirstAsync();
+        Assert.True(hasItemsUp, "IdentityImportItems table must exist after migration Up");
+    }
+
+    [Fact]
+    public async Task IdentityImport_ConcurrentApply_OnlyOneSucceeds()
+    {
+        using var dbSetup = _fixture.CreateDbContext();
+        await ResetStateAsync(dbSetup);
+        var scanSource = await GetOrCreateScanSourceAsync(dbSetup);
+
+        var file1 = new MediaFile { ScanSourceId = scanSource.Id, Title = "Con Track 1", Artist = "Con Artist", Album = "Con Album", Duration = TimeSpan.FromSeconds(200), FilePath = "/m/c1.mp3" };
+        var file2 = new MediaFile { ScanSourceId = scanSource.Id, Title = "Con Track 2", Artist = "Con Artist", Album = "Con Album", Duration = TimeSpan.FromSeconds(210), FilePath = "/m/c2.mp3" };
+        dbSetup.MediaFiles.AddRange(file1, file2);
+        await dbSetup.SaveChangesAsync();
+
+        var reportItems = new List<ShadowRunAuditItem>
+        {
+            new(file1.Id, file1.Title, file1.Artist, file1.Album, 200, "Tier1", 1000, "HighConfidence", 1.0, 10, "mbid-c1", file1.Title, file1.Artist, 200, null, false, null),
+            new(file2.Id, file2.Title, file2.Artist, file2.Album, 210, "Tier1", 1000, "HighConfidence", 0.99, 10, "mbid-c2", file2.Title, file2.Artist, 210, null, false, null)
+        };
+        var (reportId, config) = CreateIntegrationTestReport("concurrent_apply_report", reportItems);
+
+        var serviceSetup = new IdentityImportService(dbSetup, Microsoft.Extensions.Logging.Abstractions.NullLogger<IdentityImportService>.Instance, null, config);
+        var batch = await serviceSetup.CreateDraftBatchAsync(new CreateIdentityImportBatchRequest(reportId, new List<int> { file1.Id, file2.Id }), "admin");
+        await serviceSetup.ApproveBatchAsync(batch.Id, "admin");
+
+        // Concurrent apply from two distinct DbContext instances
+        using var db1 = _fixture.CreateDbContext();
+        using var db2 = _fixture.CreateDbContext();
+        var s1 = new IdentityImportService(db1, Microsoft.Extensions.Logging.Abstractions.NullLogger<IdentityImportService>.Instance, null, config);
+        var s2 = new IdentityImportService(db2, Microsoft.Extensions.Logging.Abstractions.NullLogger<IdentityImportService>.Instance, null, config);
+
+        var task1 = Task.Run(() => s1.ApplyBatchAsync(batch.Id, "admin_user_1"));
+        var task2 = Task.Run(() => s2.ApplyBatchAsync(batch.Id, "admin_user_2"));
+
+        await Task.WhenAll(task1.ContinueWith(_ => { }), task2.ContinueWith(_ => { }));
+
+        var tasks = new[] { task1, task2 };
+        int successCount = tasks.Count(t => t.IsCompletedSuccessfully);
+        int faultCount = tasks.Count(t => t.IsFaulted);
+
+        Assert.Equal(1, successCount);
+        Assert.Equal(1, faultCount);
+
+        // Verify that database has exactly 2 identities (one per track), no duplicates
+        using var dbVerify = _fixture.CreateDbContext();
+        var insertedIdentities = await dbVerify.MediaIdentities.Where(i => i.Provider == "MusicBrainzLocal").ToListAsync();
+        Assert.Equal(2, insertedIdentities.Count);
+    }
+
+    [Fact]
+    public async Task IdentityImport_FingerprintDrift_CausesWholeBatchZeroWrite()
+    {
+        using var db = _fixture.CreateDbContext();
+        await ResetStateAsync(db);
+        var scanSource = await GetOrCreateScanSourceAsync(db);
+
+        var file1 = new MediaFile { ScanSourceId = scanSource.Id, Title = "Drift Track 1", Artist = "Artist 1", Album = "Album 1", Duration = TimeSpan.FromSeconds(200), FilePath = "/m/d1.mp3" };
+        var file2 = new MediaFile { ScanSourceId = scanSource.Id, Title = "Drift Track 2", Artist = "Artist 2", Album = "Album 2", Duration = TimeSpan.FromSeconds(220), FilePath = "/m/d2.mp3" };
+        db.MediaFiles.AddRange(file1, file2);
+        await db.SaveChangesAsync();
+
+        var reportItems = new List<ShadowRunAuditItem>
+        {
+            new(file1.Id, file1.Title, file1.Artist, file1.Album, 200, "Tier1", 1000, "HighConfidence", 1.0, 10, "mbid-d1", file1.Title, file1.Artist, 200, null, false, null),
+            new(file2.Id, file2.Title, file2.Artist, file2.Album, 220, "Tier1", 1000, "HighConfidence", 1.0, 10, "mbid-d2", file2.Title, file2.Artist, 220, null, false, null)
+        };
+        var (reportId, config) = CreateIntegrationTestReport("drift_itest_report", reportItems);
+
+        var service = new IdentityImportService(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<IdentityImportService>.Instance, null, config);
+        var batch = await service.CreateDraftBatchAsync(new CreateIdentityImportBatchRequest(reportId, new List<int> { file1.Id, file2.Id }), "admin");
+        await service.ApproveBatchAsync(batch.Id, "admin");
+
+        // Tamper album on file2 (metadata drift)
+        file2.Album = "Drifted Album Name By User";
+        await db.SaveChangesAsync();
+
+        var initialCount = await db.MediaIdentities.CountAsync();
+
+        // Apply must fail with atomic rollback
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.ApplyBatchAsync(batch.Id, "admin"));
+        Assert.Contains("metadata fingerprint changed", ex.Message);
+
+        // Entire batch must be ZERO WRITE
+        var finalCount = await db.MediaIdentities.CountAsync();
+        Assert.Equal(initialCount, finalCount);
+    }
+
+    [Fact]
+    public async Task IdentityImport_ExistingLocalOrManualIdentity_Rejects()
+    {
+        using var db = _fixture.CreateDbContext();
+        await ResetStateAsync(db);
+        var scanSource = await GetOrCreateScanSourceAsync(db);
+
+        var file1 = new MediaFile { ScanSourceId = scanSource.Id, Title = "Conflict Track 1", Artist = "Artist 1", Album = "Album", Duration = TimeSpan.FromSeconds(200), FilePath = "/m/cf1.mp3" };
+        var file2 = new MediaFile { ScanSourceId = scanSource.Id, Title = "Conflict Track 2", Artist = "Artist 2", Album = "Album", Duration = TimeSpan.FromSeconds(200), FilePath = "/m/cf2.mp3" };
+        db.MediaFiles.AddRange(file1, file2);
+        await db.SaveChangesAsync();
+
+        // Add pre-existing MusicBrainzLocal identity to file1
+        db.MediaIdentities.Add(new MediaIdentity
+        {
+            MediaFileId = file1.Id,
+            Provider = "MusicBrainzLocal",
+            RecordingId = "rec-existing-1",
+            Status = "approved",
+            MatchMethod = "PreviousBatch"
+        });
+        // Add manual identity to file2
+        db.MediaIdentities.Add(new MediaIdentity
+        {
+            MediaFileId = file2.Id,
+            Provider = "MusicBrainz",
+            RecordingId = "rec-manual-2",
+            Status = "manual",
+            MatchMethod = "ManualEdit"
+        });
+        await db.SaveChangesAsync();
+
+        var reportItems = new List<ShadowRunAuditItem>
+        {
+            new(file1.Id, file1.Title, file1.Artist, file1.Album, 200, "Tier1", 1000, "HighConfidence", 1.0, 10, "new-rec-1", file1.Title, file1.Artist, 200, null, false, null),
+            new(file2.Id, file2.Title, file2.Artist, file2.Album, 200, "Tier1", 1000, "HighConfidence", 1.0, 10, "new-rec-2", file2.Title, file2.Artist, 200, null, false, null)
+        };
+        var (reportId, config) = CreateIntegrationTestReport("conflict_report", reportItems);
+
+        var service = new IdentityImportService(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<IdentityImportService>.Instance, null, config);
+
+        var preview = await service.PreviewBatchAsync(new PreviewIdentityImportBatchRequest(reportId, new List<int> { file1.Id, file2.Id }));
+        Assert.Equal(2, preview.TotalCandidates);
+        Assert.Equal(0, preview.ValidCount);
+        Assert.Equal(2, preview.InvalidCount);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateDraftBatchAsync(new CreateIdentityImportBatchRequest(reportId, new List<int> { file1.Id, file2.Id }), "admin"));
+        Assert.Contains("validation failed", ex.Message);
+    }
+
+    [Fact]
+    public async Task IdentityImport_Rollback_ExactlyDeletesBatchIdentities()
+    {
+        using var db = _fixture.CreateDbContext();
+        await ResetStateAsync(db);
+        var scanSource = await GetOrCreateScanSourceAsync(db);
+
+        var file1 = new MediaFile { ScanSourceId = scanSource.Id, Title = "Roll Track 1", Artist = "Artist 1", Album = "Album 1", Duration = TimeSpan.FromSeconds(200), FilePath = "/m/r1.mp3" };
+        var file2 = new MediaFile { ScanSourceId = scanSource.Id, Title = "Roll Track 2", Artist = "Artist 2", Album = "Album 2", Duration = TimeSpan.FromSeconds(210), FilePath = "/m/r2.mp3" };
+        db.MediaFiles.AddRange(file1, file2);
+        await db.SaveChangesAsync();
+
+        var reportItems = new List<ShadowRunAuditItem>
+        {
+            new(file1.Id, file1.Title, file1.Artist, file1.Album, 200, "Tier1", 1000, "HighConfidence", 1.0, 10, "mbid-r1", file1.Title, file1.Artist, 200, null, false, null),
+            new(file2.Id, file2.Title, file2.Artist, file2.Album, 210, "Tier1", 1000, "HighConfidence", 0.99, 10, "mbid-r2", file2.Title, file2.Artist, 210, null, false, null)
+        };
+        var (reportId, config) = CreateIntegrationTestReport("rollback_exact_report", reportItems);
+
+        var service = new IdentityImportService(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<IdentityImportService>.Instance, null, config);
+        var batch = await service.CreateDraftBatchAsync(new CreateIdentityImportBatchRequest(reportId, new List<int> { file1.Id, file2.Id }), "admin");
+        await service.ApproveBatchAsync(batch.Id, "admin");
+        await service.ApplyBatchAsync(batch.Id, "admin");
+
+        Assert.Equal(2, await db.MediaIdentities.CountAsync(i => i.MatchMethod == batch.BatchTag));
+
+        var rolledBack = await service.RollbackBatchAsync(batch.Id, "admin");
+        Assert.Equal("RolledBack", rolledBack.Status);
+        Assert.Equal(0, await db.MediaIdentities.CountAsync(i => i.MatchMethod == batch.BatchTag));
+    }
+
+    [Fact]
+    public async Task IdentityImport_RollbackRefusedIfIdentityModified_ZeroDeleted()
+    {
+        using var db = _fixture.CreateDbContext();
+        await ResetStateAsync(db);
+        var scanSource = await GetOrCreateScanSourceAsync(db);
+
+        var file1 = new MediaFile { ScanSourceId = scanSource.Id, Title = "Mod Track 1", Artist = "Artist 1", Album = "Album 1", Duration = TimeSpan.FromSeconds(200), FilePath = "/m/m1.mp3" };
+        var file2 = new MediaFile { ScanSourceId = scanSource.Id, Title = "Mod Track 2", Artist = "Artist 2", Album = "Album 2", Duration = TimeSpan.FromSeconds(210), FilePath = "/m/m2.mp3" };
+        db.MediaFiles.AddRange(file1, file2);
+        await db.SaveChangesAsync();
+
+        var reportItems = new List<ShadowRunAuditItem>
+        {
+            new(file1.Id, file1.Title, file1.Artist, file1.Album, 200, "Tier1", 1000, "HighConfidence", 1.0, 10, "mbid-m1", file1.Title, file1.Artist, 200, null, false, null),
+            new(file2.Id, file2.Title, file2.Artist, file2.Album, 210, "Tier1", 1000, "HighConfidence", 0.99, 10, "mbid-m2", file2.Title, file2.Artist, 210, null, false, null)
+        };
+        var (reportId, config) = CreateIntegrationTestReport("rollback_mod_report", reportItems);
+
+        var service = new IdentityImportService(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<IdentityImportService>.Instance, null, config);
+        var batch = await service.CreateDraftBatchAsync(new CreateIdentityImportBatchRequest(reportId, new List<int> { file1.Id, file2.Id }), "admin");
+        await service.ApproveBatchAsync(batch.Id, "admin");
+        await service.ApplyBatchAsync(batch.Id, "admin");
+
+        // Simulate human modification of track 1's identity status
+        var iden1 = await db.MediaIdentities.FirstAsync(i => i.MediaFileId == file1.Id);
+        iden1.Status = "manual";
+        await db.SaveChangesAsync();
+
+        var countBefore = await db.MediaIdentities.CountAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RollbackBatchAsync(batch.Id, "admin"));
+        Assert.Contains("expected 'approved'", ex.Message);
+
+        var countAfter = await db.MediaIdentities.CountAsync();
+        Assert.Equal(countBefore, countAfter); // Zero deleted!
+    }
+
+    [Fact]
+    public async Task IdentityImport_LegacyPilotRound2_Backfill_DoesNotAddOrModifyMediaIdentities()
+    {
+        using var db = _fixture.CreateDbContext();
+        await ResetStateAsync(db);
+        var scanSource = await GetOrCreateScanSourceAsync(db);
+
+        // Clean up legacy batch if exists
+        await db.Database.ExecuteSqlRawAsync(@"
+            DELETE FROM ""IdentityImportBatches"" WHERE ""BatchTag"" = 'LegacyPilotRound2_20260908';
+        ");
+
+        // Seed 10 pilot files and 10 identities with IDs 20..29 in PostgreSQL
+        await db.Database.ExecuteSqlRawAsync(@"
+            INSERT INTO ""MediaFiles"" (""Id"", ""ScanSourceId"", ""Title"", ""Artist"", ""Album"", ""Genre"", ""Year"", ""SizeBytes"", ""FileHash"", ""ParentPath"", ""FilePath"", ""Duration"", ""AddedAt"")
+            OVERRIDING SYSTEM VALUE
+            VALUES
+                (3, " + scanSource.Id + @", '9 Crimes', 'Damien Rice', '9', 'Pop', 2006, 1000, 'hash3', '/m', '/m/3.mp3', interval '200 seconds', NOW()),
+                (5, " + scanSource.Id + @", 'Chasing Pavements', 'Adele', '19', 'Pop', 2008, 1000, 'hash5', '/m', '/m/5.mp3', interval '200 seconds', NOW()),
+                (12, " + scanSource.Id + @", 'I Don''t Want to Miss a Thing', 'Aerosmith', 'Armageddon', 'Rock', 1998, 1000, 'hash12', '/m', '/m/12.mp3', interval '200 seconds', NOW()),
+                (19, " + scanSource.Id + @", 'Now You''re Gone', 'basshunter', 'Now You''re Gone', 'Dance', 2007, 1000, 'hash19', '/m', '/m/19.mp3', interval '200 seconds', NOW()),
+                (36, " + scanSource.Id + @", 'Viva La Vida', 'Coldplay', 'Viva la Vida', 'Rock', 2008, 1000, 'hash36', '/m', '/m/36.mp3', interval '200 seconds', NOW()),
+                (53, " + scanSource.Id + @", 'Finally', 'Fergie', 'The Dutchess', 'Pop', 2006, 1000, 'hash53', '/m', '/m/53.mp3', interval '200 seconds', NOW()),
+                (55, " + scanSource.Id + @", 'big big world', 'emilia', 'Big Big World', 'Pop', 1998, 1000, 'hash55', '/m', '/m/55.mp3', interval '200 seconds', NOW()),
+                (65, " + scanSource.Id + @", '1973', 'James blunt', 'All the Lost Souls', 'Pop', 2007, 1000, 'hash65', '/m', '/m/65.mp3', interval '200 seconds', NOW()),
+                (67, " + scanSource.Id + @", 'Beautiful Girl', 'INXS', 'Welcome to Wherever You Are', 'Rock', 1992, 1000, 'hash67', '/m', '/m/67.mp3', interval '200 seconds', NOW()),
+                (71, " + scanSource.Id + @", 'You''re Beautiful', 'James Blunt', 'Back to Bedlam', 'Pop', 2004, 1000, 'hash71', '/m', '/m/71.mp3', interval '200 seconds', NOW())
+            ON CONFLICT (""Id"") DO NOTHING;
+
+            INSERT INTO ""MediaIdentities"" (""Id"", ""MediaFileId"", ""Provider"", ""RecordingId"", ""MatchMethod"", ""Confidence"", ""Status"", ""CoverStatus"", ""LyricsStatus"", ""MatchedAt"", ""LastVerifiedAt"")
+            OVERRIDING SYSTEM VALUE
+            VALUES
+                (20, 3, 'MusicBrainzLocal', 'd1b9c306-ea8c-4b1e-baca-24d93701e70d', 'AuditedPilotRound2_20260908', 1.0, 'approved', 'Pending', 'Pending', NOW(), NOW()),
+                (21, 5, 'MusicBrainzLocal', '453f8ecf-e853-45ec-8335-d240a15cd75f', 'AuditedPilotRound2_20260908', 1.0, 'approved', 'Pending', 'Pending', NOW(), NOW()),
+                (22, 12, 'MusicBrainzLocal', '2e2e66bd-a016-4713-bd7f-dbb4037cc9b8', 'AuditedPilotRound2_20260908', 1.0, 'approved', 'Pending', 'Pending', NOW(), NOW()),
+                (23, 19, 'MusicBrainzLocal', 'ce7c1d28-b716-4e42-bd30-40612d6241f8', 'AuditedPilotRound2_20260908', 1.0, 'approved', 'Pending', 'Pending', NOW(), NOW()),
+                (24, 36, 'MusicBrainzLocal', '307ce9da-5690-4e21-ab71-9d12ea106e52', 'AuditedPilotRound2_20260908', 0.995, 'approved', 'Pending', 'Pending', NOW(), NOW()),
+                (25, 53, 'MusicBrainzLocal', 'b6175cb0-6730-4975-b66b-c38ff5d80db2', 'AuditedPilotRound2_20260908', 1.0, 'approved', 'Pending', 'Pending', NOW(), NOW()),
+                (26, 55, 'MusicBrainzLocal', '58558a25-f4a4-4c6f-a6e6-0d04b1a8419d', 'AuditedPilotRound2_20260908', 1.0, 'approved', 'Pending', 'Pending', NOW(), NOW()),
+                (27, 65, 'MusicBrainzLocal', '1ec5f8bb-f073-46f1-95c0-f0dd0a1664b2', 'AuditedPilotRound2_20260908', 0.995, 'approved', 'Pending', 'Pending', NOW(), NOW()),
+                (28, 67, 'MusicBrainzLocal', '8c8fa617-91ce-4872-a4ec-1d58d628af9a', 'AuditedPilotRound2_20260908', 1.0, 'approved', 'Pending', 'Pending', NOW(), NOW()),
+                (29, 71, 'MusicBrainzLocal', 'b4c986df-547c-441c-b77d-55b88cc200ae', 'AuditedPilotRound2_20260908', 0.995, 'approved', 'Pending', 'Pending', NOW(), NOW())
+            ON CONFLICT (""Id"") DO NOTHING;
+        ");
+
+        var initialCount = await db.MediaIdentities.CountAsync();
+        var initialIdentities = await db.MediaIdentities
+            .Where(i => i.Id >= 20 && i.Id <= 29)
+            .Select(i => new { i.Id, i.RecordingId, i.Confidence, i.Status })
+            .ToListAsync();
+
+        var service = new IdentityImportService(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<IdentityImportService>.Instance);
+        var batch = await service.BackfillLegacyPilotRound2Async();
+
+        // 1. Assert ZERO new rows in MediaIdentities
+        var countAfter = await db.MediaIdentities.CountAsync();
+        Assert.Equal(initialCount, countAfter);
+
+        // 2. Assert existing MediaIdentities were NOT modified
+        var afterIdentities = await db.MediaIdentities
+            .Where(i => i.Id >= 20 && i.Id <= 29)
+            .Select(i => new { i.Id, i.RecordingId, i.Confidence, i.Status })
+            .ToListAsync();
+        Assert.Equal(initialIdentities, afterIdentities);
+
+        // 3. Assert batch and item records created accurately
+        Assert.Equal("LegacyPilotRound2_20260908", batch.BatchTag);
+        Assert.Equal("LegacyApplied", batch.Status);
+        Assert.Equal("admin_pilot", batch.ApprovedBy);
+        Assert.NotNull(batch.ApprovedAt);
+        Assert.Equal(10, batch.ItemCount);
+        Assert.Equal(10, batch.AppliedCount);
+        Assert.Equal(10, batch.Items.Count);
+        Assert.All(batch.Items, i =>
+        {
+            Assert.Equal("Applied", i.Status);
+            Assert.InRange(i.CreatedIdentityId!.Value, 20, 29);
+        });
+
+        // 4. Assert rollback refused
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RollbackBatchAsync(batch.Id, "admin"));
+        Assert.Contains("cannot be rolled back", ex.Message);
+
+        // 5. Assert idempotency: calling backfill again returns same batch without duplicate insert
+        var secondRun = await service.BackfillLegacyPilotRound2Async();
+        Assert.Equal(batch.Id, secondRun.Id);
+    }
+
+    [Fact]
+    public async Task IdentityImport_LegacyPilotRound2_Backfill_RefusesIfIdentityContentInvalid()
+    {
+        using var db = _fixture.CreateDbContext();
+        await ResetStateAsync(db);
+        var scanSource = await GetOrCreateScanSourceAsync(db);
+
+        // Clean up legacy batch if exists
+        await db.Database.ExecuteSqlRawAsync(@"
+            DELETE FROM ""IdentityImportBatches"" WHERE ""BatchTag"" = 'LegacyPilotRound2_20260908';
+        ");
+
+        // Seed 10 pilot files and 10 identities with IDs 20..29, BUT TAMPER ID 20 (tampered recording ID)
+        await db.Database.ExecuteSqlRawAsync(@"
+            INSERT INTO ""MediaFiles"" (""Id"", ""ScanSourceId"", ""Title"", ""Artist"", ""Album"", ""Genre"", ""Year"", ""SizeBytes"", ""FileHash"", ""ParentPath"", ""FilePath"", ""Duration"", ""AddedAt"")
+            OVERRIDING SYSTEM VALUE
+            VALUES
+                (3, " + scanSource.Id + @", '9 Crimes', 'Damien Rice', '9', 'Pop', 2006, 1000, 'hash3', '/m', '/m/3.mp3', interval '200 seconds', NOW()),
+                (5, " + scanSource.Id + @", 'Chasing Pavements', 'Adele', '19', 'Pop', 2008, 1000, 'hash5', '/m', '/m/5.mp3', interval '200 seconds', NOW()),
+                (12, " + scanSource.Id + @", 'I Don''t Want to Miss a Thing', 'Aerosmith', 'Armageddon', 'Rock', 1998, 1000, 'hash12', '/m', '/m/12.mp3', interval '200 seconds', NOW()),
+                (19, " + scanSource.Id + @", 'Now You''re Gone', 'basshunter', 'Now You''re Gone', 'Dance', 2007, 1000, 'hash19', '/m', '/m/19.mp3', interval '200 seconds', NOW()),
+                (36, " + scanSource.Id + @", 'Viva La Vida', 'Coldplay', 'Viva la Vida', 'Rock', 2008, 1000, 'hash36', '/m', '/m/36.mp3', interval '200 seconds', NOW()),
+                (53, " + scanSource.Id + @", 'Finally', 'Fergie', 'The Dutchess', 'Pop', 2006, 1000, 'hash53', '/m', '/m/53.mp3', interval '200 seconds', NOW()),
+                (55, " + scanSource.Id + @", 'big big world', 'emilia', 'Big Big World', 'Pop', 1998, 1000, 'hash55', '/m', '/m/55.mp3', interval '200 seconds', NOW()),
+                (65, " + scanSource.Id + @", '1973', 'James blunt', 'All the Lost Souls', 'Pop', 2007, 1000, 'hash65', '/m', '/m/65.mp3', interval '200 seconds', NOW()),
+                (67, " + scanSource.Id + @", 'Beautiful Girl', 'INXS', 'Welcome to Wherever You Are', 'Rock', 1992, 1000, 'hash67', '/m', '/m/67.mp3', interval '200 seconds', NOW()),
+                (71, " + scanSource.Id + @", 'You''re Beautiful', 'James Blunt', 'Back to Bedlam', 'Pop', 2004, 1000, 'hash71', '/m', '/m/71.mp3', interval '200 seconds', NOW())
+            ON CONFLICT (""Id"") DO NOTHING;
+
+            INSERT INTO ""MediaIdentities"" (""Id"", ""MediaFileId"", ""Provider"", ""RecordingId"", ""MatchMethod"", ""Confidence"", ""Status"", ""CoverStatus"", ""LyricsStatus"", ""MatchedAt"", ""LastVerifiedAt"")
+            OVERRIDING SYSTEM VALUE
+            VALUES
+                (20, 3, 'MusicBrainzLocal', 'tampered-fake-mbid', 'AuditedPilotRound2_20260908', 1.0, 'approved', 'Pending', 'Pending', NOW(), NOW()),
+                (21, 5, 'MusicBrainzLocal', '453f8ecf-e853-45ec-8335-d240a15cd75f', 'AuditedPilotRound2_20260908', 1.0, 'approved', 'Pending', 'Pending', NOW(), NOW()),
+                (22, 12, 'MusicBrainzLocal', '2e2e66bd-a016-4713-bd7f-dbb4037cc9b8', 'AuditedPilotRound2_20260908', 1.0, 'approved', 'Pending', 'Pending', NOW(), NOW()),
+                (23, 19, 'MusicBrainzLocal', 'ce7c1d28-b716-4e42-bd30-40612d6241f8', 'AuditedPilotRound2_20260908', 1.0, 'approved', 'Pending', 'Pending', NOW(), NOW()),
+                (24, 36, 'MusicBrainzLocal', '307ce9da-5690-4e21-ab71-9d12ea106e52', 'AuditedPilotRound2_20260908', 0.995, 'approved', 'Pending', 'Pending', NOW(), NOW()),
+                (25, 53, 'MusicBrainzLocal', 'b6175cb0-6730-4975-b66b-c38ff5d80db2', 'AuditedPilotRound2_20260908', 1.0, 'approved', 'Pending', 'Pending', NOW(), NOW()),
+                (26, 55, 'MusicBrainzLocal', '58558a25-f4a4-4c6f-a6e6-0d04b1a8419d', 'AuditedPilotRound2_20260908', 1.0, 'approved', 'Pending', 'Pending', NOW(), NOW()),
+                (27, 65, 'MusicBrainzLocal', '1ec5f8bb-f073-46f1-95c0-f0dd0a1664b2', 'AuditedPilotRound2_20260908', 0.995, 'approved', 'Pending', 'Pending', NOW(), NOW()),
+                (28, 67, 'MusicBrainzLocal', '8c8fa617-91ce-4872-a4ec-1d58d628af9a', 'AuditedPilotRound2_20260908', 1.0, 'approved', 'Pending', 'Pending', NOW(), NOW()),
+                (29, 71, 'MusicBrainzLocal', 'b4c986df-547c-441c-b77d-55b88cc200ae', 'AuditedPilotRound2_20260908', 0.995, 'approved', 'Pending', 'Pending', NOW(), NOW())
+            ON CONFLICT (""Id"") DO NOTHING;
+        ");
+
+        var service = new IdentityImportService(db, Microsoft.Extensions.Logging.Abstractions.NullLogger<IdentityImportService>.Instance);
+
+        // Must reject backfill because ID 20 has tampered RecordingId
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.BackfillLegacyPilotRound2Async());
+        Assert.Contains("RecordingId mismatch", ex.Message);
+
+        // Assert ZERO batches inserted
+        var batchCount = await db.IdentityImportBatches.CountAsync(b => b.BatchTag == "LegacyPilotRound2_20260908");
+        Assert.Equal(0, batchCount);
     }
 }

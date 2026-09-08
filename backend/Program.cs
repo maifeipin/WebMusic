@@ -132,6 +132,7 @@ builder.Services.AddScoped<WebMusic.Backend.Services.TagService>();
 builder.Services.AddSingleton<WebMusic.Backend.Services.PathResolver>(); // Centralized path resolution
 builder.Services.AddScoped<WebMusic.Backend.Services.DataManagementService>();
 builder.Services.AddScoped<WebMusic.Backend.Services.LyricsService>();
+builder.Services.AddScoped<WebMusic.Backend.Services.IIdentityImportService, WebMusic.Backend.Services.IdentityImportService>();
 builder.Services.AddHttpClient<WebMusic.Backend.Services.ILocalMusicBrainzService, WebMusic.Backend.Services.LocalMusicBrainzService>()
     .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
     {
