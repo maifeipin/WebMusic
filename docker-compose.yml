@@ -32,6 +32,8 @@ services:
       - AutomationBot__Password=${ENRICHMENT_BOT_PASSWORD:-}
       - ENRICHMENT_WORKER_SECRET=${ENRICHMENT_WORKER_SECRET:-}
       - ENRICHMENT_WORKER_NODES=${ENRICHMENT_WORKER_NODES:-}
+      - MusicBrainz__LocalBaseUrl=${MUSICBRAINZ_LOCAL_BASE_URL:-http://192.168.2.18:5050}
+      - Enrichment__PriorityScoringEnabled=${ENRICHMENT_PRIORITY_SCORING_ENABLED:-false}
     ports:
       - "5080:8080"
     volumes:
