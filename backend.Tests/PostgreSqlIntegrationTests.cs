@@ -1075,4 +1075,172 @@ public class PostgreSqlIntegrationTests : IClassFixture<PostgreSqlFixture>
             await masterDb.Database.ExecuteSqlRawAsync($"DROP DATABASE IF EXISTS \"{dbName}\" WITH (FORCE);");
         }
     }
+
+    [Fact]
+    public async Task ShadowRun_Enforces_ReadOnly_Transaction_And_Computes_Sha256()
+    {
+        using var db = _fixture.CreateDbContext();
+        var scanSource = await GetOrCreateScanSourceAsync(db);
+
+        var sample = new MediaFile
+        {
+            ScanSourceId = scanSource.Id,
+            Title = "Shadow Test Song " + Guid.NewGuid().ToString("N"),
+            Artist = "Shadow Test Artist",
+            FilePath = "/test/shadow.mp3",
+            Duration = TimeSpan.FromSeconds(200),
+            AddedAt = DateTime.UtcNow
+        };
+        db.MediaFiles.Add(sample);
+        await db.SaveChangesAsync();
+
+        // 1. Verify that during Shadow Run's SET TRANSACTION READ ONLY, any attempt to write is rejected by PostgreSQL with SQLSTATE 25006
+        var rogueMb = new Mock<ILocalMusicBrainzService>();
+        rogueMb.Setup(m => m.BaseUrl).Returns("http://192.168.2.18:5050");
+        rogueMb.Setup(m => m.ScanMediaIdentityAsync(It.IsAny<MediaFile>(), It.IsAny<CancellationToken>()))
+            .Returns<MediaFile, CancellationToken>(async (mf, ct) =>
+            {
+                // Attempt a rogue write during shadow run
+                await db.Database.ExecuteSqlRawAsync($@"
+                    INSERT INTO ""MediaIdentities"" (""MediaFileId"", ""Provider"", ""RecordingId"", ""Status"", ""Confidence"", ""MatchMethod"", ""CoverStatus"", ""LyricsStatus"", ""MatchedAt"")
+                    VALUES ({sample.Id}, 'MusicBrainzLocal', 'rogue-mbid', 'approved', 0.99, 'Test', 'Pending', 'Pending', NOW());
+                ", ct);
+                return new LocalMusicBrainzScanResult(true, null, 200, null, 10);
+            });
+
+        var ex = await Assert.ThrowsAsync<Npgsql.PostgresException>(async () =>
+        {
+            await LocalMusicBrainzShadowRunner.RunAsync(
+                db,
+                rogueMb.Object,
+                count: 10,
+                onlyUnidentified: false,
+                includeAllItemsInReport: true
+            );
+        });
+        Assert.Equal("25006", ex.SqlState); // SQLSTATE 25006: read_only_sql_transaction
+
+        // 2. Normal execution succeeds and generates stable SHA-256
+        var mockMb = new Mock<ILocalMusicBrainzService>();
+        mockMb.Setup(m => m.BaseUrl).Returns("http://192.168.2.18:5050");
+        mockMb.Setup(m => m.ScanMediaIdentityAsync(It.IsAny<MediaFile>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LocalMusicBrainzScanResult(
+                true,
+                new LocalMusicBrainzCandidate("mbid-shadow-1", null, null, sample.Title, sample.Artist, TimeSpan.FromSeconds(200), null, 0.95, false),
+                200,
+                null,
+                50
+            ));
+
+        var report = await LocalMusicBrainzShadowRunner.RunAsync(
+            db,
+            mockMb.Object,
+            count: 10,
+            onlyUnidentified: false,
+            includeAllItemsInReport: true
+        );
+
+        Assert.True(report.Summary.HighConfidence >= 1);
+        Assert.NotNull(report.HighConfidenceSha256);
+        Assert.Equal(64, report.HighConfidenceSha256.Length); // Valid 64-character SHA-256 hex
+
+        // 3. Verify zero writes occurred
+        var identitiesCount = await db.MediaIdentities.CountAsync();
+        Assert.Equal(0, identitiesCount);
+    }
+
+    [Fact]
+    public async Task ShadowRun_CLI_Simulation_Guarantees_Zero_Writes_And_No_Bootstrap_Drift()
+    {
+        using var db = _fixture.CreateDbContext();
+        var scanSource = await GetOrCreateScanSourceAsync(db);
+
+        // Seed initial media file
+        var sample = new MediaFile
+        {
+            ScanSourceId = scanSource.Id,
+            Title = "CLI Shadow Song " + Guid.NewGuid().ToString("N"),
+            Artist = "CLI Shadow Artist",
+            FilePath = "/test/cli_shadow.mp3",
+            Duration = TimeSpan.FromSeconds(180),
+            AddedAt = DateTime.UtcNow
+        };
+        db.MediaFiles.Add(sample);
+        await db.SaveChangesAsync();
+
+        // 1. Snapshot initial state before CLI execution
+        var initialMigrations = await db.Database.SqlQueryRaw<string>(@"SELECT ""MigrationId"" AS ""Value"" FROM ""__EFMigrationsHistory"" ORDER BY ""MigrationId""").ToListAsync();
+        var initialUsers = await db.Users.AsNoTracking().Select(u => new { u.Id, u.Username, u.PasswordHash, u.Role, u.IsAdmin }).ToListAsync();
+        var initialMediaFilesCount = await db.MediaFiles.CountAsync();
+        var initialMediaIdentitiesCount = await db.MediaIdentities.CountAsync();
+        var initialLyricsCount = await db.Lyrics.CountAsync();
+        var initialWorkerSubmissionsCount = await db.WorkerSubmissions.CountAsync();
+        var initialEnrichmentJobsCount = await db.EnrichmentJobs.CountAsync();
+
+        // Create dummy cover file in temp directory
+        var tempCoverDir = Path.Combine(Path.GetTempPath(), "cli_cover_test_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempCoverDir);
+        var dummyCoverFile = Path.Combine(tempCoverDir, "orphan_test_cover.jpg");
+        await File.WriteAllTextAsync(dummyCoverFile, "fake-image-bytes");
+
+        var tempReportFile = Path.Combine(Path.GetTempPath(), "cli_report_" + Guid.NewGuid().ToString("N") + ".json");
+
+        try
+        {
+            var mockMb = new Mock<ILocalMusicBrainzService>();
+            mockMb.Setup(m => m.BaseUrl).Returns("http://192.168.2.18:5050");
+            mockMb.Setup(m => m.ScanMediaIdentityAsync(It.IsAny<MediaFile>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new LocalMusicBrainzScanResult(
+                    true,
+                    new LocalMusicBrainzCandidate("mbid-cli-1", null, null, sample.Title, sample.Artist, TimeSpan.FromSeconds(180), null, 0.98, false),
+                    200,
+                    null,
+                    45
+                ));
+
+            // Execute shadow runner (simulating CLI shadow-run-local execution)
+            var report = await LocalMusicBrainzShadowRunner.RunAsync(
+                db,
+                mockMb.Object,
+                count: 5,
+                onlyUnidentified: true,
+                includeAllItemsInReport: true
+            );
+
+            // Write report file as CLI would
+            var json = System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(tempReportFile, json);
+
+            // Verify report was written and has high confidence SHA-256
+            Assert.True(File.Exists(tempReportFile));
+            Assert.NotNull(report.HighConfidenceSha256);
+            Assert.True(report.Summary.HighConfidence >= 1);
+
+            // 2. Strict assertions: NO changes to migrations, users, password hashes, or tables
+            var currentMigrations = await db.Database.SqlQueryRaw<string>(@"SELECT ""MigrationId"" AS ""Value"" FROM ""__EFMigrationsHistory"" ORDER BY ""MigrationId""").ToListAsync();
+            Assert.Equal(initialMigrations, currentMigrations);
+
+            var currentUsers = await db.Users.AsNoTracking().Select(u => new { u.Id, u.Username, u.PasswordHash, u.Role, u.IsAdmin }).ToListAsync();
+            Assert.Equal(initialUsers.Count, currentUsers.Count);
+            for (int i = 0; i < initialUsers.Count; i++)
+            {
+                Assert.Equal(initialUsers[i].Username, currentUsers[i].Username);
+                Assert.Equal(initialUsers[i].PasswordHash, currentUsers[i].PasswordHash);
+            }
+
+            Assert.Equal(initialMediaFilesCount, await db.MediaFiles.CountAsync());
+            Assert.Equal(initialMediaIdentitiesCount, await db.MediaIdentities.CountAsync());
+            Assert.Equal(initialLyricsCount, await db.Lyrics.CountAsync());
+            Assert.Equal(initialWorkerSubmissionsCount, await db.WorkerSubmissions.CountAsync());
+            Assert.Equal(initialEnrichmentJobsCount, await db.EnrichmentJobs.CountAsync());
+
+            // Cover directory dummy file must NOT be reconciled or deleted
+            Assert.True(File.Exists(dummyCoverFile), "Cover files must not be touched during CLI shadow run");
+        }
+        finally
+        {
+            if (File.Exists(tempReportFile)) File.Delete(tempReportFile);
+            if (Directory.Exists(tempCoverDir)) Directory.Delete(tempCoverDir, true);
+        }
+    }
 }

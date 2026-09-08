@@ -51,7 +51,8 @@ public record ShadowRunReport(
     DateTime Timestamp,
     ShadowRunSummary Summary,
     Dictionary<string, List<ShadowRunAuditItem>> Samples,
-    List<ShadowRunAuditItem>? AllItems = null
+    List<ShadowRunAuditItem>? AllItems = null,
+    string? HighConfidenceSha256 = null
 );
 
 public static class LocalMusicBrainzShadowRunner
@@ -79,8 +80,16 @@ public static class LocalMusicBrainzShadowRunner
             throw new InvalidOperationException("A local MusicBrainz shadow run is already in progress. Concurrent runs are forbidden.");
         }
 
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? readOnlyTx = null;
         try
         {
+            // Enforce database-level physical read-only guarantee when on PostgreSQL
+            if (db.Database.IsNpgsql())
+            {
+                readOnlyTx = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
+                await db.Database.ExecuteSqlRawAsync("SET TRANSACTION READ ONLY;", cancellationToken);
+            }
+
             // 1. Fetch eligible candidates (read-only, AsNoTracking)
             var query = db.MediaFiles
                 .AsNoTracking()
@@ -190,7 +199,7 @@ public static class LocalMusicBrainzShadowRunner
                 allItems.Add(auditEntry);
             }
 
-            if (tierOutcome == "HighConfidence" && highSamples.Count < 500)
+            if (tierOutcome == "HighConfidence")
                 highSamples.Add(auditEntry);
             else if (tierOutcome == "ProposedMatch" && mediumSamples.Count < 500)
                 mediumSamples.Add(auditEntry);
@@ -227,17 +236,53 @@ public static class LocalMusicBrainzShadowRunner
             ["derivativeOrClip"] = derivativeSamples
         };
 
+        // Compute stable SHA-256 checksum across all high confidence candidates
+        string? highConfidenceSha256 = null;
+        if (highSamples.Count > 0)
+        {
+            var sortedHigh = highSamples
+                .OrderBy(h => h.MediaId)
+                .Select(h => new
+                {
+                    h.MediaId,
+                    h.Title,
+                    h.Artist,
+                    h.DurationSeconds,
+                    h.MatchedMbid,
+                    h.MatchedTitle,
+                    h.MatchedArtist,
+                    h.Confidence
+                })
+                .ToList();
+            var jsonBytes = System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(sortedHigh));
+            using var sha = System.Security.Cryptography.SHA256.Create();
+            highConfidenceSha256 = Convert.ToHexString(sha.ComputeHash(jsonBytes)).ToLowerInvariant();
+        }
+
             return new ShadowRunReport(
                 "SHADOW_RUN_ZERO_WRITE",
                 localMb.BaseUrl,
                 DateTime.UtcNow,
                 summary,
                 samples,
-                includeAllItemsInReport ? allItems : null
+                includeAllItemsInReport ? allItems : null,
+                highConfidenceSha256
             );
         }
         finally
         {
+            if (readOnlyTx != null)
+            {
+                try
+                {
+                    await readOnlyTx.RollbackAsync(cancellationToken);
+                }
+                catch
+                {
+                    // Ignore rollback exception on clean teardown
+                }
+                await readOnlyTx.DisposeAsync();
+            }
             _globalShadowRunLock.Release();
         }
     }

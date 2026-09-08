@@ -14,14 +14,15 @@ AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Suppress verbose EF Core SQL logs in console
+// Suppress verbose EF Core SQL logs and HttpClient URI parameter query logs in console
 builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
+builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
 
 // Configure Logs with Timestamp
 builder.Logging.AddSimpleConsole(options =>
 {
     options.IncludeScopes = false;
-    options.SingleLine = false; 
+    options.SingleLine = false;
     options.TimestampFormat = "yyyy-MM-dd HH:mm:ss ";
 });
 
@@ -206,31 +207,43 @@ if (args.Contains("verify-baseline"))
     return;
 }
 
-// Local MusicBrainz Shadow Run CLI Mode (ZERO-WRITE)
-if (args.Contains("shadow-run-local"))
+// Local MusicBrainz Shadow Run CLI Mode (ZERO-WRITE: executed BEFORE any migrations, user bootstrap, or cleanup)
+if (args.Contains("shadow-run-local") || args.Any(a => a.Equals("--shadow-run", StringComparison.OrdinalIgnoreCase) || a.Equals("--shadow-run-local", StringComparison.OrdinalIgnoreCase)))
 {
     using var shadowScope = app.Services.CreateScope();
     var db = shadowScope.ServiceProvider.GetRequiredService<AppDbContext>();
     var localMb = shadowScope.ServiceProvider.GetRequiredService<WebMusic.Backend.Services.ILocalMusicBrainzService>();
 
     int count = 1000;
-    var countIdx = Array.IndexOf(args, "--count");
-    if (countIdx >= 0 && countIdx + 1 < args.Length && int.TryParse(args[countIdx + 1], out var parsedCount))
+    string? outFile = null;
+
+    // Support both '--count 1000' and '--count=1000', '--out file' and '--out=file'
+    for (int i = 0; i < args.Length; i++)
     {
-        count = parsedCount;
+        var arg = args[i];
+        if (arg.Equals("--count", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length && int.TryParse(args[i + 1], out var parsedCount))
+        {
+            count = parsedCount;
+        }
+        else if (arg.StartsWith("--count=", StringComparison.OrdinalIgnoreCase) && int.TryParse(arg["--count=".Length..], out var eqCount))
+        {
+            count = eqCount;
+        }
+
+        if (arg.Equals("--out", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+        {
+            outFile = args[i + 1];
+        }
+        else if (arg.StartsWith("--out=", StringComparison.OrdinalIgnoreCase))
+        {
+            outFile = arg["--out=".Length..];
+        }
     }
 
     if (count <= 0 || count > 1000)
     {
         Console.WriteLine($"❌ Error: --count must be between 1 and 1000 (received: {count})");
         Environment.Exit(1);
-    }
-
-    string? outFile = null;
-    var outIdx = Array.IndexOf(args, "--out");
-    if (outIdx >= 0 && outIdx + 1 < args.Length)
-    {
-        outFile = args[outIdx + 1];
     }
 
     bool onlyUnidentified = !args.Contains("--all");
@@ -240,7 +253,7 @@ if (args.Contains("shadow-run-local"))
     Console.WriteLine($"Target Node: {localMb.BaseUrl}");
     Console.WriteLine($"Batch Count: {count} (Max: 1000)");
     Console.WriteLine($"Filter:      {(onlyUnidentified ? "Only tracks lacking MusicBrainzLocal identity" : "All tracks")}");
-    Console.WriteLine("Mode:        生产数据库、封面、歌词和身份表零写入（纯内存比对评估）");
+    Console.WriteLine("Mode:        生产数据库、封面、歌词和身份表零写入（SET TRANSACTION READ ONLY 物理门禁）");
     Console.WriteLine();
 
     var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -270,11 +283,21 @@ if (args.Contains("shadow-run-local"))
     Console.WriteLine($"Clips / Derivatives:        {report.Summary.DerivativeOrClip}");
     Console.WriteLine($"Average Response Time:      {report.Summary.AverageElapsedMs} ms/track");
     Console.WriteLine($"Total Wall Time:            {sw.Elapsed.TotalSeconds:F2} s");
+    if (!string.IsNullOrEmpty(report.HighConfidenceSha256))
+    {
+        Console.WriteLine($"HighConfidence SHA-256:     {report.HighConfidenceSha256}");
+    }
     Console.WriteLine();
 
     if (!string.IsNullOrEmpty(outFile))
     {
-        var jsonOptions = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+        var outDir = Path.GetDirectoryName(outFile);
+        if (!string.IsNullOrEmpty(outDir)) Directory.CreateDirectory(outDir);
+        var jsonOptions = new System.Text.Json.JsonSerializerOptions
+        {
+            WriteIndented = true,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        };
         var json = System.Text.Json.JsonSerializer.Serialize(report, jsonOptions);
         await System.IO.File.WriteAllTextAsync(outFile, json);
         Console.WriteLine($"💾 Saved full shadow run report -> {outFile}");
