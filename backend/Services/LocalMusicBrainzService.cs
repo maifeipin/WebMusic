@@ -444,23 +444,6 @@ public class LocalMusicBrainzService : ILocalMusicBrainzService
             }
         }
 
-        // Strategy 4 fallback: If no match or confidence < Proposed, query cleaned title with limit=25
-        if ((bestOverall == null || bestOverall.Confidence < ProposedConfidenceThreshold) && !timeoutCts.IsCancellationRequested)
-        {
-            var titleOnlyQuery = $"recording:\"{escCleanTitle}\"";
-            var (status, err, candidates) = await QueryCandidatesAsync(titleOnlyQuery, title, artist, duration, timeoutCts.Token);
-            if (candidates.Count > 0)
-            {
-                foreach (var cand in candidates)
-                {
-                    if (bestOverall == null || cand.Confidence > bestOverall.Confidence)
-                    {
-                        bestOverall = cand;
-                    }
-                }
-            }
-        }
-
         sw.Stop();
 
         if (timeoutCts.IsCancellationRequested && (bestOverall == null || bestOverall.Confidence < ProposedConfidenceThreshold))
