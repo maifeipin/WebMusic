@@ -345,4 +345,72 @@ public class LocalMusicBrainzServiceTests
         Assert.Equal(408, result.StatusCode);
         Assert.Contains("timed out", result.ErrorDetail);
     }
+
+    [Theory]
+    [InlineData("Bleeding Love (Album Version)", "Bleeding Love")]
+    [InlineData("In The End (2020 Remaster)", "In The End")]
+    [InlineData("Song (Explicit)", "Song")]
+    [InlineData("Track [Radio Edit]", "Track")]
+    [InlineData("Track（Deluxe Edition）", "Track")]
+    [InlineData("Yesterday (Remastered)", "Yesterday")]
+    public void CleanTitle_StripsVersionAndRemasterTags(string input, string expected)
+    {
+        var cleaned = LocalMusicBrainzService.CleanTitle(input);
+        Assert.Equal(expected, cleaned);
+    }
+
+    [Theory]
+    [InlineData("Tim McGraw, Taylor Swift, Keith Urban", "Tim McGraw")]
+    [InlineData("Eminem feat. Rihanna", "Eminem")]
+    [InlineData("Jay-Z & Alicia Keys", "Jay-Z")]
+    [InlineData("Artist A / Artist B", "Artist A")]
+    [InlineData("Clean Artist", "Clean Artist")]
+    public void ExtractPrimaryArtist_ExtractsLeadingArtist(string input, string expected)
+    {
+        var primary = LocalMusicBrainzService.ExtractPrimaryArtist(input);
+        Assert.Equal(expected, primary);
+    }
+
+    [Theory]
+    [InlineData("黄小琥", "黃小琥")]
+    [InlineData("周杰伦", "周傑倫")]
+    [InlineData("林俊杰", "林俊傑")]
+    [InlineData("Yesterday", "Yesterday")]
+    public void ToTraditionalChinese_ConvertsSimplifiedNames(string input, string expected)
+    {
+        var trad = LocalMusicBrainzService.ToTraditionalChinese(input);
+        Assert.Equal(expected, trad);
+    }
+
+    [Fact]
+    public void CalculateConfidence_MatchesAlbumVersionWithCleanCandidate()
+    {
+        var confidence = LocalMusicBrainzService.CalculateConfidence(
+            targetTitle: "Bleeding Love (Album Version)",
+            targetArtist: "Leona Lewis",
+            targetDuration: TimeSpan.FromSeconds(262),
+            candidateTitle: "Bleeding Love",
+            candidateArtist: "Leona Lewis",
+            candidateDuration: TimeSpan.FromSeconds(262),
+            isDerivative: false
+        );
+
+        Assert.True(confidence >= 0.95);
+    }
+
+    [Fact]
+    public void CalculateConfidence_MatchesSimplifiedTargetWithTraditionalCandidate()
+    {
+        var confidence = LocalMusicBrainzService.CalculateConfidence(
+            targetTitle: "没那么简单",
+            targetArtist: "黄小琥",
+            targetDuration: TimeSpan.FromSeconds(307),
+            candidateTitle: "沒那麼簡單",
+            candidateArtist: "黃小琥",
+            candidateDuration: TimeSpan.FromSeconds(307),
+            isDerivative: false
+        );
+
+        Assert.True(confidence >= 0.95);
+    }
 }

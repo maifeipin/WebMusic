@@ -190,14 +190,14 @@ public static class LocalMusicBrainzShadowRunner
                 allItems.Add(auditEntry);
             }
 
-            if (tierOutcome == "HighConfidence" && highSamples.Count < 20)
+            if (tierOutcome == "HighConfidence" && highSamples.Count < 500)
                 highSamples.Add(auditEntry);
-            else if (tierOutcome == "ProposedMatch" && mediumSamples.Count < 20)
+            else if (tierOutcome == "ProposedMatch" && mediumSamples.Count < 500)
                 mediumSamples.Add(auditEntry);
-            else if ((tierOutcome == "Unmatched" || tierOutcome == "Failed") && lowOrUnmatchedSamples.Count < 20)
+            else if ((tierOutcome == "Unmatched" || tierOutcome == "Failed") && lowOrUnmatchedSamples.Count < 100)
                 lowOrUnmatchedSamples.Add(auditEntry);
 
-            if (isDeriv && derivativeSamples.Count < 20)
+            if (isDeriv && derivativeSamples.Count < 500)
                 derivativeSamples.Add(auditEntry);
 
             processed++;
