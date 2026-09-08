@@ -131,7 +131,36 @@ builder.Services.AddScoped<WebMusic.Backend.Services.TagService>();
 builder.Services.AddSingleton<WebMusic.Backend.Services.PathResolver>(); // Centralized path resolution
 builder.Services.AddScoped<WebMusic.Backend.Services.DataManagementService>();
 builder.Services.AddScoped<WebMusic.Backend.Services.LyricsService>();
-builder.Services.AddScoped<WebMusic.Backend.Services.MusicEnrichmentService>();
+builder.Services.AddHttpClient<WebMusic.Backend.Services.ILocalMusicBrainzService, WebMusic.Backend.Services.LocalMusicBrainzService>()
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        AllowAutoRedirect = false,
+        ConnectCallback = async (context, cancellationToken) =>
+        {
+            var host = context.DnsEndPoint.Host;
+            if (host.StartsWith('[') && host.EndsWith(']'))
+            {
+                host = host.Substring(1, host.Length - 2);
+            }
+
+            if (!System.Net.IPAddress.TryParse(host, out var ip) || !WebMusic.Backend.Services.LocalMusicBrainzService.IsPrivateOrLoopbackIp(ip))
+            {
+                throw new InvalidOperationException($"Outbound connection to '{context.DnsEndPoint.Host}' is strictly prohibited. Only private or loopback IP literals are allowed.");
+            }
+
+            var socket = new System.Net.Sockets.Socket(System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);
+            try
+            {
+                await socket.ConnectAsync(ip, context.DnsEndPoint.Port, cancellationToken);
+                return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+            }
+            catch
+            {
+                socket.Dispose();
+                throw;
+            }
+        }
+    });
 builder.Services.AddHttpClient(); // Required for IHttpClientFactory
 builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, "data", "data-protection-keys")));
 builder.Services.AddSingleton<WebMusic.Backend.Services.IShareAccessService, WebMusic.Backend.Services.ShareAccessService>();
@@ -174,6 +203,83 @@ if (args.Contains("verify-baseline"))
     {
         Console.WriteLine("ℹ️ Pass '--apply' to record baseline migration once schema verification passes.");
     }
+    return;
+}
+
+// Local MusicBrainz Shadow Run CLI Mode (ZERO-WRITE)
+if (args.Contains("shadow-run-local"))
+{
+    using var shadowScope = app.Services.CreateScope();
+    var db = shadowScope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var localMb = shadowScope.ServiceProvider.GetRequiredService<WebMusic.Backend.Services.ILocalMusicBrainzService>();
+
+    int count = 1000;
+    var countIdx = Array.IndexOf(args, "--count");
+    if (countIdx >= 0 && countIdx + 1 < args.Length && int.TryParse(args[countIdx + 1], out var parsedCount))
+    {
+        count = parsedCount;
+    }
+
+    if (count <= 0 || count > 1000)
+    {
+        Console.WriteLine($"❌ Error: --count must be between 1 and 1000 (received: {count})");
+        Environment.Exit(1);
+    }
+
+    string? outFile = null;
+    var outIdx = Array.IndexOf(args, "--out");
+    if (outIdx >= 0 && outIdx + 1 < args.Length)
+    {
+        outFile = args[outIdx + 1];
+    }
+
+    bool onlyUnidentified = !args.Contains("--all");
+    bool includeAll = args.Contains("--include-all") || !string.IsNullOrEmpty(outFile);
+
+    Console.WriteLine("=== 🧪 Shadow Run: Local MusicBrainz Identity Scanner (ZERO WRITE) ===");
+    Console.WriteLine($"Target Node: {localMb.BaseUrl}");
+    Console.WriteLine($"Batch Count: {count} (Max: 1000)");
+    Console.WriteLine($"Filter:      {(onlyUnidentified ? "Only tracks lacking MusicBrainzLocal identity" : "All tracks")}");
+    Console.WriteLine("Mode:        生产数据库、封面、歌词和身份表零写入（纯内存比对评估）");
+    Console.WriteLine();
+
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+    var report = await WebMusic.Backend.Services.LocalMusicBrainzShadowRunner.RunAsync(
+        db,
+        localMb,
+        count: count,
+        onlyUnidentified: onlyUnidentified,
+        includeAllItemsInReport: includeAll,
+        progressCallback: (done, total) =>
+        {
+            if (done % 50 == 0 || done == total)
+            {
+                Console.WriteLine($"  [{done}/{total}] tracks evaluated ({Math.Round((double)done / total * 100, 1)}%)...");
+            }
+        }
+    );
+    sw.Stop();
+
+    Console.WriteLine();
+    Console.WriteLine("=== 📊 Shadow Run Summary ===");
+    Console.WriteLine($"Total Evaluated:            {report.Summary.TotalEvaluated}");
+    Console.WriteLine($"High Confidence (>=0.85):   {report.Summary.HighConfidence} ({report.Summary.HighConfidenceRate:P1})");
+    Console.WriteLine($"Proposed Match (0.70-0.85): {report.Summary.Proposed} ({report.Summary.ProposedRate:P1})");
+    Console.WriteLine($"Unmatched (<0.70):          {report.Summary.Unmatched} ({report.Summary.UnmatchedRate:P1})");
+    Console.WriteLine($"Failed / Errors:            {report.Summary.Failed}");
+    Console.WriteLine($"Clips / Derivatives:        {report.Summary.DerivativeOrClip}");
+    Console.WriteLine($"Average Response Time:      {report.Summary.AverageElapsedMs} ms/track");
+    Console.WriteLine($"Total Wall Time:            {sw.Elapsed.TotalSeconds:F2} s");
+    Console.WriteLine();
+
+    if (!string.IsNullOrEmpty(outFile))
+    {
+        var jsonOptions = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+        var json = System.Text.Json.JsonSerializer.Serialize(report, jsonOptions);
+        await System.IO.File.WriteAllTextAsync(outFile, json);
+        Console.WriteLine($"💾 Saved full shadow run report -> {outFile}");
+    }
+
     return;
 }
 

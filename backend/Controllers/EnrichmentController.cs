@@ -16,15 +16,21 @@ public class EnrichmentController : ControllerBase
     private readonly AppDbContext _context;
     private readonly BackgroundTaskQueue _queue;
     private readonly IWebHostEnvironment _environment;
+    private readonly ILocalMusicBrainzService? _localMbService;
 
     public const int MaxBatchSize = 100;
     public const int DefaultBatchSize = 20;
 
-    public EnrichmentController(AppDbContext context, BackgroundTaskQueue queue, IWebHostEnvironment environment)
+    public EnrichmentController(
+        AppDbContext context,
+        BackgroundTaskQueue queue,
+        IWebHostEnvironment environment,
+        ILocalMusicBrainzService? localMbService = null)
     {
         _context = context;
         _queue = queue;
         _environment = environment;
+        _localMbService = localMbService;
     }
 
     [HttpGet("favorites/preview")]
@@ -288,6 +294,46 @@ public class EnrichmentController : ControllerBase
         }
         return query.Where(f => f.MediaFile != null &&
                     (string.IsNullOrEmpty(f.MediaFile.CoverArt) || !_context.Lyrics.Any(l => l.MediaFileId == f.MediaFileId)));
+    }
+
+    [HttpPost("shadow-run-local")]
+    public async Task<IActionResult> ShadowRunLocal(
+        [FromQuery] int count = 1000,
+        [FromQuery] bool onlyUnidentified = true,
+        [FromQuery] bool includeAll = false,
+        CancellationToken cancellationToken = default)
+    {
+        if (_localMbService == null)
+        {
+            return StatusCode(500, new { message = "LocalMusicBrainzService is not registered or available." });
+        }
+
+        if (count <= 0 || count > 1000)
+        {
+            return BadRequest(new { message = "Shadow Run batch count must be between 1 and 1000." });
+        }
+
+        try
+        {
+            var report = await LocalMusicBrainzShadowRunner.RunAsync(
+                _context,
+                _localMbService,
+                count: count,
+                onlyUnidentified: onlyUnidentified,
+                includeAllItemsInReport: includeAll,
+                cancellationToken: cancellationToken
+            );
+
+            return Ok(report);
+        }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("already in progress"))
+        {
+            return StatusCode(StatusCodes.Status409Conflict, new { message = ex.Message });
+        }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     private int GetUserId() => int.TryParse(User?.FindFirst("sub")?.Value ?? User?.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId) ? userId : 0;

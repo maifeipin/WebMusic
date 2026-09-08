@@ -272,6 +272,42 @@ public class WorkerHttpIntegrationTests : IClassFixture<PostgreSqlFixture>, IAsy
     }
 
     [Fact]
+    public async Task Worker_CallingAdminShadowRun_Receives403Forbidden()
+    {
+        var workerToken = await LoginAsync("catalog-worker", TestWebApplicationFactory.WorkerPassword);
+
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/enrichment/shadow-run-local");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", workerToken);
+
+        var resp = await _client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_CallingAdminShadowRun_Over1000_Receives400BadRequest()
+    {
+        var adminToken = await LoginAsync("admin-user", TestWebApplicationFactory.AdminPassword);
+
+        var req = new HttpRequestMessage(HttpMethod.Post, "/api/enrichment/shadow-run-local?count=1001");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+
+        var resp = await _client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task WorkerShadowRun_DoesNotExistOnWorkerEndpoint()
+    {
+        var workerToken = await LoginAsync("catalog-worker", TestWebApplicationFactory.WorkerPassword);
+
+        var req = new HttpRequestMessage(HttpMethod.Get, "/api/enrichment/worker/shadow-run-local");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", workerToken);
+
+        var resp = await _client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
     public async Task CoverPromotion_CrashRecovery_StartupReconcilerCleansOrphanCover()
     {
         using var scope = _factory.Services.CreateScope();

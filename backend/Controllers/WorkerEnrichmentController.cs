@@ -17,6 +17,7 @@ public class WorkerEnrichmentController : ControllerBase
 {
     private readonly AppDbContext _context;
     private readonly IWebHostEnvironment _environment;
+    private readonly IConfiguration? _configuration;
 
     public const int MaxBatchSize = 100;
     public const int DefaultBatchSize = 20;
@@ -31,10 +32,14 @@ public class WorkerEnrichmentController : ControllerBase
     public const int LrclibDailyLimit = 5000;
     public const int LrclibWorstCaseUnits = 1; // 1 query per track needing lyrics
 
-    public WorkerEnrichmentController(AppDbContext context, IWebHostEnvironment environment)
+    public WorkerEnrichmentController(
+        AppDbContext context,
+        IWebHostEnvironment environment,
+        IConfiguration? configuration = null)
     {
         _context = context;
         _environment = environment;
+        _configuration = configuration;
     }
 
     [HttpGet("preview")]
@@ -82,7 +87,11 @@ public class WorkerEnrichmentController : ControllerBase
                 Media = m,
                 IsFav = m.Favorites.Any(),
                 PlayCount = _context.PlayHistories.Count(p => p.MediaFileId == m.Id),
-                RecentPlay = _context.PlayHistories.Any(p => p.MediaFileId == m.Id && p.PlayedAt >= cutoff30d)
+                RecentPlay = _context.PlayHistories.Any(p => p.MediaFileId == m.Id && p.PlayedAt >= cutoff30d),
+                HasLocalMBIdentity = _context.MediaIdentities.Any(i => i.MediaFileId == m.Id && i.Provider == LocalMusicBrainzService.ProviderName && i.Status == "approved"),
+                LocalMBConfidence = _context.MediaIdentities.Where(i => i.MediaFileId == m.Id && i.Provider == LocalMusicBrainzService.ProviderName).Select(i => (double?)i.Confidence).FirstOrDefault(),
+                NeedsCover = string.IsNullOrEmpty(m.CoverArt),
+                NeedsLyrics = !_context.Lyrics.Any(l => l.MediaFileId == m.Id)
             })
             .ToListAsync();
 
@@ -98,21 +107,46 @@ public class WorkerEnrichmentController : ControllerBase
 
         var totalEligible = eligibleCandidates.Count;
 
-        var sampleTracks = eligibleCandidates
-            .OrderByDescending(x => (x.IsFav ? 1000 : 0) + (x.RecentPlay ? 200 : 0) + Math.Min(x.PlayCount * 10, 500))
-            .ThenBy(x => x.Media.Id)
-            .Take(10)
-            .Select(x => new
-            {
-                x.Media.Id,
-                x.Media.Title,
-                x.Media.Artist,
-                x.Media.Album,
-                NeedsCover = string.IsNullOrEmpty(x.Media.CoverArt),
-                NeedsLyrics = !_context.Lyrics.Any(l => l.MediaFileId == x.Media.Id),
-                Score = (x.IsFav ? 1000 : 0) + (x.RecentPlay ? 200 : 0) + Math.Min(x.PlayCount * 10, 500)
-            })
-            .ToList();
+        var priorityScoringEnabled = _configuration?.GetValue<bool>("Enrichment:PriorityScoringEnabled", false) ?? false;
+
+        var sampleTracks = priorityScoringEnabled
+            ? eligibleCandidates.Select(c => EnrichmentPriorityScorer.Score(
+                c.Media, c.IsFav, c.PlayCount, c.RecentPlay, c.HasLocalMBIdentity, c.LocalMBConfidence, c.NeedsCover, c.NeedsLyrics
+              ))
+              .OrderBy(c => c.Tier)
+              .ThenByDescending(c => c.CompositeScore)
+              .ThenBy(c => c.Media.Id)
+              .Take(10)
+              .Select(x => new
+              {
+                  x.Media.Id,
+                  x.Media.Title,
+                  x.Media.Artist,
+                  x.Media.Album,
+                  NeedsCover = x.NeedsCover,
+                  NeedsLyrics = x.NeedsLyrics,
+                  Score = x.CompositeScore,
+                  Tier = (string?)x.Tier.ToString(),
+                  IsClipOrDerivation = x.IsClipOrDerivation
+              })
+              .ToList()
+            : eligibleCandidates
+              .OrderByDescending(x => (x.IsFav ? 1000 : 0) + (x.RecentPlay ? 200 : 0) + Math.Min(x.PlayCount * 10, 500))
+              .ThenBy(x => x.Media.Id)
+              .Take(10)
+              .Select(x => new
+              {
+                  x.Media.Id,
+                  x.Media.Title,
+                  x.Media.Artist,
+                  x.Media.Album,
+                  NeedsCover = string.IsNullOrEmpty(x.Media.CoverArt),
+                  NeedsLyrics = !_context.Lyrics.Any(l => l.MediaFileId == x.Media.Id),
+                  Score = (x.IsFav ? 1000 : 0) + (x.RecentPlay ? 200 : 0) + Math.Min(x.PlayCount * 10, 500),
+                  Tier = (string?)null,
+                  IsClipOrDerivation = false
+              })
+              .ToList();
 
         return Ok(new
         {
@@ -362,11 +396,15 @@ public class WorkerEnrichmentController : ControllerBase
                     Media = m,
                     IsFav = m.Favorites.Any(),
                     PlayCount = _context.PlayHistories.Count(p => p.MediaFileId == m.Id),
-                    RecentPlay = _context.PlayHistories.Any(p => p.MediaFileId == m.Id && p.PlayedAt >= cutoff30d)
+                    RecentPlay = _context.PlayHistories.Any(p => p.MediaFileId == m.Id && p.PlayedAt >= cutoff30d),
+                    HasLocalMBIdentity = _context.MediaIdentities.Any(i => i.MediaFileId == m.Id && i.Provider == LocalMusicBrainzService.ProviderName && i.Status == "approved"),
+                    LocalMBConfidence = _context.MediaIdentities.Where(i => i.MediaFileId == m.Id && i.Provider == LocalMusicBrainzService.ProviderName).Select(i => (double?)i.Confidence).FirstOrDefault(),
+                    NeedsCover = string.IsNullOrEmpty(m.CoverArt),
+                    NeedsLyrics = !_context.Lyrics.Any(l => l.MediaFileId == m.Id)
                 })
                 .ToListAsync();
 
-            candidates = candidatesBase
+            var eligible = candidatesBase
                 .Where(c =>
                 {
                     if (cooldownLookup.TryGetValue(c.Media.Id, out var fps))
@@ -375,12 +413,30 @@ public class WorkerEnrichmentController : ControllerBase
                         if (fps.Contains(currentFp)) return false;
                     }
                     return true;
-                })
-                .OrderByDescending(x => (x.IsFav ? 1000 : 0) + (x.RecentPlay ? 200 : 0) + Math.Min(x.PlayCount * 10, 500))
-                .ThenBy(x => x.Media.Id)
-                .Take(maxCanLease)
-                .Select(x => x.Media)
-                .ToList();
+                });
+
+            var priorityScoringEnabled = _configuration?.GetValue<bool>("Enrichment:PriorityScoringEnabled", false) ?? false;
+
+            if (priorityScoringEnabled)
+            {
+                var scored = eligible.Select(c => EnrichmentPriorityScorer.Score(
+                    c.Media, c.IsFav, c.PlayCount, c.RecentPlay, c.HasLocalMBIdentity, c.LocalMBConfidence, c.NeedsCover, c.NeedsLyrics
+                ));
+
+                candidates = EnrichmentPriorityScorer.OrderByPriority(scored)
+                    .Take(maxCanLease)
+                    .Select(x => x.Media)
+                    .ToList();
+            }
+            else
+            {
+                candidates = eligible
+                    .OrderByDescending(x => (x.IsFav ? 1000 : 0) + (x.RecentPlay ? 200 : 0) + Math.Min(x.PlayCount * 10, 500))
+                    .ThenBy(x => x.Media.Id)
+                    .Take(maxCanLease)
+                    .Select(x => x.Media)
+                    .ToList();
+            }
         }
 
         if (candidates.Count == 0)
@@ -957,6 +1013,8 @@ public class WorkerEnrichmentController : ControllerBase
             JobStatus = job.Status
         });
     }
+
+
 
     private string GetWorkerNodeId()
     {
