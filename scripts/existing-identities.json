@@ -1,0 +1,331 @@
+{
+  "ExportTimestamp": "2026-09-09T00:22:21.065967+00:00",
+  "SourceHost": "media",
+  "SourceDatabase": "webmusic",
+  "SourceTable": "MediaIdentities",
+  "SourceSql": "SELECT \"Id\", \"MediaFileId\", \"Provider\", \"RecordingId\", \"MatchMethod\", \"Confidence\", \"Status\", \"MatchedAt\" FROM \"MediaIdentities\" ORDER BY \"Id\";",
+  "TotalIdentities": 29,
+  "DistinctMediaFileIdsCount": 28,
+  "DistinctMediaFileIds": [
+    3,
+    5,
+    12,
+    19,
+    36,
+    53,
+    55,
+    65,
+    67,
+    71,
+    99,
+    171,
+    172,
+    1699,
+    3853,
+    5000,
+    24148,
+    82305,
+    82347,
+    83262,
+    92781,
+    97370,
+    97371,
+    133297,
+    133405,
+    133411,
+    133422,
+    133673
+  ],
+  "Identities": [
+    {
+      "Id": 1,
+      "MediaFileId": 99,
+      "Provider": "MusicBrainz",
+      "RecordingId": "cde66811-acc5-454d-ac14-484a5c7b7750",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-06 06:33:41.148624+00"
+    },
+    {
+      "Id": 2,
+      "MediaFileId": 82347,
+      "Provider": "MusicBrainz",
+      "RecordingId": "b4b628c9-192a-4be6-b14d-d9f5a52081bc",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 0.995,
+      "Status": "approved",
+      "MatchedAt": "2026-09-06 07:59:22.113074+00"
+    },
+    {
+      "Id": 3,
+      "MediaFileId": 133422,
+      "Provider": "MusicBrainz",
+      "RecordingId": "9846e3f4-7bb9-49be-8e91-837a5ee5cefb",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-06 08:00:15.418196+00"
+    },
+    {
+      "Id": 4,
+      "MediaFileId": 82305,
+      "Provider": "MusicBrainz",
+      "RecordingId": "e7a91ede-9e2f-4e13-b4f2-77f7eceb85a2",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 0.995,
+      "Status": "approved",
+      "MatchedAt": "2026-09-06 08:00:28.358731+00"
+    },
+    {
+      "Id": 5,
+      "MediaFileId": 97370,
+      "Provider": "MusicBrainz",
+      "RecordingId": "48437cb5-e1eb-4146-9d5f-2e3c18783bfb",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-06 08:00:50.062231+00"
+    },
+    {
+      "Id": 6,
+      "MediaFileId": 83262,
+      "Provider": "MusicBrainz",
+      "RecordingId": "e3030c56-5367-4229-8c86-51755a81cfc1",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-06 08:00:54.462324+00"
+    },
+    {
+      "Id": 7,
+      "MediaFileId": 133405,
+      "Provider": "MusicBrainz",
+      "RecordingId": "d2fbde9c-d1af-468e-ada5-764132fbb4cb",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-06 08:01:14.61522+00"
+    },
+    {
+      "Id": 8,
+      "MediaFileId": 3853,
+      "Provider": "MusicBrainz",
+      "RecordingId": "709b3295-51bb-4785-b743-17229fbce8eb",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-06 08:01:49.340692+00"
+    },
+    {
+      "Id": 9,
+      "MediaFileId": 5000,
+      "Provider": "MusicBrainz",
+      "RecordingId": "fa8be6ba-0a11-4b02-81c0-043ebf5ae41b",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-06 08:02:07.963772+00"
+    },
+    {
+      "Id": 10,
+      "MediaFileId": 24148,
+      "Provider": "MusicBrainz",
+      "RecordingId": "e587186c-903b-4196-9b3c-0067474473fa",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-06 08:02:22.596842+00"
+    },
+    {
+      "Id": 11,
+      "MediaFileId": 92781,
+      "Provider": "MusicBrainz",
+      "RecordingId": "464988d8-a211-4149-b125-e33381d2fa65",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-06 08:02:42.915535+00"
+    },
+    {
+      "Id": 12,
+      "MediaFileId": 172,
+      "Provider": "MusicBrainz",
+      "RecordingId": "f401871f-8a7d-4d8a-b2b6-dafc492587c0",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 0.995,
+      "Status": "approved",
+      "MatchedAt": "2026-09-06 08:03:05.154478+00"
+    },
+    {
+      "Id": 13,
+      "MediaFileId": 133297,
+      "Provider": "MusicBrainz",
+      "RecordingId": "03cf3226-9440-4add-92ff-d33d86299194",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-06 08:03:27.286479+00"
+    },
+    {
+      "Id": 14,
+      "MediaFileId": 133673,
+      "Provider": "MusicBrainz",
+      "RecordingId": "58785598-f0ff-400a-8b3d-015a4bac36c9",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-06 08:03:31.604383+00"
+    },
+    {
+      "Id": 15,
+      "MediaFileId": 1699,
+      "Provider": "MusicBrainz",
+      "RecordingId": "48437cb5-e1eb-4146-9d5f-2e3c18783bfb",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-06 08:03:48.177233+00"
+    },
+    {
+      "Id": 16,
+      "MediaFileId": 133411,
+      "Provider": "MusicBrainz",
+      "RecordingId": "11477816-f182-4785-9e39-0894eae9499b",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-06 08:04:07.27825+00"
+    },
+    {
+      "Id": 17,
+      "MediaFileId": 97371,
+      "Provider": "MusicBrainz",
+      "RecordingId": "58785598-f0ff-400a-8b3d-015a4bac36c9",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-06 08:04:09.817826+00"
+    },
+    {
+      "Id": 18,
+      "MediaFileId": 171,
+      "Provider": "MusicBrainz",
+      "RecordingId": "3950a2eb-2192-49b0-9912-05bffd7d328a",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 0.995,
+      "Status": "approved",
+      "MatchedAt": "2026-09-06 08:04:17.487225+00"
+    },
+    {
+      "Id": 19,
+      "MediaFileId": 3,
+      "Provider": "MusicBrainz",
+      "RecordingId": "9a53652a-9ff0-451c-897f-d0bb31c3b829",
+      "MatchMethod": "MetadataFuzzy",
+      "Confidence": 0.995,
+      "Status": "approved",
+      "MatchedAt": "2026-09-07 11:16:37.81072+00"
+    },
+    {
+      "Id": 20,
+      "MediaFileId": 3,
+      "Provider": "MusicBrainzLocal",
+      "RecordingId": "d1b9c306-ea8c-4b1e-baca-24d93701e70d",
+      "MatchMethod": "AuditedPilotRound2_20260908",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-08 13:53:16.558135+00"
+    },
+    {
+      "Id": 21,
+      "MediaFileId": 5,
+      "Provider": "MusicBrainzLocal",
+      "RecordingId": "453f8ecf-e853-45ec-8335-d240a15cd75f",
+      "MatchMethod": "AuditedPilotRound2_20260908",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-08 13:53:16.558135+00"
+    },
+    {
+      "Id": 22,
+      "MediaFileId": 12,
+      "Provider": "MusicBrainzLocal",
+      "RecordingId": "2e2e66bd-a016-4713-bd7f-dbb4037cc9b8",
+      "MatchMethod": "AuditedPilotRound2_20260908",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-08 13:53:16.558135+00"
+    },
+    {
+      "Id": 23,
+      "MediaFileId": 19,
+      "Provider": "MusicBrainzLocal",
+      "RecordingId": "ce7c1d28-b716-4e42-bd30-40612d6241f8",
+      "MatchMethod": "AuditedPilotRound2_20260908",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-08 13:53:16.558135+00"
+    },
+    {
+      "Id": 24,
+      "MediaFileId": 36,
+      "Provider": "MusicBrainzLocal",
+      "RecordingId": "307ce9da-5690-4e21-ab71-9d12ea106e52",
+      "MatchMethod": "AuditedPilotRound2_20260908",
+      "Confidence": 0.995,
+      "Status": "approved",
+      "MatchedAt": "2026-09-08 13:53:16.558135+00"
+    },
+    {
+      "Id": 25,
+      "MediaFileId": 53,
+      "Provider": "MusicBrainzLocal",
+      "RecordingId": "b6175cb0-6730-4975-b66b-c38ff5d80db2",
+      "MatchMethod": "AuditedPilotRound2_20260908",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-08 13:53:16.558135+00"
+    },
+    {
+      "Id": 26,
+      "MediaFileId": 55,
+      "Provider": "MusicBrainzLocal",
+      "RecordingId": "58558a25-f4a4-4c6f-a6e6-0d04b1a8419d",
+      "MatchMethod": "AuditedPilotRound2_20260908",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-08 13:53:16.558135+00"
+    },
+    {
+      "Id": 27,
+      "MediaFileId": 65,
+      "Provider": "MusicBrainzLocal",
+      "RecordingId": "1ec5f8bb-f073-46f1-95c0-f0dd0a1664b2",
+      "MatchMethod": "AuditedPilotRound2_20260908",
+      "Confidence": 0.995,
+      "Status": "approved",
+      "MatchedAt": "2026-09-08 13:53:16.558135+00"
+    },
+    {
+      "Id": 28,
+      "MediaFileId": 67,
+      "Provider": "MusicBrainzLocal",
+      "RecordingId": "8c8fa617-91ce-4872-a4ec-1d58d628af9a",
+      "MatchMethod": "AuditedPilotRound2_20260908",
+      "Confidence": 1.0,
+      "Status": "approved",
+      "MatchedAt": "2026-09-08 13:53:16.558135+00"
+    },
+    {
+      "Id": 29,
+      "MediaFileId": 71,
+      "Provider": "MusicBrainzLocal",
+      "RecordingId": "b4c986df-547c-441c-b77d-55b88cc200ae",
+      "MatchMethod": "AuditedPilotRound2_20260908",
+      "Confidence": 0.995,
+      "Status": "approved",
+      "MatchedAt": "2026-09-08 13:53:16.558135+00"
+    }
+  ]
+}

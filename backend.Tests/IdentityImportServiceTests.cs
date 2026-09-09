@@ -1,7 +1,11 @@
+using System.Security.Claims;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using WebMusic.Backend.Controllers;
 using WebMusic.Backend.Data;
 using WebMusic.Backend.Models;
 using WebMusic.Backend.Services;
@@ -467,5 +471,53 @@ public class IdentityImportServiceTests : IDisposable
 
         var exLegacy = await Assert.ThrowsAsync<InvalidOperationException>(() => service.RollbackBatchAsync(batch.Id, "admin"));
         Assert.Contains("cannot be rolled back", exLegacy.Message);
+    }
+
+    [Fact]
+    public async Task IdentityImportController_ExtractsUsernameFromNameClaim_NotNumericSub()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        using var db = CreateInMemoryDbContext(dbName);
+
+        var file1 = new MediaFile { Id = 301, ScanSourceId = 1, Title = "Title 1", Artist = "Artist 1", Duration = TimeSpan.FromSeconds(200), FilePath = "/m/1.mp3" };
+        db.MediaFiles.Add(file1);
+        await db.SaveChangesAsync();
+
+        var reportItems = new List<ShadowRunAuditItem>
+        {
+            new(301, "Title 1", "Artist 1", null, 200, "Tier1", 1000, "HighConfidence", 1.0, 50, "mbid-301", "Title 1", "Artist 1", 200, null, false, null)
+        };
+        CreateSyntheticReportAndAuditFiles("user_audit_report", reportItems, new List<int> { 301 });
+
+        var service = new IdentityImportService(db, NullLogger<IdentityImportService>.Instance, null, _configuration);
+        var controller = new IdentityImportController(service, NullLogger<IdentityImportController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                    {
+                        new Claim("sub", "9999"), // Numeric ID
+                        new Claim("name", "audit_operator"), // Real username
+                        new Claim("role", "Admin")
+                    }, "TestAuth"))
+                }
+            }
+        };
+
+        // Create Draft via controller
+        var draftAction = await controller.CreateDraftBatch(new CreateIdentityImportBatchRequest("user_audit_report", new List<int> { 301 }), CancellationToken.None);
+        var createdResult = Assert.IsType<CreatedAtActionResult>(draftAction.Result);
+        var draftBatch = Assert.IsType<IdentityImportBatch>(createdResult.Value);
+        Assert.Equal("audit_operator", draftBatch.CreatedBy);
+        Assert.NotEqual("9999", draftBatch.CreatedBy);
+
+        // Approve via controller
+        var approveAction = await controller.ApproveBatch(draftBatch.Id, CancellationToken.None);
+        var okApproveResult = Assert.IsType<OkObjectResult>(approveAction.Result);
+        var approvedBatch = Assert.IsType<IdentityImportBatch>(okApproveResult.Value);
+        Assert.Equal("audit_operator", approvedBatch.ApprovedBy);
+        Assert.NotEqual("9999", approvedBatch.ApprovedBy);
     }
 }

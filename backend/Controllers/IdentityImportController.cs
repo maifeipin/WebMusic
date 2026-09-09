@@ -22,8 +22,10 @@ public class IdentityImportController : ControllerBase
 
     private string GetCurrentUsername()
     {
-        return User.FindFirst(ClaimTypes.Name)?.Value
-               ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+        return User.FindFirst("name")?.Value
+               ?? User.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Name)?.Value
+               ?? User.FindFirst(ClaimTypes.Name)?.Value
+               ?? User.Identity?.Name
                ?? "admin";
     }
 
