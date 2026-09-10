@@ -134,4 +134,17 @@ public class MediaTitlePrefixNormalizerTests
         Assert.False(result.IsAdmitted);
         Assert.Equal(input, result.NewTitle);
     }
+
+    [Fact]
+    public void Normalize_WithTrailingOrLeadingWhitespace_PreservesRawOldTitleAndCleansNewTitle()
+    {
+        // Regression test for production scenario (MediaFile ID 4750)
+        var rawInput = "  136.Know Oneself And Each Other  (Cocteau Twins cover of ''Know Who You Are At Every Age'') \t";
+        var result = MediaTitlePrefixNormalizer.Normalize(rawInput);
+
+        Assert.True(result.IsAdmitted);
+        Assert.Equal("ExplicitDelimiterIndex", result.Rule);
+        Assert.Equal(rawInput, result.OldTitle); // Raw input strictly preserved without premature trimming
+        Assert.Equal("Know Oneself And Each Other  (Cocteau Twins cover of ''Know Who You Are At Every Age'')", result.NewTitle);
+    }
 }

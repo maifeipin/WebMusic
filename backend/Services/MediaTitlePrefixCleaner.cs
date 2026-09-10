@@ -132,7 +132,7 @@ public static class MediaTitlePrefixCleaner
                     admittedItems.Add(new TitlePrefixCandidateItem(
                         MediaFileId: media.Id,
                         FilePath: media.FilePath,
-                        OldTitle: norm.OldTitle,
+                        OldTitle: media.Title,
                         NewTitle: norm.NewTitle,
                         Rule: norm.Rule,
                         Confidence: norm.Confidence,
@@ -279,7 +279,8 @@ public static class MediaTitlePrefixCleaner
                 throw new InvalidOperationException($"MediaFile ID {item.MediaFileId} not found in database.");
             }
 
-            if (!string.Equals(media.Title, item.OldTitle, StringComparison.Ordinal))
+            if (!string.Equals(media.Title, item.OldTitle, StringComparison.Ordinal) &&
+                !string.Equals(media.Title.Trim(), item.OldTitle.Trim(), StringComparison.Ordinal))
             {
                 throw new InvalidOperationException($"Title drift detected on MediaFile ID {item.MediaFileId}! Database has '{media.Title}', report expected '{item.OldTitle}'.");
             }

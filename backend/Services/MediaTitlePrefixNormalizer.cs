@@ -64,6 +64,7 @@ public static class MediaTitlePrefixNormalizer
                 RejectionReason: "Title is empty or whitespace.");
         }
 
+        var originalTitle = title;
         var trimmed = title.Trim();
 
         // 1. Full wrap book title brackets: 《歌名》 -> 歌名
@@ -75,7 +76,7 @@ public static class MediaTitlePrefixNormalizer
             {
                 return new TitlePrefixNormalizationResult(
                     IsAdmitted: false,
-                    OldTitle: trimmed,
+                    OldTitle: originalTitle,
                     NewTitle: trimmed,
                     Rule: "FullBookTitleBrackets",
                     Confidence: 0.0,
@@ -83,7 +84,7 @@ public static class MediaTitlePrefixNormalizer
             }
             return new TitlePrefixNormalizationResult(
                 IsAdmitted: true,
-                OldTitle: trimmed,
+                OldTitle: originalTitle,
                 NewTitle: inner,
                 Rule: "FullBookTitleBrackets",
                 Confidence: 1.0);
@@ -96,7 +97,7 @@ public static class MediaTitlePrefixNormalizer
             {
                 return new TitlePrefixNormalizationResult(
                     IsAdmitted: false,
-                    OldTitle: trimmed,
+                    OldTitle: originalTitle,
                     NewTitle: trimmed,
                     Rule: "PureNumberFallbackToFilename",
                     Confidence: 0.0,
@@ -108,7 +109,7 @@ public static class MediaTitlePrefixNormalizer
             {
                 return new TitlePrefixNormalizationResult(
                     IsAdmitted: false,
-                    OldTitle: trimmed,
+                    OldTitle: originalTitle,
                     NewTitle: trimmed,
                     Rule: "PureNumberFallbackToFilename",
                     Confidence: 0.0,
@@ -123,7 +124,7 @@ public static class MediaTitlePrefixNormalizer
             {
                 return new TitlePrefixNormalizationResult(
                     IsAdmitted: false,
-                    OldTitle: trimmed,
+                    OldTitle: originalTitle,
                     NewTitle: trimmed,
                     Rule: "PureNumberFallbackToFilename",
                     Confidence: 0.0,
@@ -132,7 +133,7 @@ public static class MediaTitlePrefixNormalizer
 
             return new TitlePrefixNormalizationResult(
                 IsAdmitted: true,
-                OldTitle: trimmed,
+                OldTitle: originalTitle,
                 NewTitle: candidateTitle,
                 Rule: "PureNumberFallbackToFilename",
                 Confidence: 0.9);
@@ -148,7 +149,7 @@ public static class MediaTitlePrefixNormalizer
             {
                 return new TitlePrefixNormalizationResult(
                     IsAdmitted: false,
-                    OldTitle: trimmed,
+                    OldTitle: originalTitle,
                     NewTitle: trimmed,
                     Rule: "ExplicitTrackKeyword",
                     Confidence: 0.0,
@@ -161,7 +162,7 @@ public static class MediaTitlePrefixNormalizer
             {
                 return new TitlePrefixNormalizationResult(
                     IsAdmitted: false,
-                    OldTitle: trimmed,
+                    OldTitle: originalTitle,
                     NewTitle: trimmed,
                     Rule: "ExplicitTrackKeyword",
                     Confidence: 0.0,
@@ -170,7 +171,7 @@ public static class MediaTitlePrefixNormalizer
 
             return new TitlePrefixNormalizationResult(
                 IsAdmitted: true,
-                OldTitle: trimmed,
+                OldTitle: originalTitle,
                 NewTitle: rest,
                 Rule: "ExplicitTrackKeyword",
                 Confidence: 1.0);
@@ -186,7 +187,7 @@ public static class MediaTitlePrefixNormalizer
             {
                 return new TitlePrefixNormalizationResult(
                     IsAdmitted: false,
-                    OldTitle: trimmed,
+                    OldTitle: originalTitle,
                     NewTitle: trimmed,
                     Rule: "BracketedTrackNumber",
                     Confidence: 0.0,
@@ -200,7 +201,7 @@ public static class MediaTitlePrefixNormalizer
             {
                 return new TitlePrefixNormalizationResult(
                     IsAdmitted: false,
-                    OldTitle: trimmed,
+                    OldTitle: originalTitle,
                     NewTitle: trimmed,
                     Rule: "BracketedTrackNumber",
                     Confidence: 0.0,
@@ -209,7 +210,7 @@ public static class MediaTitlePrefixNormalizer
 
             return new TitlePrefixNormalizationResult(
                 IsAdmitted: true,
-                OldTitle: trimmed,
+                OldTitle: originalTitle,
                 NewTitle: rest,
                 Rule: "BracketedTrackNumber",
                 Confidence: 1.0);
@@ -222,7 +223,7 @@ public static class MediaTitlePrefixNormalizer
             var rest = CleanPostNumberText(multiSpaceMatch.Groups[2].Value);
             return new TitlePrefixNormalizationResult(
                 IsAdmitted: false,
-                OldTitle: trimmed,
+                OldTitle: originalTitle,
                 NewTitle: rest,
                 Rule: "MultipleSpacesCandidate",
                 Confidence: 0.7,
@@ -243,7 +244,7 @@ public static class MediaTitlePrefixNormalizer
             {
                 return new TitlePrefixNormalizationResult(
                     IsAdmitted: false,
-                    OldTitle: trimmed,
+                    OldTitle: originalTitle,
                     NewTitle: trimmed,
                     Rule: "ExplicitDelimiterIndex",
                     Confidence: 0.0,
@@ -261,7 +262,7 @@ public static class MediaTitlePrefixNormalizer
             {
                 return new TitlePrefixNormalizationResult(
                     IsAdmitted: false,
-                    OldTitle: trimmed,
+                    OldTitle: originalTitle,
                     NewTitle: trimmed,
                     Rule: "ExplicitDelimiterIndex",
                     Confidence: 0.0,
@@ -270,7 +271,7 @@ public static class MediaTitlePrefixNormalizer
 
             return new TitlePrefixNormalizationResult(
                 IsAdmitted: true,
-                OldTitle: trimmed,
+                OldTitle: originalTitle,
                 NewTitle: rest,
                 Rule: "ExplicitDelimiterIndex",
                 Confidence: 1.0);
@@ -281,7 +282,7 @@ public static class MediaTitlePrefixNormalizer
         {
             return new TitlePrefixNormalizationResult(
                 IsAdmitted: false,
-                OldTitle: trimmed,
+                OldTitle: originalTitle,
                 NewTitle: trimmed,
                 Rule: "SingleSpaceAfterNumber",
                 Confidence: 0.0,
@@ -291,7 +292,7 @@ public static class MediaTitlePrefixNormalizer
         // No admitted prefix found
         return new TitlePrefixNormalizationResult(
             IsAdmitted: false,
-            OldTitle: trimmed,
+            OldTitle: originalTitle,
             NewTitle: trimmed,
             Rule: "None",
             Confidence: 0.0,

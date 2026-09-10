@@ -299,4 +299,41 @@ public class MediaTitlePrefixCleanerIntegrationTests : IDisposable
         Assert.Contains("晴天", manifestContent);
         Assert.Contains("七里香", manifestContent);
     }
+
+    [Fact]
+    public async Task ApplyAsync_WhenTitleHasTrailingWhitespace_AllowsTrimmedToleranceWithoutDriftError()
+    {
+        // Regression test for production scenario (MediaFile ID 4750)
+        var dbName = "db_whitespace_tolerance_" + Guid.NewGuid().ToString("N");
+        using var db = CreateInMemoryDbContext(dbName);
+
+        var media = new MediaFile
+        {
+            Id = 4750,
+            ScanSourceId = 1,
+            FilePath = "/music/4750.mp3",
+            Title = "136.Know Oneself  ", // Database title has trailing whitespace
+            Artist = "Artist",
+            Album = "Unknown Album",
+            Duration = TimeSpan.FromSeconds(180)
+        };
+        db.MediaFiles.Add(media);
+        await db.SaveChangesAsync();
+
+        var currentFp = LocalIdentityAutoEligibilityPolicy.ComputeInputFingerprint(media);
+
+        var admitted = new List<TitlePrefixCandidateItem>
+        {
+            new(4750, "/music/4750.mp3", "136.Know Oneself", "Know Oneself", "ExplicitDelimiterIndex", 1.0, currentFp, "new_fp")
+        };
+
+        var (reportPath, realSha) = CreateSyntheticReportFile(admitted);
+
+        var result = await MediaTitlePrefixCleaner.ApplyAsync(db, reportPath, realSha, expectedCount: 1);
+
+        Assert.Equal(1, result.UpdatedCount);
+        var freshMedia = await db.MediaFiles.FindAsync(4750);
+        Assert.NotNull(freshMedia);
+        Assert.Equal("Know Oneself", freshMedia.Title);
+    }
 }
