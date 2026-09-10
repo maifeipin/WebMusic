@@ -163,6 +163,145 @@ public class LocalIdentityAutoScanServiceTests
     }
 
     [Fact]
+    public async Task ApplyMatchedIdentities_AtomicallyPersistsIdentityMetadataScoreAndState()
+    {
+        await using var db = CreateDb();
+        db.MediaFiles.Add(new MediaFile
+        {
+            Id = 1,
+            ScanSourceId = 1,
+            FilePath = "smb://test/apply.mp3",
+            Title = "Track",
+            Artist = "Artist",
+            Album = "Album",
+            Duration = TimeSpan.FromSeconds(200)
+        });
+        await db.SaveChangesAsync();
+
+        var details = new Mock<ILocalMusicBrainzDetailService>();
+        details.Setup(service => service.GetRecordingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LocalMusicBrainzRecordingDetails(
+                "a0c34a5c-523a-4d58-b5ec-8d6ed95596cc",
+                "Track",
+                new[] { "USABC1234567" },
+                4.5,
+                10,
+                "http://192.168.2.18:5050/recording/a",
+                "payload-hash",
+                "Artist",
+                200,
+                new[] { "release-id" },
+                new[] { "release-group-id" },
+                new[] { "tag" },
+                new[] { "genre" }));
+        var signals = new MusicBrainzCommunitySignalService(db);
+        var service = new LocalIdentityAutoScanService(
+            db,
+            LocalService(media => Exact(media)),
+            NullLogger<LocalIdentityAutoScanService>.Instance,
+            details.Object,
+            signals);
+
+        var report = await service.ScanAsync(new LocalIdentityAutoScanRequest(
+            MaxItems: 1,
+            DryRun: false,
+            PersistState: true,
+            MirrorVersion: "mirror:v1",
+            ApplyMatchedIdentities: true));
+
+        Assert.Equal(1, report.IdentitiesCreated);
+        Assert.Equal(1, report.SignalsUpdated);
+        var identity = await db.MediaIdentities.SingleAsync();
+        Assert.Equal("MusicBrainzLocal", identity.Provider);
+        Assert.Equal(LocalIdentityAutoEligibilityPolicy.Version, identity.MatchMethod);
+        Assert.Equal("USABC1234567", identity.ISRC);
+        Assert.Equal("approved", identity.Status);
+        Assert.Equal("Matched", (await db.MediaIdentityScanStates.SingleAsync()).Outcome);
+        var reference = await db.MediaExternalReferences.Include(value => value.Signals).SingleAsync();
+        Assert.Equal("a0c34a5c-523a-4d58-b5ec-8d6ed95596cc", reference.ExternalId);
+        Assert.Contains("release-group-id", reference.MetadataJson);
+        Assert.Equal(2, reference.Signals.Count);
+        Assert.Equal(4.5 * Math.Log(11), reference.Signals.Single(value => value.SignalKey == "CommunityScore").RawValue!.Value, 8);
+    }
+
+    [Fact]
+    public async Task ApplyMatchedIdentities_LowConfidencePersistsOnlyScanState()
+    {
+        await using var db = CreateDb();
+        db.MediaFiles.Add(new MediaFile
+        {
+            Id = 1,
+            ScanSourceId = 1,
+            FilePath = "smb://test/low.mp3",
+            Title = "Track",
+            Artist = "Artist",
+            Album = "Album",
+            Duration = TimeSpan.FromSeconds(200)
+        });
+        await db.SaveChangesAsync();
+        var service = new LocalIdentityAutoScanService(
+            db,
+            LocalService(media => Exact(media, 0.9)),
+            NullLogger<LocalIdentityAutoScanService>.Instance,
+            Mock.Of<ILocalMusicBrainzDetailService>(),
+            Mock.Of<IMusicBrainzCommunitySignalService>());
+
+        var report = await service.ScanAsync(new LocalIdentityAutoScanRequest(
+            MaxItems: 1,
+            DryRun: false,
+            PersistState: true,
+            MirrorVersion: "mirror:v1",
+            ApplyMatchedIdentities: true));
+
+        Assert.Equal(0, report.IdentitiesCreated);
+        Assert.Equal(0, await db.MediaIdentities.CountAsync());
+        Assert.Equal("Unmatched", (await db.MediaIdentityScanStates.SingleAsync()).Outcome);
+    }
+
+    [Fact]
+    public async Task ApplyMatchedIdentities_WhenSignalPersistenceFails_RollsBackEntireBatch()
+    {
+        await using var db = CreateDb();
+        db.MediaFiles.Add(new MediaFile
+        {
+            Id = 1,
+            ScanSourceId = 1,
+            FilePath = "smb://test/rollback.mp3",
+            Title = "Track",
+            Artist = "Artist",
+            Album = "Album",
+            Duration = TimeSpan.FromSeconds(200)
+        });
+        await db.SaveChangesAsync();
+        var details = new Mock<ILocalMusicBrainzDetailService>();
+        details.Setup(service => service.GetRecordingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LocalMusicBrainzRecordingDetails(
+                "a0c34a5c-523a-4d58-b5ec-8d6ed95596cc", "Track", Array.Empty<string>(), null, null,
+                "http://192.168.2.18:5050/recording/a", "payload", "Artist", 200));
+        var failingSignals = new Mock<IMusicBrainzCommunitySignalService>();
+        failingSignals.Setup(service => service.UpsertAsync(It.IsAny<MediaIdentity>(), It.IsAny<LocalMusicBrainzRecordingDetails>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("simulated signal failure"));
+        var service = new LocalIdentityAutoScanService(
+            db,
+            LocalService(media => Exact(media)),
+            NullLogger<LocalIdentityAutoScanService>.Instance,
+            details.Object,
+            failingSignals.Object);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.ScanAsync(new LocalIdentityAutoScanRequest(
+            MaxItems: 1,
+            DryRun: false,
+            PersistState: true,
+            MirrorVersion: "mirror:v1",
+            ApplyMatchedIdentities: true)));
+
+        db.ChangeTracker.Clear();
+        Assert.Equal(0, await db.MediaIdentities.CountAsync());
+        Assert.Equal(0, await db.MediaIdentityScanStates.CountAsync());
+        Assert.Equal(0, await db.MediaExternalReferences.CountAsync());
+    }
+
+    [Fact]
     public async Task IncrementalScan_ChunksPastPreviouslyScannedItems_AndAdvancesCursor()
     {
         await using var db = CreateDb();

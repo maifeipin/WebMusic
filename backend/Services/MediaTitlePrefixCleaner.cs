@@ -232,14 +232,36 @@ public static class MediaTitlePrefixCleaner
             throw new InvalidOperationException($"Admitted item count in report ({report.AdmittedItems.Count}) does not match expected count ({expectedCount}).");
         }
 
+        if (report.AdmittedCount != report.AdmittedItems.Count ||
+            report.AdmittedItems.Select(item => item.MediaFileId).Distinct().Count() != report.AdmittedItems.Count)
+        {
+            throw new InvalidOperationException("Dry run report admitted counts or MediaFileIds are inconsistent.");
+        }
+
+        foreach (var item in report.AdmittedItems)
+        {
+            var normalized = MediaTitlePrefixNormalizer.Normalize(item.OldTitle, item.FilePath);
+            if (!normalized.IsAdmitted ||
+                !string.Equals(normalized.NewTitle, item.NewTitle, StringComparison.Ordinal) ||
+                !string.Equals(normalized.Rule, item.Rule, StringComparison.Ordinal) ||
+                Math.Abs(normalized.Confidence - item.Confidence) > 0.000001)
+            {
+                throw new InvalidOperationException($"Report candidate for MediaFile ID {item.MediaFileId} does not match the current title normalization policy.");
+            }
+        }
+
         var targetIds = report.AdmittedItems.Select(x => x.MediaFileId).ToList();
 
-        // Use RepeatableRead to prevent non-repeatable reads and phantom updates
-        await using var tx = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, cancellationToken);
+        await using var tx = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken);
 
         // In PostgreSQL, acquire pessimistic row-level locks (FOR UPDATE) to eliminate any TOCTOU window
         if (db.Database.IsNpgsql() && targetIds.Count > 0)
         {
+            // Prevent a concurrent identity writer from inserting a manual lock
+            // between the conflict check and the title update.
+            await db.Database.ExecuteSqlRawAsync(
+                "LOCK TABLE \"MediaIdentities\" IN SHARE ROW EXCLUSIVE MODE;",
+                cancellationToken);
             var p0 = new Npgsql.NpgsqlParameter("p0", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Integer)
             {
                 Value = targetIds.ToArray()
@@ -285,10 +307,41 @@ public static class MediaTitlePrefixCleaner
                 throw new InvalidOperationException($"Title drift detected on MediaFile ID {item.MediaFileId}! Database has '{media.Title}', report expected '{item.OldTitle}'.");
             }
 
+
+            if (!string.Equals(media.FilePath, item.FilePath, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException($"File path drift detected on MediaFile ID {item.MediaFileId}.");
+            }
+
             var currentFp = LocalIdentityAutoEligibilityPolicy.ComputeInputFingerprint(media);
             if (!string.Equals(currentFp, item.OldInputFingerprint, StringComparison.Ordinal))
             {
                 throw new InvalidOperationException($"Fingerprint drift detected on MediaFile ID {item.MediaFileId}! Database has '{currentFp}', report expected '{item.OldInputFingerprint}'.");
+            }
+
+
+            var normalized = MediaTitlePrefixNormalizer.Normalize(media.Title, media.FilePath);
+            if (!normalized.IsAdmitted ||
+                !string.Equals(normalized.NewTitle, item.NewTitle, StringComparison.Ordinal) ||
+                !string.Equals(normalized.Rule, item.Rule, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException($"Normalization policy drift detected on MediaFile ID {item.MediaFileId}.");
+            }
+
+            var normalizedMedia = new MediaFile
+            {
+                Id = media.Id,
+                Title = normalized.NewTitle,
+                Artist = media.Artist,
+                Album = media.Album,
+                Duration = media.Duration,
+                FileHash = media.FileHash,
+                FilePath = media.FilePath
+            };
+            var expectedNewFingerprint = LocalIdentityAutoEligibilityPolicy.ComputeInputFingerprint(normalizedMedia);
+            if (!string.Equals(expectedNewFingerprint, item.InputFingerprint, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException($"Normalized fingerprint mismatch on MediaFile ID {item.MediaFileId}.");
             }
 
             // Apply title normalization (Artist and Album are strictly unmodified)

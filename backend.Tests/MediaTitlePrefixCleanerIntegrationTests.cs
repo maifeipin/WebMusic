@@ -69,6 +69,18 @@ public class MediaTitlePrefixCleanerIntegrationTests : IDisposable
         return (reportPath, sha256Hex);
     }
 
+    private static string ComputeNewFingerprint(MediaFile media, string newTitle) =>
+        LocalIdentityAutoEligibilityPolicy.ComputeInputFingerprint(new MediaFile
+        {
+            Id = media.Id,
+            FilePath = media.FilePath,
+            FileHash = media.FileHash,
+            Title = newTitle,
+            Artist = media.Artist,
+            Album = media.Album,
+            Duration = media.Duration
+        });
+
     [Fact]
     public async Task ApplyAsync_WhenShaMismatch_AbortsImmediatelyWithoutDatabaseRead()
     {
@@ -260,8 +272,8 @@ public class MediaTitlePrefixCleanerIntegrationTests : IDisposable
 
         var admitted = new List<TitlePrefixCandidateItem>
         {
-            new(101, m1.FilePath, "01. 晴天", "晴天", "ExplicitDelimiterIndex", 1.0, fp1, "new_fp1"),
-            new(102, m2.FilePath, "Track 02 - 七里香", "七里香", "ExplicitDelimiterIndex", 1.0, fp2, "new_fp2")
+            new(101, m1.FilePath, "01. 晴天", "晴天", "ExplicitDelimiterIndex", 1.0, fp1, ComputeNewFingerprint(m1, "晴天")),
+            new(102, m2.FilePath, "Track 02 - 七里香", "七里香", "ExplicitTrackKeyword", 1.0, fp2, ComputeNewFingerprint(m2, "七里香"))
         };
 
         var (reportPath, realSha) = CreateSyntheticReportFile(admitted);
@@ -324,7 +336,7 @@ public class MediaTitlePrefixCleanerIntegrationTests : IDisposable
 
         var admitted = new List<TitlePrefixCandidateItem>
         {
-            new(4750, "/music/4750.mp3", "136.Know Oneself", "Know Oneself", "ExplicitDelimiterIndex", 1.0, currentFp, "new_fp")
+            new(4750, "/music/4750.mp3", "136.Know Oneself", "Know Oneself", "ExplicitDelimiterIndex", 1.0, currentFp, ComputeNewFingerprint(media, "Know Oneself"))
         };
 
         var (reportPath, realSha) = CreateSyntheticReportFile(admitted);
@@ -335,5 +347,44 @@ public class MediaTitlePrefixCleanerIntegrationTests : IDisposable
         var freshMedia = await db.MediaFiles.FindAsync(4750);
         Assert.NotNull(freshMedia);
         Assert.Equal("Know Oneself", freshMedia.Title);
+    }
+
+    [Fact]
+    public async Task ApplyAsync_WhenReportContainsPolicyInconsistentNewTitle_RejectsBeforeWrite()
+    {
+        var dbName = "db_tampered_report_" + Guid.NewGuid().ToString("N");
+        using var db = CreateInMemoryDbContext(dbName);
+        var media = new MediaFile
+        {
+            Id = 500,
+            ScanSourceId = 1,
+            FilePath = "/music/01.mp3",
+            Title = "01. Original",
+            Artist = "Artist",
+            Album = "Unknown Album",
+            Duration = TimeSpan.FromSeconds(180)
+        };
+        db.MediaFiles.Add(media);
+        await db.SaveChangesAsync();
+
+        var admitted = new List<TitlePrefixCandidateItem>
+        {
+            new(
+                media.Id,
+                media.FilePath,
+                media.Title,
+                "Injected title",
+                "ExplicitDelimiterIndex",
+                1.0,
+                LocalIdentityAutoEligibilityPolicy.ComputeInputFingerprint(media),
+                ComputeNewFingerprint(media, "Injected title"))
+        };
+        var (reportPath, realSha) = CreateSyntheticReportFile(admitted);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            MediaTitlePrefixCleaner.ApplyAsync(db, reportPath, realSha, expectedCount: 1));
+
+        Assert.Contains("does not match the current title normalization policy", error.Message);
+        Assert.Equal("01. Original", (await db.MediaFiles.FindAsync(media.Id))!.Title);
     }
 }

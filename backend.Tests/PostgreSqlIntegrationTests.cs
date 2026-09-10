@@ -193,6 +193,73 @@ public class PostgreSqlIntegrationTests : IClassFixture<PostgreSqlFixture>
     }
 
     [Fact]
+    public async Task LocalIdentityAutoScan_ApplyMatchedIdentity_AtomicallyPersistsCanonicalMetadataAndScore()
+    {
+        using var db = _fixture.CreateDbContext();
+        await ResetStateAsync(db);
+        var source = await GetOrCreateScanSourceAsync(db);
+        var media = new MediaFile
+        {
+            ScanSourceId = source.Id,
+            Title = "Atomic Identity Track",
+            Artist = "Integration Artist",
+            Album = "Integration Album",
+            FilePath = "/test/atomic-identity-" + Guid.NewGuid().ToString("N") + ".mp3",
+            Duration = TimeSpan.FromSeconds(200)
+        };
+        db.MediaFiles.Add(media);
+        await db.SaveChangesAsync();
+
+        const string mbid = "e0c34a5c-523a-4d58-b5ec-8d6ed95596cc";
+        var search = new Mock<ILocalMusicBrainzService>();
+        search.SetupGet(service => service.BaseUrl).Returns("http://192.168.2.18:5050");
+        search.Setup(service => service.ScanMediaIdentityAsync(It.IsAny<MediaFile>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((MediaFile file, CancellationToken _) => new LocalMusicBrainzScanResult(
+                true,
+                new LocalMusicBrainzCandidate(mbid, "release", "artist", file.Title, file.Artist, file.Duration, null, 1, false),
+                200));
+        var details = new Mock<ILocalMusicBrainzDetailService>();
+        details.Setup(service => service.GetRecordingAsync(mbid, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LocalMusicBrainzRecordingDetails(
+                mbid,
+                media.Title,
+                new[] { "USABC1234567" },
+                4.8,
+                25,
+                $"http://192.168.2.18:5050/recording/{mbid}",
+                "payload-hash",
+                media.Artist,
+                200,
+                new[] { "release" },
+                new[] { "release-group" },
+                new[] { "tag" },
+                new[] { "genre" }));
+        var service = new LocalIdentityAutoScanService(
+            db,
+            search.Object,
+            NullLogger<LocalIdentityAutoScanService>.Instance,
+            details.Object,
+            new MusicBrainzCommunitySignalService(db));
+
+        var report = await service.ScanAsync(new LocalIdentityAutoScanRequest(
+            MaxItems: 1,
+            DryRun: false,
+            PersistState: true,
+            MirrorVersion: "test-mirror:v3",
+            ApplyMatchedIdentities: true));
+
+        Assert.Equal(1, report.IdentitiesCreated);
+        Assert.Equal(1, report.SignalsUpdated);
+        Assert.Equal(1, await db.MediaIdentities.CountAsync(identity => identity.MediaFileId == media.Id));
+        Assert.Equal(1, await db.MediaIdentityScanStates.CountAsync(state => state.MediaFileId == media.Id));
+        Assert.Equal(1, await db.MediaExternalReferences.CountAsync(reference => reference.MediaFileId == media.Id));
+        Assert.Equal(2, await db.MediaExternalSignals.CountAsync());
+        var score = await db.MediaExternalSignals.SingleAsync(signal => signal.SignalKey == "CommunityScore");
+        Assert.Equal(25, score.SampleSize);
+        Assert.NotNull(score.NormalizedScore);
+    }
+
+    [Fact]
     public async Task ExternalSignalRefresh_DryRun_PostgreSql_RejectsWritesWith25006()
     {
         using var db = _fixture.CreateDbContext();

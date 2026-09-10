@@ -246,8 +246,9 @@ if (args.Contains("verify-baseline"))
     return;
 }
 
-// Local identity auto-scan CLI. It is deliberately before migrations, account
-// bootstrap and cleanup. Production only permits its physical zero-write mode.
+// Local identity auto-scan CLI. It is deliberately before account bootstrap
+// and cleanup. Dry-run remains physically read-only; explicit persistence is a
+// bounded (max 100) operational command with its own transaction and gates.
 if (args.Contains("local-identity-auto-scan", StringComparer.OrdinalIgnoreCase))
 {
     using var scanScope = app.Services.CreateScope();
@@ -280,9 +281,10 @@ if (args.Contains("local-identity-auto-scan", StringComparer.OrdinalIgnoreCase))
     }
 
     var persistState = args.Contains("--persist-state", StringComparer.OrdinalIgnoreCase);
-    if (persistState && app.Environment.IsProduction())
+    var applyIdentities = args.Contains("--apply-identities", StringComparer.OrdinalIgnoreCase);
+    if (applyIdentities && !persistState)
     {
-        throw new InvalidOperationException("Production local-identity-auto-scan is dry-run only. Persisted scan state requires a separately approved release.");
+        throw new InvalidOperationException("--apply-identities requires --persist-state so every decision has durable scan provenance.");
     }
 
     var effectiveMirrorVersion = !string.IsNullOrWhiteSpace(mirrorVersion)
@@ -302,9 +304,10 @@ if (args.Contains("local-identity-auto-scan", StringComparer.OrdinalIgnoreCase))
         afterId,
         DryRun: !persistState,
         PersistState: persistState,
-        MirrorVersion: effectiveMirrorVersion);
+        MirrorVersion: effectiveMirrorVersion,
+        ApplyMatchedIdentities: applyIdentities);
     var report = await scanner.ScanAsync(request);
-    Console.WriteLine($"Local identity auto scan completed: evaluated={report.Evaluated}, matched={report.Matched}, unmatched={report.Unmatched}, skipped={report.Skipped}, failed={report.Failed}");
+    Console.WriteLine($"Local identity auto scan completed: evaluated={report.Evaluated}, matched={report.Matched}, unmatched={report.Unmatched}, skipped={report.Skipped}, failed={report.Failed}, identitiesCreated={report.IdentitiesCreated}, signalsUpdated={report.SignalsUpdated}");
     Console.WriteLine($"Input SHA-256: {report.InputSha256}");
     Console.WriteLine($"Result SHA-256: {report.ResultSha256}");
     if (!string.IsNullOrWhiteSpace(outFile))

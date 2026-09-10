@@ -4,9 +4,9 @@ using System.Text.Json.Serialization;
 namespace WebMusic.Backend.Models;
 
 /// <summary>
-/// Durable progress only for the local MusicBrainz identity scanner.  It is
-/// deliberately separate from MediaIdentity: a scan result is not an approved
-/// identity and never makes a media file eligible for asset enrichment.
+/// Durable progress for the local MusicBrainz identity scanner. It remains
+/// separate from MediaIdentity so rejected/retryable outcomes are auditable;
+/// only an explicit v3 auto-apply run may create an approved identity.
 /// </summary>
 public class MediaIdentityScanState
 {

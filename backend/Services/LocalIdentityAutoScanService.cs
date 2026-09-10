@@ -20,7 +20,8 @@ public sealed record LocalIdentityAutoScanRequest(
     int? AfterMediaFileId = null,
     bool DryRun = true,
     bool PersistState = false,
-    string? MirrorVersion = null);
+    string? MirrorVersion = null,
+    bool ApplyMatchedIdentities = false);
 
 public sealed record LocalIdentityAutoScanItem(
     int MediaFileId,
@@ -41,7 +42,14 @@ public sealed record LocalIdentityAutoScanItem(
     long? MbRatingCount,
     double? MbCommunityScore,
     double? DurationSeconds,
-    long ElapsedMs);
+    long ElapsedMs,
+    string? CanonicalTitle = null,
+    string? CanonicalArtist = null,
+    IReadOnlyList<string>? Tags = null,
+    IReadOnlyList<string>? Genres = null,
+    string? CanonicalUrl = null,
+    string? SourcePayloadHash = null,
+    string? PersistenceStatus = null);
 
 public sealed record LocalIdentityAutoScanReport(
     string Mode,
@@ -55,6 +63,8 @@ public sealed record LocalIdentityAutoScanReport(
     int Unmatched,
     int Skipped,
     int Failed,
+    int IdentitiesCreated,
+    int SignalsUpdated,
     int? ContinuationAfterMediaFileId,
     string InputSha256,
     string ResultSha256,
@@ -72,17 +82,20 @@ public sealed class LocalIdentityAutoScanService : ILocalIdentityAutoScanService
     private readonly AppDbContext _db;
     private readonly ILocalMusicBrainzService _localMusicBrainz;
     private readonly ILocalMusicBrainzDetailService? _localMusicBrainzDetails;
+    private readonly IMusicBrainzCommunitySignalService? _communitySignals;
     private readonly ILogger<LocalIdentityAutoScanService> _logger;
 
     public LocalIdentityAutoScanService(
         AppDbContext db,
         ILocalMusicBrainzService localMusicBrainz,
         ILogger<LocalIdentityAutoScanService> logger,
-        ILocalMusicBrainzDetailService? localMusicBrainzDetails = null)
+        ILocalMusicBrainzDetailService? localMusicBrainzDetails = null,
+        IMusicBrainzCommunitySignalService? communitySignals = null)
     {
         _db = db;
         _localMusicBrainz = localMusicBrainz;
         _localMusicBrainzDetails = localMusicBrainzDetails;
+        _communitySignals = communitySignals;
         _logger = logger;
     }
 
@@ -96,6 +109,16 @@ public sealed class LocalIdentityAutoScanService : ILocalIdentityAutoScanService
         if (request.DryRun && request.PersistState)
         {
             throw new ArgumentException("Dry-run scans cannot persist scan state.", nameof(request));
+        }
+
+        if (request.ApplyMatchedIdentities && (request.DryRun || !request.PersistState))
+        {
+            throw new ArgumentException("Applying matched identities requires a non-dry-run scan with persisted state.", nameof(request));
+        }
+
+        if (request.ApplyMatchedIdentities && (_localMusicBrainzDetails is null || _communitySignals is null))
+        {
+            throw new InvalidOperationException("Applying identities requires the local MusicBrainz detail and community signal services.");
         }
 
         if (request.PersistState && string.IsNullOrWhiteSpace(request.MirrorVersion))
@@ -133,6 +156,7 @@ public sealed class LocalIdentityAutoScanService : ILocalIdentityAutoScanService
                 var decision = LocalIdentityAutoEligibilityPolicy.Evaluate(media, scan);
                 var candidate = scan.BestCandidate;
                 LocalMusicBrainzRecordingDetails? details = null;
+                string? detailError = null;
                 if (decision.Eligible && candidate is not null && _localMusicBrainzDetails is not null)
                 {
                     try
@@ -141,8 +165,19 @@ public sealed class LocalIdentityAutoScanService : ILocalIdentityAutoScanService
                     }
                     catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
                     {
+                        detailError = ex.Message;
                         _logger.LogWarning(ex, "Local MusicBrainz detail snapshot failed for MediaFileId {MediaFileId}; identity candidate remains review-only.", media.Id);
                     }
+                }
+
+                var outcome = decision.Outcome;
+                var reason = decision.Reason;
+                if (request.ApplyMatchedIdentities && decision.Eligible && details is null)
+                {
+                    outcome = "Failed";
+                    reason = detailError is null
+                        ? "Local MusicBrainz detail snapshot was unavailable; identity was not persisted."
+                        : $"Local MusicBrainz detail snapshot failed: {detailError}";
                 }
 
                 items.Add(new LocalIdentityAutoScanItem(
@@ -151,8 +186,8 @@ public sealed class LocalIdentityAutoScanService : ILocalIdentityAutoScanService
                     media.Artist,
                     media.Album,
                     decision.InputFingerprint,
-                    decision.Outcome,
-                    decision.Reason,
+                    outcome,
+                    reason,
                     candidate?.Confidence,
                     decision.Eligible ? candidate?.RecordingId : null,
                     decision.Eligible ? candidate?.ReleaseId : null,
@@ -164,15 +199,50 @@ public sealed class LocalIdentityAutoScanService : ILocalIdentityAutoScanService
                     details?.RatingCount,
                     MusicBrainzCommunitySignalService.ComputeCommunityScore(details?.Rating, details?.RatingCount),
                     candidate?.MatchedDuration.TotalSeconds,
-                    scan.ElapsedMs));
+                    scan.ElapsedMs,
+                    details?.Title,
+                    details?.CanonicalArtist,
+                    details?.Tags,
+                    details?.Genres,
+                    details?.CanonicalUrl,
+                    details?.RawPayloadHash));
+            }
+
+            var identitiesCreated = 0;
+            var signalsUpdated = 0;
+            if (request.PersistState)
+            {
+                await using var writeTransaction = await _db.Database.BeginTransactionAsync(
+                    System.Data.IsolationLevel.Serializable,
+                    cancellationToken);
+
+                if (_db.Database.IsNpgsql())
+                {
+                    await _db.Database.ExecuteSqlRawAsync(
+                        "LOCK TABLE \"MediaIdentities\" IN SHARE ROW EXCLUSIVE MODE;",
+                        cancellationToken);
+                }
+
+                items = await RevalidateForPersistenceAsync(items, cancellationToken);
+                items = items.Select(item => item with
+                {
+                    PersistenceStatus = item.PersistenceStatus ?? (request.ApplyMatchedIdentities && item.Outcome == "Matched"
+                        ? "IdentityAndSignalsApplied"
+                        : "ScanStatePersisted")
+                }).ToList();
+                var transactionalReportHash = ComputeResultHash(items);
+                await PersistStateAsync(items, request, transactionalReportHash, cancellationToken);
+
+                if (request.ApplyMatchedIdentities)
+                {
+                    (identitiesCreated, signalsUpdated) = await PersistMatchedIdentitiesAsync(items, cancellationToken);
+                }
+
+                await writeTransaction.CommitAsync(cancellationToken);
             }
 
             var inputHash = ComputeInputHash(items);
             var reportHash = ComputeResultHash(items);
-            if (request.PersistState)
-            {
-                await PersistStateAsync(items, request, reportHash, cancellationToken);
-            }
 
             var report = new LocalIdentityAutoScanReport(
                 request.Mode.ToString(),
@@ -186,6 +256,8 @@ public sealed class LocalIdentityAutoScanService : ILocalIdentityAutoScanService
                 items.Count(i => i.Outcome == "Unmatched"),
                 items.Count(i => i.Outcome == "Skipped"),
                 items.Count(i => i.Outcome == "Failed"),
+                identitiesCreated,
+                signalsUpdated,
                 highestEvaluatedId,
                 inputHash,
                 reportHash,
@@ -206,6 +278,98 @@ public sealed class LocalIdentityAutoScanService : ILocalIdentityAutoScanService
             }
             ProcessLock.Release();
         }
+    }
+
+    private async Task<List<LocalIdentityAutoScanItem>> RevalidateForPersistenceAsync(
+        IReadOnlyList<LocalIdentityAutoScanItem> items,
+        CancellationToken cancellationToken)
+    {
+        var ids = items.Select(item => item.MediaFileId).ToList();
+        var mediaById = await _db.MediaFiles
+            .Where(media => ids.Contains(media.Id))
+            .ToDictionaryAsync(media => media.Id, cancellationToken);
+        var mediaIdsWithIdentity = await _db.MediaIdentities
+            .Where(identity => ids.Contains(identity.MediaFileId))
+            .Select(identity => identity.MediaFileId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        var identitySet = mediaIdsWithIdentity.ToHashSet();
+
+        return items.Select(item =>
+        {
+            if (!mediaById.TryGetValue(item.MediaFileId, out var media))
+            {
+                return item with { Outcome = "Failed", Reason = "Media file disappeared before persistence.", PersistenceStatus = "RejectedMissingMedia" };
+            }
+
+            var currentFingerprint = LocalIdentityAutoEligibilityPolicy.ComputeInputFingerprint(media);
+            if (!string.Equals(currentFingerprint, item.InputFingerprint, StringComparison.Ordinal))
+            {
+                return item with { Outcome = "Failed", Reason = "Media metadata changed during the scan; retry with the new fingerprint.", PersistenceStatus = "RejectedFingerprintDrift" };
+            }
+
+            if (identitySet.Contains(item.MediaFileId))
+            {
+                return item with { Outcome = "Skipped", Reason = "An identity already exists for this media file.", PersistenceStatus = "SkippedExistingIdentity" };
+            }
+
+            return item;
+        }).ToList();
+    }
+
+    private async Task<(int IdentitiesCreated, int SignalsUpdated)> PersistMatchedIdentitiesAsync(
+        IReadOnlyCollection<LocalIdentityAutoScanItem> items,
+        CancellationToken cancellationToken)
+    {
+        var created = 0;
+        var signals = 0;
+
+        foreach (var item in items.Where(item => item.Outcome == "Matched"))
+        {
+            if (string.IsNullOrWhiteSpace(item.RecordingId) || string.IsNullOrWhiteSpace(item.CanonicalTitle))
+            {
+                throw new InvalidOperationException($"Matched MediaFileId {item.MediaFileId} is missing its verified MusicBrainz detail snapshot.");
+            }
+
+            var identity = new MediaIdentity
+            {
+                MediaFileId = item.MediaFileId,
+                Provider = "MusicBrainzLocal",
+                RecordingId = item.RecordingId,
+                ReleaseId = item.ReleaseId ?? item.ReleaseIds?.FirstOrDefault(),
+                ArtistId = item.ArtistId,
+                ISRC = item.Isrcs?.FirstOrDefault(),
+                MatchMethod = LocalIdentityAutoEligibilityPolicy.Version,
+                Confidence = item.Confidence ?? 0,
+                Status = "approved",
+                CoverStatus = "Pending",
+                LyricsStatus = "Pending",
+                MatchedAt = DateTime.UtcNow,
+                LastVerifiedAt = DateTime.UtcNow
+            };
+            _db.MediaIdentities.Add(identity);
+            await _db.SaveChangesAsync(cancellationToken);
+
+            var details = new LocalMusicBrainzRecordingDetails(
+                item.RecordingId,
+                item.CanonicalTitle,
+                item.Isrcs ?? Array.Empty<string>(),
+                item.MbRating,
+                item.MbRatingCount,
+                item.CanonicalUrl,
+                item.SourcePayloadHash,
+                item.CanonicalArtist,
+                item.DurationSeconds,
+                item.ReleaseIds,
+                item.ReleaseGroupIds,
+                item.Tags,
+                item.Genres);
+            await _communitySignals!.UpsertAsync(identity, details, cancellationToken);
+            created++;
+            signals++;
+        }
+
+        return (created, signals);
     }
 
     private async Task<(List<MediaFile> Candidates, int? HighestEvaluatedId)> SelectCandidatesAsync(
@@ -358,7 +522,14 @@ public sealed class LocalIdentityAutoScanService : ILocalIdentityAutoScanService
             i.ReleaseGroupIds,
             i.MbRating,
             i.MbRatingCount,
-            i.MbCommunityScore
+            i.MbCommunityScore,
+            i.CanonicalTitle,
+            i.CanonicalArtist,
+            i.Tags,
+            i.Genres,
+            i.CanonicalUrl,
+            i.SourcePayloadHash,
+            i.PersistenceStatus
         });
         var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(canonical));
         return Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();

@@ -1,6 +1,6 @@
 # Local MusicBrainz 身份与外部公共评分主线
 
-最后更新：2026-09-09
+最后更新：2026-09-10
 
 本文件是 WebMusic 的 MusicBrainz / Last.fm 主线规范。它覆盖旧方案中仍有效的身份匹配部分，并明确取代任何将资源 Worker、个人播放行为或多个外部平台混入同一流程的规划。
 
@@ -29,7 +29,7 @@ WebMusic 的核心是私有媒体库与播放器。本主线的目标是为媒�
 - 自动下载或写入封面、歌词；
 - 将个人播放和收藏用作公共评分；
 - 对已有 Batch 1 / Batch 2 的再次处理；
-- 自动提交、推送、部署或写入 MEDIA。
+- 封面、歌词和旧 Worker 与本主线的身份/评分事务混跑。
 
 ## 当前生产基线
 
@@ -39,7 +39,8 @@ WebMusic 的核心是私有媒体库与播放器。本主线的目标是为媒�
 - Batch 1：`LegacyPilotRound2_20260908`，10 首，状态 `LegacyApplied`，不可回滚。
 - Batch 2：`Batch-20260909-44c89fc6`，20 首，状态 `Applied`，20 个 `MusicBrainzLocal` 身份已写入；创建、审批和应用操作人为 `audit_operator`。
 - Batch 2 没有触发资源补全；`Lyrics = 70`、`WorkerSubmissions = 22`、`EnrichmentJobs = 6` 均不应因本主线改变。
-- 已有能力：本地 MusicBrainz 检索、只读 Shadow Run、IdentityImport Draft/Approve/Apply、Python 保守候选提取、双 SHA 审计门禁。
+- 已有能力：本地 MusicBrainz 检索、只读 Shadow Run、IdentityImport 人工流程、`LocalAutoEligibility:v3`、扫描状态、通用外部引用/评分表和 Library 展示。
+- 名称治理：Unknown Album 前 35 页的 190 条明确音轨前缀已事务化清洗并逐条核验；1 条多空格候选继续保留人工复核。
 
 ## 为什么保留 MusicBrainz
 
@@ -112,7 +113,7 @@ MediaExternalSignals
 - 仅在本地 MusicBrainz 镜像上检索；
 - 只接受严格高置信候选；
 - 保存扫描状态和候选证据；
-- 首阶段只做 Dry Run，不自动创建 Draft，也不写入 `MediaIdentities`；
+- 显式自动应用模式只接受 v3 高置信结果，并原子写入身份、规范元数据和 MB 社区信号；
 - 后续新入库文件可增量扫描；输入元数据变化后可重新扫描。
 
 ### 最小状态表
@@ -147,7 +148,7 @@ LastReportId
 - 时长差默认 `<= 3 秒`；
 - 排除 remix、mix、live、demo、instrumental、karaoke、cover、edit、remaster、preview、clip、ringtone 等衍生版本；
 - 短音频或明显剪辑直接跳过；
-- 同一 MBID 去重；
+- 同一 MBID 可对应媒体库中的多个合法文件，不做批内去重；
 - 输入指纹变化可绕过冷却，未匹配/低置信/失败均必须有明确 `RetryAfter`。
 
 任何与 Python 规则的差异必须写入报告，不能自行放宽。
@@ -191,17 +192,14 @@ LastFmGlobalPopularity V1 =
 - 对小样本 MB 分显示低样本提示；
 - 不显示假精确的综合分。综合公共分是未来独立且可审计的 Provider，不在第一版实施。
 
-## 实施顺序与停止点
+## 当前实施顺序
 
-1. 实现 `MediaIdentityScanState`、保守 C# 策略、CLI Dry Run 和 PostgreSQL 集成测试。
-2. 本地开发库执行 1,000 首 Dry Run，输出 SHA-256 报告并对照 Python 规则。
-3. 审核命中率、误匹配样本、吞吐和预计全库耗时；此处停止，等待授权。
-4. 经授权后，仅实现/启用高置信身份写入或受控 Draft 生成。
-5. 对已确认身份实现 MusicBrainz 本地详情快照与社区分。
-6. 实现 Last.fm 快照、刷新和独立公共评分。
-7. 最后改造 `/library` 展示、排序与筛选。
-
-所有阶段必须分别授权：提交/推送、部署、MEDIA Dry Run、MEDIA 写入都不能合并默认执行。
+1. 完成 v3 + 名称治理后的 1,000 首只读基线复测。
+2. 发布自动持久化能力；显式命令为 `local-identity-auto-scan --persist-state --apply-identities --mirror-version <version>`。
+3. 先执行最多 10 首生产验收；确认身份、状态、引用和评分四层一致后，按 continuation 自动续跑全库。
+4. 对历史已批准的 MB 身份运行 `external-signal-refresh --provider musicbrainz`，补齐同一通用评分模型。
+5. 新入库媒体使用 `--incremental` 定时扫描；镜像或策略版本变化时自动重新评估未命中项。
+6. Last.fm 保持关闭，直到 API key 安全配置并完成 10 首真实探测。
 
 ## 估算
 
@@ -211,10 +209,12 @@ LastFmGlobalPopularity V1 =
 - Library API/UI：1-2 个工作日；
 - 集成测试、发布、首轮受控运行：1-2 个工作日。
 
-合计约 9-14 个工作日的开发和验证。114,875 首本地 MB 首轮扫描在单并发下预计 12-24 小时；是否采用两并发必须先在 DSM 上验证负载。Last.fm 仅对已确认身份执行，不扫描全部媒体。
+核心开发已完成。按当前实测每 1,000 首约 11 分钟，114,875 首单实例理论约 21 小时；考虑重试、详情查询和数据库提交，生产预算为 24-36 小时。先保持单实例，避免无收益地扩展 Worker/配额系统。Last.fm 仅对已确认身份执行，不扫描全部媒体。
 
-## 当前工作区注意事项
+## 运行边界
 
-工作区存在未提交的 Batch 2 资源预检代码：`BatchAssetPreflightService`、相关 Controller/Program 修改、测试和 Python 脚本。它不属于本主线，不得混入 LocalIdentityAutoScanService 的提交，也不得部署或执行外部预检。
-
-已删除本轮未跟踪的 Batch 2 资源预检方案、报告和旧交接文档，避免后续 AI 误把冻结支线当作主线。
+- Dry Run 使用 PostgreSQL `SET TRANSACTION READ ONLY`，绝不写库。
+- 自动应用每次最多 100 首，使用 Serializable 事务并锁定身份写入窗口；写前重新核验输入指纹和任何既有身份。
+- 本地详情不可用时不写身份；低置信与跳过项只保存扫描状态和重试时间。
+- 自动身份的 `MatchMethod` 固定为策略版本，`MirrorVersion` 与报告 SHA 保存于扫描状态，规范元数据及来源 payload hash 保存于外部引用。
+- 不自动覆盖 `MediaFiles` 的标题、艺人、专辑和时长。
