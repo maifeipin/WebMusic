@@ -323,6 +323,103 @@ if (args.Contains("local-identity-auto-scan", StringComparer.OrdinalIgnoreCase))
     return;
 }
 
+// Title Prefix Normalizer CLI (Physical zero-write DryRun and certified Apply)
+if (args.Contains("normalize-title-prefixes", StringComparer.OrdinalIgnoreCase))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+    var count = 1750;
+    var filterAlbum = "Unknown Album";
+    int? afterId = null;
+    string? outFile = null;
+    string? reportSha = null;
+    int? expectedCount = null;
+    string? rollbackOut = null;
+    var apply = args.Contains("--apply", StringComparer.OrdinalIgnoreCase);
+
+    for (var index = 0; index < args.Length; index++)
+    {
+        static int? ReadIntArgument(string[] source, ref int i, string name)
+        {
+            if (source[i].Equals(name, StringComparison.OrdinalIgnoreCase) && i + 1 < source.Length && int.TryParse(source[i + 1], out var spaced))
+            {
+                i++;
+                return spaced;
+            }
+            return source[i].StartsWith(name + "=", StringComparison.OrdinalIgnoreCase) && int.TryParse(source[i][(name.Length + 1)..], out var equals) ? equals : null;
+        }
+
+        static string? ReadStringArgument(string[] source, ref int i, string name)
+        {
+            if (source[i].Equals(name, StringComparison.OrdinalIgnoreCase) && i + 1 < source.Length)
+            {
+                return source[++i];
+            }
+            return source[i].StartsWith(name + "=", StringComparison.OrdinalIgnoreCase) ? source[i][(name.Length + 1)..] : null;
+        }
+
+        var parsedCount = ReadIntArgument(args, ref index, "--count");
+        if (parsedCount.HasValue) { count = parsedCount.Value; continue; }
+        var parsedAfter = ReadIntArgument(args, ref index, "--after-id");
+        if (parsedAfter.HasValue) { afterId = parsedAfter; continue; }
+        var parsedExpected = ReadIntArgument(args, ref index, "--expected-count");
+        if (parsedExpected.HasValue) { expectedCount = parsedExpected; continue; }
+
+        var parsedOut = ReadStringArgument(args, ref index, "--out");
+        if (parsedOut != null) { outFile = parsedOut; continue; }
+        var parsedAlbum = ReadStringArgument(args, ref index, "--filter-album");
+        if (parsedAlbum != null) { filterAlbum = parsedAlbum; continue; }
+        var parsedSha = ReadStringArgument(args, ref index, "--report-sha");
+        if (parsedSha != null) { reportSha = parsedSha; continue; }
+        var parsedRollback = ReadStringArgument(args, ref index, "--rollback-out");
+        if (parsedRollback != null) { rollbackOut = parsedRollback; continue; }
+    }
+
+    if (apply)
+    {
+        if (string.IsNullOrWhiteSpace(outFile))
+            throw new InvalidOperationException("Apply mode requires '--out <report-path>' to specify the dry run report.");
+        if (string.IsNullOrWhiteSpace(reportSha))
+            throw new InvalidOperationException("Apply mode requires '--report-sha <hex>' to verify report integrity.");
+        if (!expectedCount.HasValue)
+            throw new InvalidOperationException("Apply mode requires '--expected-count <n>' to assert exact update count.");
+
+        Console.WriteLine($"=== 🚀 Applying Title Prefix Normalization ({expectedCount.Value} items expected) ===");
+        var result = await WebMusic.Backend.Services.MediaTitlePrefixCleaner.ApplyAsync(
+            db, outFile, reportSha, expectedCount.Value, rollbackOut);
+        Console.WriteLine($"✅ Successfully updated exactly {result.UpdatedCount} rows in a single transaction.");
+        Console.WriteLine($"Rollback manifest saved -> {result.RollbackManifestPath}");
+    }
+    else
+    {
+        Console.WriteLine($"=== 🧪 Dry Run: Title Prefix Normalization (Physical Read-Only) ===");
+        Console.WriteLine($"Scope: FilterAlbum='{filterAlbum}', Count={count}, AfterId={afterId?.ToString() ?? "None"}");
+        var report = await WebMusic.Backend.Services.MediaTitlePrefixCleaner.RunDryRunAsync(
+            db, count, filterAlbum, afterId);
+
+        Console.WriteLine($"Evaluated:                   {report.TotalEvaluated}");
+        Console.WriteLine($"Admitted for clean:          {report.AdmittedCount}");
+        Console.WriteLine($"Manual review candidates:    {report.ManualReviewCandidateCount}");
+        Console.WriteLine($"Skipped/Normal:              {report.SkippedOrNormalCount}");
+        Console.WriteLine();
+        Console.WriteLine("Rule Breakdown:");
+        foreach (var (r, cnt) in report.RuleBreakdown)
+        {
+            Console.WriteLine($"  - {r,-30}: {cnt} items");
+        }
+
+        if (!string.IsNullOrWhiteSpace(outFile))
+        {
+            var sha = await WebMusic.Backend.Services.MediaTitlePrefixCleaner.SaveReportWithSha256Async(report, outFile);
+            Console.WriteLine($"\nReport saved -> {outFile}");
+            Console.WriteLine($"File SHA-256 -> {sha}");
+            Console.WriteLine($"SHA file     -> {outFile}.sha256");
+        }
+    }
+    return;
+}
+
 // External Signal Refresh CLI Mode (Controlled pipeline for MusicBrainz and Last.fm score refreshes)
 if (args.Contains("external-signal-refresh", StringComparer.OrdinalIgnoreCase))
 {
