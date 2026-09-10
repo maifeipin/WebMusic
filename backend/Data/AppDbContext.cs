@@ -28,6 +28,9 @@ public class AppDbContext : DbContext
     public DbSet<WorkerSubmission> WorkerSubmissions { get; set; }
     public DbSet<IdentityImportBatch> IdentityImportBatches { get; set; }
     public DbSet<IdentityImportItem> IdentityImportItems { get; set; }
+    public DbSet<MediaIdentityScanState> MediaIdentityScanStates { get; set; }
+    public DbSet<MediaExternalReference> MediaExternalReferences { get; set; }
+    public DbSet<MediaExternalSignal> MediaExternalSignals { get; set; }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -114,6 +117,29 @@ public class AppDbContext : DbContext
 
         modelBuilder.Entity<IdentityImportItem>()
             .HasIndex(i => i.MediaFileId);
+
+        modelBuilder.Entity<MediaIdentityScanState>()
+            .HasIndex(s => s.MediaFileId)
+            .IsUnique();
+
+        modelBuilder.Entity<MediaIdentityScanState>()
+            .HasIndex(s => new { s.Outcome, s.RetryAfter });
+
+        modelBuilder.Entity<MediaExternalReference>()
+            .HasIndex(r => new { r.MediaFileId, r.Provider, r.SubjectType })
+            .IsUnique();
+
+        modelBuilder.Entity<MediaExternalReference>()
+            .HasIndex(r => new { r.Provider, r.ExternalId });
+
+        modelBuilder.Entity<MediaExternalSignal>()
+            .HasIndex(s => new { s.MediaExternalReferenceId, s.SignalKey })
+            .IsUnique();
+
+        modelBuilder.Entity<MediaExternalSignal>()
+            .HasOne(s => s.ExternalReference)
+            .WithMany(r => r.Signals)
+            .HasForeignKey(s => s.MediaExternalReferenceId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
-

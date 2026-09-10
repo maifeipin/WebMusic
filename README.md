@@ -84,7 +84,7 @@ Configure these repository secrets before enabling automatic deployment:
 
 - No MEDIA or Tailscale secrets are needed by GitHub Actions.
 
-The MEDIA `/root/WebMusic/docker-compose.yml` must use the published `ghcr.io/maifeipin/webmusic-*-latest` images. Store `GHCR_USERNAME` and `GHCR_READ_TOKEN` only on MEDIA, then run `scripts/media-pull-deploy.sh` from cron or a systemd timer. The script performs basic checks for frontend HTTP `200` and unauthenticated media API HTTP `401`.
+The MEDIA `/root/WebMusic/docker-compose.yml` must use the published `ghcr.io/maifeipin/webmusic-*-latest` images. Store `GHCR_USERNAME` and `GHCR_READ_TOKEN` only on MEDIA, then run `scripts/deploy/media-pull-deploy.sh` from cron or a systemd timer. The script performs basic checks for frontend HTTP `200` and unauthenticated media API HTTP `401`.
 
 ```yaml
 version: '3.8'

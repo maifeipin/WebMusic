@@ -3,8 +3,8 @@ set -euo pipefail
 
 # Script to verify database schema fingerprint and optionally apply baseline migration
 # Usage:
-#   ./scripts/verify_and_apply_baseline.sh --check-only
-#   ./scripts/verify_and_apply_baseline.sh --apply
+#   ./scripts/database/verify_and_apply_baseline.sh --check-only
+#   ./scripts/database/verify_and_apply_baseline.sh --apply
 # Or inside docker on MEDIA:
 #   docker exec -it webmusic-backend-1 dotnet WebMusic.Backend.dll verify-baseline [--apply]
 

@@ -6,7 +6,7 @@ set -euo pipefail
 # This script triggers legacy admin-driven favorites enrichment on the server.
 # It requires Admin privileges (enrichment-bot).
 # For distributed, rate-limited catalog enrichment, use:
-#   python3 scripts/catalog_worker.py --worker-id <node-id>
+#   python3 scripts/legacy/catalog_worker.py --worker-id <node-id>
 # with a dedicated least-privilege Worker account (catalog-worker).
 # ==============================================================================
 
@@ -19,7 +19,7 @@ BATCH_SIZE="${BATCH_SIZE:-100}"
 
 if [ -z "$PASSWORD" ]; then
   echo "❌ Error: BOT_PASSWORD environment variable must be set (no default password permitted)."
-  echo "Usage: BOT_PASSWORD='...' ./scripts/run_enrichment_task.sh"
+  echo "Usage: BOT_PASSWORD='...' ./scripts/legacy/run_enrichment_task.sh"
   exit 1
 fi
 

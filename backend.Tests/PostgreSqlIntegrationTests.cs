@@ -10,7 +10,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Testcontainers.PostgreSql;
 using WebMusic.Backend.Controllers;
@@ -128,6 +130,9 @@ public class PostgreSqlIntegrationTests : IClassFixture<PostgreSqlFixture>
     private async Task ResetStateAsync(AppDbContext db)
     {
         await db.Database.ExecuteSqlRawAsync(@"
+            DELETE FROM ""MediaExternalSignals"";
+            DELETE FROM ""MediaExternalReferences"";
+            DELETE FROM ""MediaIdentityScanStates"";
             DELETE FROM ""WorkerSubmissions"";
             DELETE FROM ""EnrichmentJobItems"";
             DELETE FROM ""EnrichmentJobs"";
@@ -137,6 +142,102 @@ public class PostgreSqlIntegrationTests : IClassFixture<PostgreSqlFixture>
             DELETE FROM ""MediaIdentities"";
             DELETE FROM ""MediaFiles"";
         ");
+    }
+
+    [Fact]
+    public async Task LocalIdentityAutoScan_DryRunPhysicallyRejectsWrite_AndPersistedStateIsIdempotent()
+    {
+        using var db = _fixture.CreateDbContext();
+        await ResetStateAsync(db);
+        var source = await GetOrCreateScanSourceAsync(db);
+        var media = new MediaFile
+        {
+            ScanSourceId = source.Id,
+            Title = "Local identity scan " + Guid.NewGuid().ToString("N"),
+            Artist = "Integration Artist",
+            Album = "Integration Album",
+            FilePath = "/test/local-identity-" + Guid.NewGuid().ToString("N") + ".mp3",
+            Duration = TimeSpan.FromSeconds(200)
+        };
+        db.MediaFiles.Add(media);
+        await db.SaveChangesAsync();
+
+        var rogue = new Mock<ILocalMusicBrainzService>();
+        rogue.SetupGet(service => service.BaseUrl).Returns("http://192.168.2.18:5050");
+        rogue.Setup(service => service.ScanMediaIdentityAsync(It.IsAny<MediaFile>(), It.IsAny<CancellationToken>()))
+            .Returns<MediaFile, CancellationToken>(async (_, cancellationToken) =>
+            {
+                await db.Database.ExecuteSqlRawAsync($"INSERT INTO \"MediaIdentityScanStates\" (\"MediaFileId\", \"InputFingerprint\", \"Outcome\", \"PolicyVersion\", \"AttemptCount\", \"LastScannedAt\") VALUES ({media.Id}, 'rogue', 'Failed', 'test', 1, NOW())", cancellationToken);
+                return new LocalMusicBrainzScanResult(false, null, 500);
+            });
+
+        var dryRunner = new LocalIdentityAutoScanService(db, rogue.Object, NullLogger<LocalIdentityAutoScanService>.Instance);
+        var readOnly = await Assert.ThrowsAsync<Npgsql.PostgresException>(() =>
+            dryRunner.ScanAsync(new LocalIdentityAutoScanRequest(MaxItems: 1, DryRun: true)));
+        Assert.Equal("25006", readOnly.SqlState);
+
+        var exact = new Mock<ILocalMusicBrainzService>();
+        exact.SetupGet(service => service.BaseUrl).Returns("http://192.168.2.18:5050");
+        exact.Setup(service => service.ScanMediaIdentityAsync(It.IsAny<MediaFile>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((MediaFile file, CancellationToken _) => new LocalMusicBrainzScanResult(true,
+                new LocalMusicBrainzCandidate("d0c34a5c-523a-4d58-b5ec-8d6ed95596cc", null, null, file.Title, file.Artist, file.Duration, null, 1, false), 200));
+
+        var persisted = new LocalIdentityAutoScanService(db, exact.Object, NullLogger<LocalIdentityAutoScanService>.Instance);
+        var first = await persisted.ScanAsync(new LocalIdentityAutoScanRequest(LocalIdentityScanMode.Incremental, 1, DryRun: false, PersistState: true));
+        var second = await persisted.ScanAsync(new LocalIdentityAutoScanRequest(LocalIdentityScanMode.Incremental, 1, DryRun: false, PersistState: true));
+
+        Assert.Equal(1, first.Matched);
+        Assert.Equal(0, second.Evaluated);
+        Assert.Equal(1, await db.MediaIdentityScanStates.CountAsync());
+        Assert.Equal(0, await db.MediaIdentities.CountAsync());
+    }
+
+    [Fact]
+    public async Task ExternalSignalRefresh_DryRun_PostgreSql_RejectsWritesWith25006()
+    {
+        using var db = _fixture.CreateDbContext();
+        await ResetStateAsync(db);
+        var scanSource = await GetOrCreateScanSourceAsync(db);
+
+        var media = new MediaFile
+        {
+            ScanSourceId = scanSource.Id,
+            FilePath = "music/pg_sig_dryrun.mp3",
+            FileHash = "pg_sig_dryrun_hash",
+            Title = "DryRun Signal Track",
+            Artist = "Artist",
+            Album = "Album",
+            Duration = TimeSpan.FromMinutes(3)
+        };
+        db.MediaFiles.Add(media);
+        await db.SaveChangesAsync();
+
+        var mbid = "c0c34a5c-523a-4d58-b5ec-8d6ed95596cc";
+        var identity = new MediaIdentity
+        {
+            MediaFileId = media.Id,
+            Provider = "MusicBrainzLocal",
+            RecordingId = mbid,
+            Status = "approved"
+        };
+        db.MediaIdentities.Add(identity);
+        await db.SaveChangesAsync();
+
+        var rogueDetails = new Mock<ILocalMusicBrainzDetailService>();
+        rogueDetails.Setup(d => d.GetRecordingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns<string, CancellationToken>(async (id, ct) =>
+            {
+                await db.Database.ExecuteSqlRawAsync($@"
+                    INSERT INTO ""MediaExternalReferences"" (""MediaFileId"", ""Provider"", ""SubjectType"", ""ExternalId"", ""Status"", ""MatchConfidence"")
+                    VALUES ({media.Id}, 'Rogue', 'Recording', '{id}', 'failed', 1.0);", ct);
+                return new LocalMusicBrainzRecordingDetails(id, "Track", Array.Empty<string>(), 4.0, 5, "http://mb", "payload");
+            });
+
+        var refresher = new ExternalSignalRefreshService(db, rogueDetails.Object, null, null, null, NullLogger<ExternalSignalRefreshService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<Npgsql.PostgresException>(() =>
+            refresher.RefreshAsync(new ExternalSignalRefreshRequest("musicbrainz", Count: 10, DryRun: true)));
+        Assert.Equal("25006", ex.SqlState);
     }
 
     [Fact]

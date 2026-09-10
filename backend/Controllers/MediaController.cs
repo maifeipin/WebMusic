@@ -72,7 +72,9 @@ public class MediaController : ControllerBase
         [FromQuery] string? filterValue = null,
         [FromQuery] string? path = null,
         [FromQuery] bool recursive = false,
-        [FromQuery] List<string>? criteria = null)
+        [FromQuery] List<string>? criteria = null,
+        [FromQuery] string? sortBy = null,
+        [FromQuery] string? sortDirection = null)
     {
         var userId = GetUserId();
 
@@ -200,8 +202,36 @@ public class MediaController : ControllerBase
         }
 
         var total = await query.CountAsync();
+        var descending = string.Equals(sortDirection, "desc", StringComparison.OrdinalIgnoreCase);
+        query = sortBy?.ToLowerInvariant() switch
+        {
+            "mbcommunityscore" => descending
+                ? query.OrderByDescending(m => _context.MediaExternalSignals
+                    .Where(s => s.ExternalReference!.MediaFileId == m.Id && s.ExternalReference.Provider == "MusicBrainz" && s.SignalKey == "CommunityScore")
+                    .Select(s => s.NormalizedScore).FirstOrDefault() ?? -1d)
+                    .ThenBy(m => m.Id)
+                : query.OrderBy(m => _context.MediaExternalSignals
+                    .Where(s => s.ExternalReference!.MediaFileId == m.Id && s.ExternalReference.Provider == "MusicBrainz" && s.SignalKey == "CommunityScore")
+                    .Select(s => s.NormalizedScore).FirstOrDefault() == null ? 1 : 0)
+                    .ThenBy(m => _context.MediaExternalSignals
+                    .Where(s => s.ExternalReference!.MediaFileId == m.Id && s.ExternalReference.Provider == "MusicBrainz" && s.SignalKey == "CommunityScore")
+                    .Select(s => s.NormalizedScore).FirstOrDefault())
+                    .ThenBy(m => m.Id),
+            "lastfmpopularity" => descending
+                ? query.OrderByDescending(m => _context.MediaExternalSignals
+                    .Where(s => s.ExternalReference!.MediaFileId == m.Id && s.ExternalReference.Provider == "LastFm" && s.SignalKey == "GlobalPopularity")
+                    .Select(s => s.NormalizedScore).FirstOrDefault() ?? -1d)
+                    .ThenBy(m => m.Id)
+                : query.OrderBy(m => _context.MediaExternalSignals
+                    .Where(s => s.ExternalReference!.MediaFileId == m.Id && s.ExternalReference.Provider == "LastFm" && s.SignalKey == "GlobalPopularity")
+                    .Select(s => s.NormalizedScore).FirstOrDefault() == null ? 1 : 0)
+                    .ThenBy(m => _context.MediaExternalSignals
+                    .Where(s => s.ExternalReference!.MediaFileId == m.Id && s.ExternalReference.Provider == "LastFm" && s.SignalKey == "GlobalPopularity")
+                    .Select(s => s.NormalizedScore).FirstOrDefault())
+                    .ThenBy(m => m.Id),
+            _ => query.OrderBy(m => m.Title).ThenBy(m => m.Id)
+        };
         var files = await query
-            .OrderBy(m => m.Title) // Consistent numbering
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(m => new { 
@@ -210,7 +240,25 @@ public class MediaController : ControllerBase
                 playlists = _context.PlaylistSongs
                     .Where(ps => ps.MediaFileId == m.Id && ps.Playlist != null && ps.Playlist.UserId == userId && ps.Playlist.Type == "normal")
                     .Select(ps => new { id = ps.Playlist!.Id, name = ps.Playlist.Name })
-                    .ToList()
+                    .ToList(),
+                mbCommunityScore = _context.MediaExternalSignals
+                    .Where(s => s.ExternalReference!.MediaFileId == m.Id && s.ExternalReference.Provider == "MusicBrainz" && s.SignalKey == "CommunityScore")
+                    .Select(s => s.NormalizedScore).FirstOrDefault(),
+                mbRating = _context.MediaExternalSignals
+                    .Where(s => s.ExternalReference!.MediaFileId == m.Id && s.ExternalReference.Provider == "MusicBrainz" && s.SignalKey == "CommunityRating")
+                    .Select(s => s.RawValue).FirstOrDefault(),
+                mbRatingCount = _context.MediaExternalSignals
+                    .Where(s => s.ExternalReference!.MediaFileId == m.Id && s.ExternalReference.Provider == "MusicBrainz" && s.SignalKey == "CommunityScore")
+                    .Select(s => s.SampleSize).FirstOrDefault(),
+                lastFmPopularity = _context.MediaExternalSignals
+                    .Where(s => s.ExternalReference!.MediaFileId == m.Id && s.ExternalReference.Provider == "LastFm" && s.SignalKey == "GlobalPopularity")
+                    .Select(s => s.NormalizedScore).FirstOrDefault(),
+                lastFmListeners = _context.MediaExternalSignals
+                    .Where(s => s.ExternalReference!.MediaFileId == m.Id && s.ExternalReference.Provider == "LastFm" && s.SignalKey == "Listeners")
+                    .Select(s => s.RawValue).FirstOrDefault(),
+                lastFmPlaycount = _context.MediaExternalSignals
+                    .Where(s => s.ExternalReference!.MediaFileId == m.Id && s.ExternalReference.Provider == "LastFm" && s.SignalKey == "Playcount")
+                    .Select(s => s.RawValue).FirstOrDefault()
             })
             .ToListAsync();
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 : "${GHCR_USERNAME:?GHCR_USERNAME is required}"
 : "${GHCR_READ_TOKEN:?GHCR_READ_TOKEN is required}"

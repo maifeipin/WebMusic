@@ -37,7 +37,7 @@
 ### 步骤 1：执行初始化脚本核验上游源码
 在目标宿主机上执行：
 ```bash
-bash scripts/bootstrap_musicbrainz_mirror.sh /opt/musicbrainz-docker
+bash scripts/musicbrainz/bootstrap_musicbrainz_mirror.sh /opt/musicbrainz-docker
 ```
 该脚本将完成：
 - 克隆官方代码并检出固定 Tag `v-2026-07-30.1`；
@@ -107,7 +107,7 @@ docker compose ps
 ### 步骤 6：运行验证与演练脚本
 在宿主机或同一局域网下的测试机运行验收脚本：
 ```bash
-bash scripts/verify_musicbrainz_mirror.sh --host 100.115.42.126 --port 5000
+bash scripts/musicbrainz/verify_musicbrainz_mirror.sh --host 100.115.42.126 --port 5000
 ```
 
 ---

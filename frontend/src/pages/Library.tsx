@@ -17,6 +17,12 @@ interface Song {
     filePath?: string;
     isFavorite?: boolean;
     playlists?: { id: number; name: string }[];
+    mbCommunityScore?: number | null;
+    mbRating?: number | null;
+    mbRatingCount?: number | null;
+    lastFmPopularity?: number | null;
+    lastFmListeners?: number | null;
+    lastFmPlaycount?: number | null;
 }
 
 interface GroupRow {
@@ -24,7 +30,7 @@ interface GroupRow {
     count: number;
 }
 
-type SortField = 'title' | 'artist' | 'album' | 'genre' | 'filePath' | 'duration';
+type SortField = 'title' | 'artist' | 'album' | 'genre' | 'filePath' | 'duration' | 'mbCommunityScore' | 'lastFmPopularity';
 type SortDirection = 'asc' | 'desc';
 
 interface ActiveFilter {
@@ -73,10 +79,17 @@ export default function Library() {
         else if (viewMode === 'group') {
             if (groupBy !== 'directory') fetchGroups();
         }
-    }, [page, search, viewMode, groupBy, activeFilter]);
+    }, [page, search, viewMode, groupBy, activeFilter, sortField, sortDirection]);
 
     const fetchSongs = async () => {
         const params: any = { page, search, pageSize: 50 };
+        if (sortField === 'mbCommunityScore') {
+            params.sortBy = 'mbCommunityScore';
+            params.sortDirection = sortDirection;
+        } else if (sortField === 'lastFmPopularity') {
+            params.sortBy = 'lastFmPopularity';
+            params.sortDirection = sortDirection;
+        }
         if (activeFilter) {
             if (activeFilter.field === 'path') {
                 // For path filtering, use the path parameter with recursive
@@ -114,20 +127,29 @@ export default function Library() {
         setExpandedGroups(prev => ({ ...prev, [groupKey]: mappedFiles }));
     };
 
-    const sortedSongs = [...songs].sort((a, b) => {
-        let aVal: any = a[sortField];
-        let bVal: any = b[sortField];
-        if (sortField === 'duration') {
-            aVal = aVal || 0;
-            bVal = bVal || 0;
-        } else {
-            aVal = (aVal || '').toString().toLowerCase();
-            bVal = (bVal || '').toString().toLowerCase();
-        }
-        if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-        if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-        return 0;
-    });
+    const sortedSongs = (sortField === 'mbCommunityScore' || sortField === 'lastFmPopularity') && viewMode === 'flat'
+        ? songs
+        : [...songs].sort((a, b) => {
+            const aVal = a[sortField];
+            const bVal = b[sortField];
+            const aNull = aVal === undefined || aVal === null;
+            const bNull = bVal === undefined || bVal === null;
+            if (aNull && bNull) return 0;
+            if (aNull) return 1;
+            if (bNull) return -1;
+
+            if (sortField === 'duration' || sortField === 'mbCommunityScore' || sortField === 'lastFmPopularity') {
+                const aNum = Number(aVal) || 0;
+                const bNum = Number(bVal) || 0;
+                return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+            }
+
+            const aStr = aVal.toString().toLowerCase();
+            const bStr = bVal.toString().toLowerCase();
+            if (aStr < bStr) return sortDirection === 'asc' ? -1 : 1;
+            if (aStr > bStr) return sortDirection === 'asc' ? 1 : -1;
+            return 0;
+        });
 
     const handleSort = (field: SortField) => {
         if (sortField === field) {
@@ -318,6 +340,8 @@ export default function Library() {
     const formatTime = (seconds: number) =>
         `${Math.floor(seconds / 60)}:${(Math.floor(seconds % 60)).toString().padStart(2, '0')}`;
 
+    const formatCompact = (value?: number | null) => value == null ? '—' : new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+
     const SortHeader = ({ field, label, className = '' }: { field: SortField; label: string; className?: string }) => (
         <th
             className={`px-4 py-3 cursor-pointer hover:bg-gray-800 select-none transition ${className}`}
@@ -428,6 +452,8 @@ export default function Library() {
                                     <SortHeader field="album" label="Album" />
                                     <SortHeader field="genre" label="Genre" />
                                     <SortHeader field="filePath" label="Path" className="w-48" />
+                                    <SortHeader field="mbCommunityScore" label="MB community" className="w-28" />
+                                    <SortHeader field="lastFmPopularity" label="Last.fm" className="w-28" />
                                     <th className="px-4 py-3 w-44">Status</th>
                                     <SortHeader field="duration" label="Time" className="w-20" />
                                 </tr>
@@ -482,6 +508,13 @@ export default function Library() {
                                                 title={`Filter by path: ${directoryPath}`}
                                             >
                                                 <div className="truncate text-xs font-mono text-gray-500 hover:text-blue-400">{directoryPath}</div>
+                                            </td>
+                                            <td className="px-4 py-3 text-xs whitespace-nowrap" title={song.mbRatingCount != null ? `MusicBrainz community rating ${song.mbRating?.toFixed(1) ?? '—'} / 5 (${song.mbRatingCount} votes)` : 'No MusicBrainz community rating'}>
+                                                {song.mbCommunityScore != null ? <span className="text-violet-300">{song.mbCommunityScore.toFixed(1)}</span> : '—'}
+                                                {song.mbRatingCount != null && <span className="text-gray-600 ml-1">({song.mbRatingCount})</span>}
+                                            </td>
+                                            <td className="px-4 py-3 text-xs whitespace-nowrap" title={song.lastFmPlaycount != null ? `${formatCompact(song.lastFmListeners)} listeners · ${formatCompact(song.lastFmPlaycount)} plays` : 'No Last.fm score'}>
+                                                {song.lastFmPopularity != null ? <span className="text-amber-300">{song.lastFmPopularity.toFixed(1)}</span> : '—'}
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="flex items-center gap-2 whitespace-nowrap">

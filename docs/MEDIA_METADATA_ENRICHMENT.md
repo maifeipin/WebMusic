@@ -163,7 +163,7 @@ NAS 扫描
 - `backend/Services/ScannerService.cs`：继续负责扫描和读取 ID3，不在扫描过程中同步调用所有外部 API；
 - `backend/Models/Entities.cs`：保存 Identity、Tag、Evidence、Job、JobItem、Attempt 与 Provider 配额账本；后续结构变更必须走 EF Core Migration；
 - `backend/Controllers/WorkerEnrichmentController.cs`：MEDIA 侧的 Worker 专用 API，负责候选租约、心跳、配额预留、结果校验和落库；
-- `scripts/catalog_worker.py`：运行于 Mac/NAS，实际发起 MusicBrainz、CAA、LRCLIB 请求并提交结果；
+- `scripts/legacy/catalog_worker.py`：历史 Mac/NAS Worker；当前冻结，不应作为新的富化或评分入口；
 - `JobWorker`：仅保留旧收藏夹 enrichment 兼容流程，不承担全库外部请求；
 - `backend/Services/TagService.cs`：保留 Gemini，用于候选整理和元数据清洗；
 - 前端 Tag Manager / 网易插件：展示候选、来源、证据 URL、置信度与人工审核结果。

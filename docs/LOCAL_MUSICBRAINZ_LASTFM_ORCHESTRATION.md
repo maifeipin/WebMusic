@@ -1,198 +1,220 @@
-# 本地 MusicBrainz + Last.fm 评分编排实施规范
+# Local MusicBrainz 身份与外部公共评分主线
 
-## 1. 目标与边界
+最后更新：2026-09-09
 
-目标是将全量媒体富化拆为三条独立队列：
+本文件是 WebMusic 的 MusicBrainz / Last.fm 主线规范。它覆盖旧方案中仍有效的身份匹配部分，并明确取代任何将资源 Worker、个人播放行为或多个外部平台混入同一流程的规划。
 
-```text
-本地 MusicBrainz 身份匹配（全库、只读、快速）
-  → 本地播放/收藏评分 + Last.fm 热度快照（受限、缓存）
-  → 高分歌曲的 CAA / LRCLIB 资源补全（严格配额）
-```
+## 产品目标与边界
 
-这样优先改善用户实际会听的歌曲，不为零播放长尾歌曲过早消耗封面和歌词 Provider 配额。
-
-本项目不做以下事情：
-
-- 不将 Last.fm 做成全量镜像、爬虫或多账号限流规避；
-- 不把网易/QQ 插件接入自动批处理；网易继续是人工预览、确认与来源记录；
-- 不在 MEDIA 暴露 MusicBrainz 的公网端口，也不与 WebMusic 业务 PostgreSQL 共用数据库卷；
-- 不让低置信度身份匹配自动覆盖既有媒体字段、封面或歌词。
-
-现有 `catalog_worker.py`、Worker 租约、审计、资产暂存和人工覆盖规则必须保留。
-
-## 2. 目标架构
+WebMusic 的核心是私有媒体库与播放器。本主线的目标是为媒体建立可复用的外部身份与公共信号基础：
 
 ```text
-                 Tailscale / 私网
-Mac / NAS Worker ─────────────────────┐
-                                     ▼
-                              Local MusicBrainz
-                                     │
-MEDIA API / PostgreSQL ◄──────────────┘
-        │
-        ├─ EnrichmentCandidateScore / PopularitySnapshot
-        │
-        └─ 高分资源队列 ── Mac / NAS Worker ──► CAA / LRCLIB / Last.fm
+本地 MusicBrainz 高置信身份
+  -> 标准化元数据、ISRC、MusicBrainz 社区信号
+  -> Last.fm 独立公共热度
+  -> /library 展示、筛选和排序
 ```
 
-### 2.1 Provider 职责
+公共评分与本库个人行为严格分离：
 
-| Provider | 用途 | 是否可批量自动写入 |
-| --- | --- | --- |
-| LocalMusicBrainz | Recording / Release / Artist 身份候选和置信度 | 仅高置信 `MediaIdentity` |
-| Last.fm | 热度、听众数、播放量、Top Tags 的时间快照 | 仅独立快照/Tag Evidence |
-| CAA | 已确认 Release 的封面 | 仅补空封面 |
-| LRCLIB | 已确认身份的歌词 | 仅补空歌词 |
-| 网易插件 | 人工搜索、预览、确认 | 人工确认才写入 |
+- 不读取、不混入 `Favorites`、`PlayHistories`、最近播放或用户歌单；
+- MusicBrainz 社区口碑与 Last.fm 热度分别保存、分别展示；
+- 不在前端页面实时请求任何第三方 API，页面只读取 WebMusic 数据库快照；
+- 不把来源分数伪装为统一的“官方评分”。
 
-## 3. 交付物与私有镜像前置条件
+以下工作不属于本主线：
 
-Gemini 应新增但不自动部署以下交付物：
+- Worker、租约、心跳、Provider 配额或多节点调度的扩展；
+- Cover Art Archive、LRCLIB、网易、Spotify、YouTube 或其他公网资源请求；
+- 自动下载或写入封面、歌词；
+- 将个人播放和收藏用作公共评分；
+- 对已有 Batch 1 / Batch 2 的再次处理；
+- 自动提交、推送、部署或写入 MEDIA。
+
+## 当前生产基线
+
+- 本地 MusicBrainz 镜像：DSM 私网 `http://192.168.2.18:5050`；仅允许私网 IP 字面量访问，禁止 DNS 主机名、重定向和公网回退。
+- 生产媒体：`MediaFiles = 114,875`。
+- 已有身份：`MediaIdentities = 49`：`MusicBrainz = 19`，`MusicBrainzLocal = 30`。
+- Batch 1：`LegacyPilotRound2_20260908`，10 首，状态 `LegacyApplied`，不可回滚。
+- Batch 2：`Batch-20260909-44c89fc6`，20 首，状态 `Applied`，20 个 `MusicBrainzLocal` 身份已写入；创建、审批和应用操作人为 `audit_operator`。
+- Batch 2 没有触发资源补全；`Lyrics = 70`、`WorkerSubmissions = 22`、`EnrichmentJobs = 6` 均不应因本主线改变。
+- 已有能力：本地 MusicBrainz 检索、只读 Shadow Run、IdentityImport Draft/Approve/Apply、Python 保守候选提取、双 SHA 审计门禁。
+
+## 为什么保留 MusicBrainz
+
+MusicBrainz 不是热度/销量数据库，但它提供稳定的 Recording MBID、Release/Release Group、ISRC、标准化标题/艺人/时长、标签与社区评分锚点。它使 Last.fm 等后续来源可按 MBID 匹配，而不是反复进行歌名/歌手模糊搜索。
+
+MusicBrainz 评分的含义是社区口碑，而不是流行度。Recording、Release Group 等对象可有聚合 `rating` 与 `rating_count`；原始用户评分明细不在公开 dump 中。建议计算：
 
 ```text
-infra/musicbrainz-mirror/.env.example
-infra/musicbrainz-mirror/README.md
-scripts/bootstrap_musicbrainz_mirror.sh
-scripts/verify_musicbrainz_mirror.sh
+MB_CommunityScore = rating_0_to_5 * ln(1 + rating_count)
 ```
 
-必须复用并固定官方 `metabrainz/musicbrainz-docker` 的 tag 或 commit；不得自行拼装不受维护的 MusicBrainz / PostgreSQL / Solr Compose 文件。`bootstrap_musicbrainz_mirror.sh` 只可克隆指定上游版本、核验 revision、写入本机私有配置并输出下一步人工命令，不能自行下载、导入或启动服务。
+展示时必须同时显示 `rating_count`：
 
-部署目标为独立 Linux 主机（优先 VPS1、NAS 或专用 VPS），仅监听局域网/Tailscale 地址。不得占用 MEDIA 的业务 PostgreSQL、不得发布公网端口。
+- `0`：没有评分，不显示数值；
+- `1-2`：标记“样本极少”，不可参与默认排序；
+- `>=3`：可作为 MusicBrainz 社区口碑排序依据。
 
-**硬门禁：** 当前 Worker 依赖 MusicBrainz Web Service 的搜索接口，因此 POC 必须部署官方 Web Service 与搜索索引。官方 `alt-db-only-mirror` 配置不包含网站和 Web API，只适合直接 SQL 使用，禁止作为本项目的应用接入方案。
+Last.fm 的全站 `listeners`、`playcount` 形成独立的公共热度，不与 MusicBrainz 社区口碑合并。Last.fm 的 `track.getInfo` 支持按 Recording MBID 查询，因此只有经过高置信身份确认的媒体才可进入 Last.fm 抓取队列。
 
-上线镜像前需完成：
+## 可扩展的数据模型
 
-1. 持久化 PostgreSQL 卷、下载临时目录、备份目录、日志轮转与磁盘告警；
-2. 一次“固定快照下载 → 校验 → 导入 → 建索引 → 查询 → 备份 → 恢复”演练；
-3. 记录数据集版本、快照日期、导入耗时、库大小与查询基准；
-4. 初期仅使用固定快照。Live Data Feed / 增量复制必须作为后续独立变更，不与首个 POC 混合；
-5. 核验 MusicBrainz 数据许可证：核心 `mbdump` 与派生 `mbdump-derived` 的使用边界不同。仅需要身份匹配时优先最小化使用核心数据。
-6. 在目标硬件完成索引基准。官方默认 PostgreSQL shared buffers 与 Solr heap 都是 2 GB；索引重建对 CPU、内存和磁盘 I/O 敏感，未完成实测前不得承诺全库扫描吞吐。
-
-官方参考：<https://github.com/metabrainz/musicbrainz-docker>、<https://musicbrainz.org/doc/MusicBrainz_Server/Setup>、<https://musicbrainz.org/doc/MusicBrainz_Database/Download>。
-
-## 4. 数据模型与迁移
-
-所有改动使用 EF Core Migration。不得修改已上线迁移，新增迁移必须具备可逆 `Down`。
-
-### 4.1 `MediaPopularitySnapshots`
-
-一首歌、一个 Provider、一份当前热度快照：
+不要为每一个外部平台新增一套表。保留现有 `MediaIdentities` 作为权威身份层，并新增通用外部映射与信号层。
 
 ```text
-MediaFileId + Provider                         # 唯一索引
-MusicBrainzRecordingId                         # 已确认身份锚点
-Listeners, PlayCount                           # nullable，非永久事实
-TopTagsJson                                    # 最多保存前 10 项
-SourceUrl
-RetrievedAt, ExpiresAt
-PayloadBytes                                   # 用于 100 MB 缓存账本
+MediaIdentities
+  现有权威身份层：MusicBrainzLocal Recording MBID、置信度、审核状态。
+
+MediaExternalReferences
+  MediaFileId
+  Provider              # LastFm / YouTube / Spotify / Billboard / ...
+  SubjectType           # Recording / ReleaseGroup / Artist
+  ExternalId
+  CanonicalUrl
+  MatchMethod
+  MatchConfidence
+  Status
+  VerifiedAt
+  MetadataFingerprint
+  UNIQUE(MediaFileId, Provider, SubjectType)
+
+MediaExternalSignals
+  ExternalReferenceId
+  SignalKey             # CommunityScore / GlobalPopularity / Playcount /
+                        # Listeners / ChartRank / Rating
+  RawValue
+  NormalizedScore       # 同来源内标准化为 0..100，供 Library 排序
+  SampleSize            # rating_count / listeners 等
+  RawMetricsJson        # 记录来源原始字段，不能替代 RawValue
+  AlgorithmVersion
+  SourceUrl
+  SourcePayloadHash
+  ObservedAt
+  RefreshAfter
+  Status
+  LastError
+  UNIQUE(ExternalReferenceId, SignalKey)
 ```
 
-Last.fm 快照只保存归一化的必要字段，不保存完整原始响应。全库 Last.fm 缓存总量默认硬限制为 100 MB；达到上限时只允许替换已过期的高分条目，不得继续扩大。
+如将来确有趋势图需求，再添加追加型 `MediaExternalSignalHistory`；不要在第一个版本提前实现。
 
-### 4.2 `EnrichmentCandidateScores`
+对于 MusicBrainzLocal，可以复用 `MediaIdentities` 中的 MBID，不必重复造身份表；社区信号也可以先通过一个内部 `MediaExternalReference` 关联到现有身份。原始标准化元数据（ISRC、canonical title、artist、duration、release 信息、tags/genres）保存在该引用的元数据 JSON 或独立快照字段中，绝不自动覆盖用户的 `MediaFiles` 元数据。
 
-作为可追溯的资源队列投影，而非覆盖 `MediaFile`：
+## LocalIdentityAutoScanService
+
+### 目标
+
+实现一个边界明确的后台/CLI 扫描能力：
+
+- 扫描没有任何已确认身份的媒体；
+- 仅在本地 MusicBrainz 镜像上检索；
+- 只接受严格高置信候选；
+- 保存扫描状态和候选证据；
+- 首阶段只做 Dry Run，不自动创建 Draft，也不写入 `MediaIdentities`；
+- 后续新入库文件可增量扫描；输入元数据变化后可重新扫描。
+
+### 最小状态表
+
+新增 `MediaIdentityScanState`，唯一键为 `MediaFileId`。建议字段：
 
 ```text
-MediaFileId                                    # 主键
-IdentityProvider, IdentityConfidence
-InternalScore, LastFmScore, TotalScore
-ScoreVersion, CalculatedAt
-Eligibility                                    # Eligible / LowConfidence / Complete / Cooldown / ManualOnly
-LastFmSnapshotAt
+MediaFileId
+InputFingerprint
+LastScannedAt
+LastOutcome          # Matched / Unmatched / LowConfidence / Skipped / Failed
+LastConfidence
+RetryAfter
+AttemptCount
+LastError
+PolicyVersion
+MirrorVersion
+LastReportId
 ```
 
-评分版本必须持久化；调整公式后递增 `ScoreVersion` 并可重算，不覆盖历史 Provider 审计。
+它只负责扫描进度、冷却和可恢复性；不能存放封面、歌词、Worker 或用户行为数据。
 
-### 4.3 Score V1（固定公式）
+### 保守准入策略
 
-仅当有效 Title/Artist 且 LocalMusicBrainz 置信度 `>= 0.90` 时允许进入自动资源队列。
+新增 C# `LocalIdentityAutoEligibilityPolicy`，与现有 Python 候选提取规则保持同等语义：
+
+- 排除已有任何 `MediaIdentity` 的媒体；
+- 标题/艺人必须有效，且不能是 `Unknown`；
+- 候选必须包含合法 UUID MBID；
+- 置信度默认 `>= 0.995`；
+- 标题、艺人规范化后必须严格一致；
+- 时长差默认 `<= 3 秒`；
+- 排除 remix、mix、live、demo、instrumental、karaoke、cover、edit、remaster、preview、clip、ringtone 等衍生版本；
+- 短音频或明显剪辑直接跳过；
+- 同一 MBID 去重；
+- 输入指纹变化可绕过冷却，未匹配/低置信/失败均必须有明确 `RetryAfter`。
+
+任何与 Python 规则的差异必须写入报告，不能自行放宽。
+
+### 命中后的本地详情快照
+
+对于高置信候选，在同一次扫描中只请求本地镜像详情，不访问公网：
 
 ```text
-收藏                         +1000
-近 30 天有播放               +200
-累计播放                     +min(PlayCount * 10, 500)
-MusicBrainz 置信度 >= 0.95   +100
-Last.fm 热度                 0..300（对 listeners / playcount 做对数归一化）
+/ws/2/recording/{MBID}?inc=ratings+isrcs+tags+genres+releases+release-groups+artist-credits
 ```
 
-`MatchedWithoutAssets`、`Unmatched`、`Failed` 是不同状态：前者可在 14 天后重入资源队列；后两者必须遵守既有冷却和指纹变更规则。人工确认的网易资源优先级最高，自动 Worker 只能补空。
+记录：Recording/Release/Release Group MBID、ISRC、canonical title/artist/duration、发行信息、tags/genres、Recording rating/rating_count、Release Group rating/rating_count、计算的社区分、镜像版本与拉取时间。
 
-## 5. 队列和接口行为
+不自动覆盖 `MediaFiles` 原始标题、艺人、专辑、时长。
 
-### A. 本地身份扫描（`Catalog:IdentityLocal`）
+## Last.fm 独立公共评分
 
-- 通过私网 `LocalMusicBrainz` 查询，不访问公网 MusicBrainz；
-- 不下载封面、不请求歌词、不调用 Last.fm；
-- 写入 `MediaIdentity.Provider = LocalMusicBrainz`、匹配方法、置信度、数据集版本和审计；
-- 高置信身份可创建/更新评分投影；低置信、未知标题、版本冲突仅记录候选，不写正式资源；
-- 支持游标、断点、dry-run、每批快照和可重复运行。
+仅在 MusicBrainz 身份已确认后抓取。第一版使用 `track.getInfo` 的全站 `listeners` 与 `playcount`，按 MBID 优先匹配。保存 Last.fm 原始数值和来源 URL，并计算可解释的 0..100 分：
 
-### B. Last.fm 热度快照（`Catalog:PopularityLastFm`）
+```text
+LastFmGlobalPopularity V1 =
+  100 * (0.55 * normalized_log(playcount)
+       + 0.45 * normalized_log(listeners))
+```
 
-- 只处理 A 阶段已高置信匹配且本地评分排名靠前的候选；首轮上限 5,000 首；
-- 优先用 Recording 对应的规范化 Artist/Title 查询，结果必须回写 `SourceUrl`、时间、过期时间；
-- 使用一个 API key、可识别 User-Agent、顺序限速、`429` / `Retry-After` 退避；
-- 不调用写接口、不抓取网页、不查询用户 Scrobble 数据；
-- 过期快照才刷新，Last.fm 异常时沿用旧分数并标记 `stale`，不阻塞资源队列。
+分数仅在 Last.fm 来源内部可比较。首次抓取和刷新必须低频、可缓存、可失败；不要因 Last.fm 故障阻塞身份扫描。刷新周期建议为每周，首次实现前要以实际 API 429 响应确定最终节流。
 
-Last.fm 只作为评分证据。其 API 条款要求受限缓存、来源归属和限流合规：<https://www.last.fm/api/tos>。
+## Library 展示
 
-### C. 高分资源补全（`Catalog:AssetsScored`）
+`/library` 后端分页查询应仅从本库读取外部快照，并返回：
 
-- 从 `Eligibility=Eligible` 的评分投影按 `TotalScore DESC, MediaFileId ASC` 取歌；
-- 只处理缺封面或缺歌词的歌曲；
-- CAA/LRCLIB 继续由 Mac/NAS Worker 实际访问，MEDIA 只协调租约、审计和入库；
-- 保持现有封面暂存、文件魔数校验、事务补偿、ProviderQuotaLedger、提交幂等和冷却机制；
-- 仅在身份已确认时访问 CAA/LRCLIB，绝不把网易作为自动 fallback。
+- `mbCommunityScore`、`mbRating`、`mbRatingCount`、`mbObservedAt`；
+- `lastFmPopularityScore`、`lastFmListeners`、`lastFmPlaycount`、`lastFmObservedAt`；
+- 评分来源和数据更新时间。
 
-## 6. 必须修改的现有限速逻辑
+前端应：
 
-部署镜像本身不会提升吞吐。Gemini 必须实现下列隔离，否则全库仍被旧公网账本卡住：
+- 分别显示“MB 社区口碑”和“Last.fm 热度”；
+- 支持按任一分数排序、筛选“有评分/未评分”；
+- 对小样本 MB 分显示低样本提示；
+- 不显示假精确的综合分。综合公共分是未来独立且可审计的 Provider，不在第一版实施。
 
-1. `MusicBrainz:Mode=local` 时，本地身份查询不预留或消耗公网 MusicBrainz 的每日 2,000 请求单位；
-2. `catalog_worker.py` 的 1.5 秒节流仅适用于公网 MusicBrainz，不适用于私网镜像；本地模式改为可配置的连接并发和数据库超时；
-3. CAA 与 LRCLIB 配额必须在候选选择后按实际 `needsCover` / `needsLyrics` 数量预留。不得在选歌前按 CAA 剩余额度把所有歌曲一律截断；
-4. LocalMusicBrainz、Last.fm、CAA、LRCLIB 分别记录 Provider、请求数、错误率和延迟，不得混入同一个 `MusicBrainz` 账本；
-5. 未配置本地镜像或健康检查失败时，`Catalog:IdentityLocal` 只能失败并告警；不得静默对 11 万首回退公网 MusicBrainz。人工单曲查询可显式选择公网模式。
+## 实施顺序与停止点
 
-## 7. 测试与验收门禁
+1. 实现 `MediaIdentityScanState`、保守 C# 策略、CLI Dry Run 和 PostgreSQL 集成测试。
+2. 本地开发库执行 1,000 首 Dry Run，输出 SHA-256 报告并对照 Python 规则。
+3. 审核命中率、误匹配样本、吞吐和预计全库耗时；此处停止，等待授权。
+4. 经授权后，仅实现/启用高置信身份写入或受控 Draft 生成。
+5. 对已确认身份实现 MusicBrainz 本地详情快照与社区分。
+6. 实现 Last.fm 快照、刷新和独立公共评分。
+7. 最后改造 `/library` 展示、排序与筛选。
 
-Gemini 每阶段交付必须提供代码、Migration、测试、执行命令和 `walkthrough.md`，但不得自行提交、推送或部署。Codex 复核后才进入下一阶段。
+所有阶段必须分别授权：提交/推送、部署、MEDIA Dry Run、MEDIA 写入都不能合并默认执行。
 
-### 必须新增的自动化测试
+## 估算
 
-1. Local 模式不产生公网 MusicBrainz HTTP 请求，也不消耗其 ProviderQuotaLedger；
-2. Local 模式健康检查失败时全库身份任务失败且无公网回退；
-3. Score V1：收藏/近期播放/累计播放/置信度/Last.fm 分数排序准确且封顶有效；
-4. 低置信、人工确认、冷却、资源完整歌曲不能进入自动资源队列；
-5. Last.fm 缓存命中不发请求、过期才刷新、超过 100 MB 拒绝新增低优先级快照；
-6. CAA/LRCLIB 按实际缺失资源预留额度；无封面需求的歌曲不消耗 CAA 额度；
-7. PostgreSQL 集成测试覆盖本地模式、并发租约、迁移升级与回滚；
-8. 前端显示评分来源、Last.fm 数据时间和四类结果：`Updated`、`MatchedWithoutAssets`、`Unmatched`、`Failed`。
+- 自动扫描与本地 Dry Run：4-5 个工作日；
+- MusicBrainz 详情/社区快照：1-2 个工作日；
+- Last.fm 公共评分：2-3 个工作日；
+- Library API/UI：1-2 个工作日；
+- 集成测试、发布、首轮受控运行：1-2 个工作日。
 
-### 分阶段准出
+合计约 9-14 个工作日的开发和验证。114,875 首本地 MB 首轮扫描在单并发下预计 12-24 小时；是否采用两并发必须先在 DSM 上验证负载。Last.fm 仅对已确认身份执行，不扫描全部媒体。
 
-| 阶段 | 允许动作 | 准出条件 |
-| --- | --- | --- |
-| 0 | 当前 3×10 公网稳定性试跑 | 不改生产架构 |
-| 1 | 私有镜像 POC | 私网访问、固定快照、导入/恢复演练、无生产接入 |
-| 2 | 应用本地模式与数据模型 | 测试通过，feature flag 默认关闭 |
-| 3 | 100 首 shadow-run | 仅记录本地与公网候选差异，不写资源，人工抽检 |
-| 4 | 5,000 首评分快照 | Last.fm 缓存/限流/归属合规，无自动资源写入 |
-| 5 | 高分资源小批量 | 10 → 50 → 100，逐批验收后再扩容 |
+## 当前工作区注意事项
 
-任一阶段出现误匹配、Provider `429/503`、迁移差异或缓存上限异常，立即停止该阶段，不影响已上线的手工网易与现有生产服务。
+工作区存在未提交的 Batch 2 资源预检代码：`BatchAssetPreflightService`、相关 Controller/Program 修改、测试和 Python 脚本。它不属于本主线，不得混入 LocalIdentityAutoScanService 的提交，也不得部署或执行外部预检。
 
-## 8. Gemini 与 Codex 协作规则
-
-1. Gemini 只实施当前获准阶段，不提前创建生产资源、不修改 MEDIA、不提交或推送；
-2. Gemini 在每阶段结束提供：`git diff`、Migration SQL、测试输出、风险说明、回滚步骤和 `walkthrough.md`；
-3. Codex 复核源代码、Migration 可逆性、真实 PostgreSQL 测试和部署边界；
-4. 只有用户明确授权后，才执行 Git 提交、CI、MEDIA 部署或启动 Worker；
-5. 任何 API key、密码、Tailscale 凭据仅放本机/部署机 secret，禁止进入仓库、日志或验收文档。
+已删除本轮未跟踪的 Batch 2 资源预检方案、报告和旧交接文档，避免后续 AI 误把冻结支线当作主线。

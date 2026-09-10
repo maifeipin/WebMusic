@@ -7,6 +7,13 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.DataProtection;
 
+// EF tooling must not execute migration/bootstrap code from this top-level
+// program. AppDbContextFactory supplies the design-time context instead.
+if (string.Equals(Environment.GetEnvironmentVariable("WEBMUSIC_EF_DESIGN_TIME"), "1", StringComparison.Ordinal))
+{
+    return;
+}
+
 // Disable default claim mapping to keep claims as 'sub', 'name', etc.
 System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler.DefaultInboundClaimTypeMap.Clear();
 // Fix for Npgsql 6.0+ forcing UTC. Enable legacy behavior to simplify migration.
@@ -163,6 +170,37 @@ builder.Services.AddHttpClient<WebMusic.Backend.Services.ILocalMusicBrainzServic
             }
         }
     });
+builder.Services.AddHttpClient<WebMusic.Backend.Services.ILocalMusicBrainzDetailService, WebMusic.Backend.Services.LocalMusicBrainzDetailService>()
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+    {
+        AllowAutoRedirect = false,
+        ConnectCallback = async (context, cancellationToken) =>
+        {
+            var host = context.DnsEndPoint.Host.Trim('[', ']');
+            if (!System.Net.IPAddress.TryParse(host, out var ip) || !WebMusic.Backend.Services.LocalMusicBrainzService.IsPrivateOrLoopbackIp(ip))
+            {
+                throw new InvalidOperationException($"Outbound connection to '{context.DnsEndPoint.Host}' is strictly prohibited. Only private or loopback IP literals are allowed.");
+            }
+
+            var socket = new System.Net.Sockets.Socket(System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);
+            try
+            {
+                await socket.ConnectAsync(ip, context.DnsEndPoint.Port, cancellationToken);
+                return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+            }
+            catch
+            {
+                socket.Dispose();
+                throw;
+            }
+        }
+    });
+builder.Services.AddScoped<WebMusic.Backend.Services.ILocalIdentityAutoScanService, WebMusic.Backend.Services.LocalIdentityAutoScanService>();
+builder.Services.AddScoped<WebMusic.Backend.Services.IMusicBrainzCommunitySignalService, WebMusic.Backend.Services.MusicBrainzCommunitySignalService>();
+builder.Services.AddHttpClient<WebMusic.Backend.Services.ILastFmTrackInfoClient, WebMusic.Backend.Services.LastFmTrackInfoClient>(client =>
+    client.BaseAddress = new Uri("https://ws.audioscrobbler.com/"));
+builder.Services.AddScoped<WebMusic.Backend.Services.ILastFmGlobalPopularityService, WebMusic.Backend.Services.LastFmGlobalPopularityService>();
+builder.Services.AddScoped<WebMusic.Backend.Services.IExternalSignalRefreshService, WebMusic.Backend.Services.ExternalSignalRefreshService>();
 builder.Services.AddHttpClient(); // Required for IHttpClientFactory
 builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, "data", "data-protection-keys")));
 builder.Services.AddSingleton<WebMusic.Backend.Services.IShareAccessService, WebMusic.Backend.Services.ShareAccessService>();
@@ -204,6 +242,138 @@ if (args.Contains("verify-baseline"))
     else
     {
         Console.WriteLine("ℹ️ Pass '--apply' to record baseline migration once schema verification passes.");
+    }
+    return;
+}
+
+// Local identity auto-scan CLI. It is deliberately before migrations, account
+// bootstrap and cleanup. Production only permits its physical zero-write mode.
+if (args.Contains("local-identity-auto-scan", StringComparer.OrdinalIgnoreCase))
+{
+    using var scanScope = app.Services.CreateScope();
+    var scanner = scanScope.ServiceProvider.GetRequiredService<WebMusic.Backend.Services.ILocalIdentityAutoScanService>();
+    var count = 100;
+    int? afterId = null;
+    string? outFile = null;
+
+    for (var index = 0; index < args.Length; index++)
+    {
+        static int? ReadIntArgument(string[] source, ref int i, string name)
+        {
+            if (source[i].Equals(name, StringComparison.OrdinalIgnoreCase) && i + 1 < source.Length && int.TryParse(source[i + 1], out var spaced))
+            {
+                i++;
+                return spaced;
+            }
+            return source[i].StartsWith(name + "=", StringComparison.OrdinalIgnoreCase) && int.TryParse(source[i][(name.Length + 1)..], out var equals) ? equals : null;
+        }
+
+        var parsedCount = ReadIntArgument(args, ref index, "--count");
+        if (parsedCount.HasValue) { count = parsedCount.Value; continue; }
+        var parsedAfter = ReadIntArgument(args, ref index, "--after-id");
+        if (parsedAfter.HasValue) { afterId = parsedAfter; continue; }
+        if (args[index].Equals("--out", StringComparison.OrdinalIgnoreCase) && index + 1 < args.Length) { outFile = args[++index]; continue; }
+        if (args[index].StartsWith("--out=", StringComparison.OrdinalIgnoreCase)) outFile = args[index]["--out=".Length..];
+    }
+
+    var persistState = args.Contains("--persist-state", StringComparer.OrdinalIgnoreCase);
+    if (persistState && app.Environment.IsProduction())
+    {
+        throw new InvalidOperationException("Production local-identity-auto-scan is dry-run only. Persisted scan state requires a separately approved release.");
+    }
+
+    var request = new WebMusic.Backend.Services.LocalIdentityAutoScanRequest(
+        args.Contains("--incremental", StringComparer.OrdinalIgnoreCase)
+            ? WebMusic.Backend.Services.LocalIdentityScanMode.Incremental
+            : WebMusic.Backend.Services.LocalIdentityScanMode.Full,
+        count,
+        afterId,
+        DryRun: !persistState,
+        PersistState: persistState,
+        MirrorVersion: app.Configuration["MusicBrainz:MirrorVersion"]);
+    var report = await scanner.ScanAsync(request);
+    Console.WriteLine($"Local identity auto scan completed: evaluated={report.Evaluated}, matched={report.Matched}, unmatched={report.Unmatched}, skipped={report.Skipped}, failed={report.Failed}");
+    Console.WriteLine($"Input SHA-256: {report.InputSha256}");
+    Console.WriteLine($"Result SHA-256: {report.ResultSha256}");
+    if (!string.IsNullOrWhiteSpace(outFile))
+    {
+        var directory = Path.GetDirectoryName(outFile);
+        if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
+        await File.WriteAllTextAsync(outFile, System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        Console.WriteLine($"Saved report -> {outFile}");
+    }
+
+    if (report.Failed > 0 && !args.Contains("--allow-partial", StringComparer.OrdinalIgnoreCase))
+    {
+        Console.Error.WriteLine($"Scan completed with {report.Failed} failure(s). Exiting with code 1. Pass '--allow-partial' to exit 0.");
+        Environment.ExitCode = 1;
+    }
+    return;
+}
+
+// External Signal Refresh CLI Mode (Controlled pipeline for MusicBrainz and Last.fm score refreshes)
+if (args.Contains("external-signal-refresh", StringComparer.OrdinalIgnoreCase))
+{
+    using var refreshScope = app.Services.CreateScope();
+    var refresher = refreshScope.ServiceProvider.GetRequiredService<WebMusic.Backend.Services.IExternalSignalRefreshService>();
+    var provider = "musicbrainz";
+    var count = 100;
+    int? afterId = null;
+    var force = args.Contains("--force", StringComparer.OrdinalIgnoreCase);
+    var dryRun = args.Contains("--dry-run", StringComparer.OrdinalIgnoreCase);
+    var allowPartial = args.Contains("--allow-partial", StringComparer.OrdinalIgnoreCase);
+    string? outFile = null;
+
+    for (var index = 0; index < args.Length; index++)
+    {
+        static int? ReadIntArgument(string[] source, ref int i, string name)
+        {
+            if (source[i].Equals(name, StringComparison.OrdinalIgnoreCase) && i + 1 < source.Length && int.TryParse(source[i + 1], out var spaced))
+            {
+                i++;
+                return spaced;
+            }
+            return source[i].StartsWith(name + "=", StringComparison.OrdinalIgnoreCase) && int.TryParse(source[i][(name.Length + 1)..], out var equals) ? equals : null;
+        }
+
+        if (args[index].Equals("--provider", StringComparison.OrdinalIgnoreCase) && index + 1 < args.Length)
+        {
+            provider = args[++index];
+            continue;
+        }
+        if (args[index].StartsWith("--provider=", StringComparison.OrdinalIgnoreCase))
+        {
+            provider = args[index]["--provider=".Length..];
+            continue;
+        }
+
+        var parsedCount = ReadIntArgument(args, ref index, "--count");
+        if (parsedCount.HasValue) { count = parsedCount.Value; continue; }
+        var parsedAfter = ReadIntArgument(args, ref index, "--after-id");
+        if (parsedAfter.HasValue) { afterId = parsedAfter; continue; }
+        if (args[index].Equals("--out", StringComparison.OrdinalIgnoreCase) && index + 1 < args.Length) { outFile = args[++index]; continue; }
+        if (args[index].StartsWith("--out=", StringComparison.OrdinalIgnoreCase)) outFile = args[index]["--out=".Length..];
+    }
+
+    var request = new WebMusic.Backend.Services.ExternalSignalRefreshRequest(provider, count, afterId, force, dryRun);
+    var report = await refresher.RefreshAsync(request);
+    Console.WriteLine($"External signal refresh completed for {report.Provider}: evaluated={report.Evaluated}, updated={report.Updated}, skipped={report.Skipped}, failed={report.Failed}, continuationId={report.ContinuationAfterMediaFileId}");
+    if (report.Aborted)
+    {
+        Console.WriteLine($"Batch aborted early: {report.StopReason}");
+    }
+    if (!string.IsNullOrWhiteSpace(outFile))
+    {
+        var directory = Path.GetDirectoryName(outFile);
+        if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
+        await File.WriteAllTextAsync(outFile, System.Text.Json.JsonSerializer.Serialize(report, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        Console.WriteLine($"Saved report -> {outFile}");
+    }
+
+    if ((report.Failed > 0 || report.Aborted) && !allowPartial)
+    {
+        Console.Error.WriteLine($"External signal refresh completed with failures or abort ({report.Failed} failure(s), aborted={report.Aborted}). Exiting with code 1. Pass '--allow-partial' to exit 0.");
+        Environment.ExitCode = 1;
     }
     return;
 }

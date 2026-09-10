@@ -11,6 +11,9 @@
 # ==============================================================================
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
 # 1. 配置上游固定版本参数与固定镜像 Digest
 UPSTREAM_REPO="https://github.com/metabrainz/musicbrainz-docker.git"
 PINNED_TAG="v-2026-07-30.1"
@@ -133,16 +136,22 @@ echo "✅ 上游 Git Commit 安全校验通过: [${ACTUAL_COMMIT}]"
 echo "⚙️ 正在安装私有网络与存储绑定配置..."
 mkdir -p "${TARGET_DIR}/local/compose"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMPOSE_SRC="${SCRIPT_DIR}/../infra/musicbrainz-mirror/compose.yaml"
-ENV_EXAMPLE_SRC="${SCRIPT_DIR}/../infra/musicbrainz-mirror/.env.example"
+COMPOSE_SRC="${PROJECT_ROOT}/infra/musicbrainz-mirror/compose.yaml"
+ENV_EXAMPLE_SRC="${PROJECT_ROOT}/infra/musicbrainz-mirror/.env.example"
 
-if [ -f "${COMPOSE_SRC}" ]; then
-    cp "${COMPOSE_SRC}" "${TARGET_DIR}/local/compose/override.yml"
-    echo "✅ 已复制本地安全 Compose 覆盖配置 -> local/compose/override.yml"
+if [ ! -f "${COMPOSE_SRC}" ]; then
+    echo "❌ 缺少 Compose 配置文件: ${COMPOSE_SRC}"
+    exit 1
+fi
+if [ ! -f "${ENV_EXAMPLE_SRC}" ]; then
+    echo "❌ 缺少环境变量模板文件: ${ENV_EXAMPLE_SRC}"
+    exit 1
 fi
 
-if [ -f "${ENV_EXAMPLE_SRC}" ] && [ ! -f "${TARGET_DIR}/.env" ]; then
+cp "${COMPOSE_SRC}" "${TARGET_DIR}/local/compose/override.yml"
+echo "✅ 已复制本地安全 Compose 覆盖配置 -> local/compose/override.yml"
+
+if [ ! -f "${TARGET_DIR}/.env" ]; then
     cp "${ENV_EXAMPLE_SRC}" "${TARGET_DIR}/.env"
     echo "✅ 已初始化环境变量模板 -> .env (请按需修改 IP 与挂载路径)"
 fi
@@ -169,16 +178,16 @@ echo "1. 编辑环境配置:"
 echo "   vim ${TARGET_DIR}/.env"
 echo "   确保 MUSICBRAINZ_DOCKER_HOST_IPADDRCOL 严格绑定为私网 IP (如 192.168.2.18:)"
 echo "   确保端口为 5050 (避开群晖 DSM 5000 端口)"
-echo "2. 数据包准备与校验 (下载需数十 GB，请在后台执行并核验散列):"
+echo "2. 数据包准备与校验 (下载需数十 GB，请在后台执行并使用验收脚本执行严格 7/7 校验):"
 echo "   cd ${DATA_DIR}/dumps"
 echo "   curl -O https://data.metabrainz.org/pub/musicbrainz/data/fullexport/latest/MD5SUMS"
-echo "   # 下载对应 dump 包..."
-echo "   md5sum -c MD5SUMS --ignore-missing"
+echo "   # 下载 7 个必须的 dump 包 (mbdump.tar.bz2 等)..."
+echo "   ${SCRIPT_DIR}/verify_musicbrainz_mirror.sh --data-dir ${DATA_DIR}/dumps"
 echo "3. 镜像构建与启动:"
 echo "   cd ${TARGET_DIR}"
 echo "   docker compose build"
 echo "   docker compose run --rm musicbrainz createdb.sh"
 echo "   docker compose up -d"
 echo "4. 验收测试:"
-echo "   ./scripts/verify_musicbrainz_mirror.sh --host <私网IP> --port 5050"
+echo "   ${SCRIPT_DIR}/verify_musicbrainz_mirror.sh --host <私网IP> --port 5050"
 echo "================================================================================"
