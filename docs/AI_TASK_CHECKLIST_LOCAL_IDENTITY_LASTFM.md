@@ -60,9 +60,9 @@ scripts/legacy/       # 冻结的旧 Worker / 旧富化入口，不得扩展或�
 ## 任务 2：统一保守策略
 
 - [x] 新增 `LocalIdentityAutoEligibilityPolicy`。
-- [x] 映射 Python 工具的核心保守门禁：有效元数据、版本/衍生词、UUID、置信度、标题/主艺人、时长差、任意既有身份和批内 MBID 去重。
-- [x] 固定策略版本 `LocalAutoEligibility:v2`（严格匹配 Python 完整艺人、mojibake 与衍生词集合）。
-- [x] 对版本词、时长差、UUID、置信度、已有身份、重复 MBID 与 Unknown 写了回归测试。
+- [x] 映射 Python 工具的核心保守门禁：有效元数据、版本/衍生词、UUID、置信度、标题/主艺人、时长差和既有身份；v3 移除了批内 MBID 去重，放宽了专辑乱码（改为忽略）与专辑版本词。
+- [x] 固定策略版本 `LocalAutoEligibility:v3`（严格与 Python 提取脚本规则双向对齐）。
+- [x] 对版本词、时长差、UUID、置信度、已有身份、同 MBID 多文件与 Unknown 写了回归测试。
 - [x] C# 与 Python 核心保守提取规则完全对齐（详见 test_extract_shadow_run_candidates.py）。
 
 验收：相同输入样本在 Python/C# 的接受或拒绝结果一致；低置信、版本词、时长不符和已有身份均无法产生候选。

@@ -23,15 +23,25 @@ public class LocalIdentityAutoEligibilityPolicyTests
     [InlineData("Hello (Radio Mix)", "25", "Hello", null)]
     [InlineData("Hello", "25", "Hello", "live")]
     [InlineData("Hello", "25", "Hello", "DJ mix")]
-    [InlineData("Hello", "Greatest Hits 精选", "Hello", null)]
-    [InlineData("Theme", "Movie OST 原声", "Theme", null)]
-    [InlineData("Song", "Single 单曲", "Song", null)]
-    public void Rejects_VersionTokens_InSourceOrCandidate(string title, string album, string candidateTitle, string? disambiguation)
+    public void Rejects_VersionTokens_InSourceTitleOrCandidate(string title, string album, string candidateTitle, string? disambiguation)
     {
         var media = new MediaFile { Title = title, Artist = "Adele", Album = album, Duration = TimeSpan.FromSeconds(295) };
         var decision = LocalIdentityAutoEligibilityPolicy.Evaluate(media, Result(candidateTitle, disambiguation: disambiguation));
         Assert.False(decision.Eligible);
         Assert.Equal("Skipped", decision.Outcome);
+    }
+
+    [Theory]
+    [InlineData("Hello", "Greatest Hits 精选")]
+    [InlineData("Theme", "Movie OST 原声")]
+    [InlineData("Song", "Single 单曲")]
+    [InlineData("Song", "Album (Deluxe Edition)")]
+    public void Accepts_VersionTokens_InAlbum_WhenTitleIsClean(string title, string album)
+    {
+        var media = new MediaFile { Title = title, Artist = "Adele", Album = album, Duration = TimeSpan.FromSeconds(295) };
+        var decision = LocalIdentityAutoEligibilityPolicy.Evaluate(media, Result(title: title));
+        Assert.True(decision.Eligible);
+        Assert.Equal("Matched", decision.Outcome);
     }
 
     [Fact]
@@ -62,14 +72,38 @@ public class LocalIdentityAutoEligibilityPolicyTests
     [Theory]
     [InlineData("Song Ä", "Artist", "Album")]
     [InlineData("Song", "Artist É", "Album")]
-    [InlineData("Song", "Artist", "Album Ü")]
-    public void Rejects_MojibakeMetadata(string title, string artist, string album)
+    public void Rejects_MojibakeTitleOrArtist(string title, string artist, string album)
     {
         var media = new MediaFile { Title = title, Artist = artist, Album = album, Duration = TimeSpan.FromSeconds(295) };
-        var decision = LocalIdentityAutoEligibilityPolicy.Evaluate(media, Result());
+        var decision = LocalIdentityAutoEligibilityPolicy.Evaluate(media, Result(title: "Clean", artist: "Clean"));
         Assert.False(decision.Eligible);
         Assert.Equal("Skipped", decision.Outcome);
         Assert.Contains("mojibake", decision.Reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Ignores_MojibakeInAlbum_WhenTitleAndArtistAreClean()
+    {
+        var media = new MediaFile { Title = "Hello", Artist = "Adele", Album = "Album Ü", Duration = TimeSpan.FromSeconds(295) };
+        var decision = LocalIdentityAutoEligibilityPolicy.Evaluate(media, Result());
+        Assert.True(decision.Eligible);
+        Assert.Equal("Matched", decision.Outcome);
+    }
+
+    [Fact]
+    public void Accepts_MultipleMediaFiles_WithSameRecordingId()
+    {
+        var media1 = new MediaFile { Id = 1, Title = "Hello", Artist = "Adele", Album = "25", Duration = TimeSpan.FromSeconds(295) };
+        var media2 = new MediaFile { Id = 2, Title = "Hello", Artist = "Adele", Album = "25 Reissue", Duration = TimeSpan.FromSeconds(295) };
+        var result = Result();
+
+        var decision1 = LocalIdentityAutoEligibilityPolicy.Evaluate(media1, result);
+        var decision2 = LocalIdentityAutoEligibilityPolicy.Evaluate(media2, result);
+
+        Assert.True(decision1.Eligible);
+        Assert.Equal("Matched", decision1.Outcome);
+        Assert.True(decision2.Eligible);
+        Assert.Equal("Matched", decision2.Outcome);
     }
 
     [Fact]

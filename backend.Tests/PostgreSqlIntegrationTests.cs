@@ -183,8 +183,8 @@ public class PostgreSqlIntegrationTests : IClassFixture<PostgreSqlFixture>
                 new LocalMusicBrainzCandidate("d0c34a5c-523a-4d58-b5ec-8d6ed95596cc", null, null, file.Title, file.Artist, file.Duration, null, 1, false), 200));
 
         var persisted = new LocalIdentityAutoScanService(db, exact.Object, NullLogger<LocalIdentityAutoScanService>.Instance);
-        var first = await persisted.ScanAsync(new LocalIdentityAutoScanRequest(LocalIdentityScanMode.Incremental, 1, DryRun: false, PersistState: true));
-        var second = await persisted.ScanAsync(new LocalIdentityAutoScanRequest(LocalIdentityScanMode.Incremental, 1, DryRun: false, PersistState: true));
+        var first = await persisted.ScanAsync(new LocalIdentityAutoScanRequest(LocalIdentityScanMode.Incremental, 1, DryRun: false, PersistState: true, MirrorVersion: "test-mirror:v1"));
+        var second = await persisted.ScanAsync(new LocalIdentityAutoScanRequest(LocalIdentityScanMode.Incremental, 1, DryRun: false, PersistState: true, MirrorVersion: "test-mirror:v1"));
 
         Assert.Equal(1, first.Matched);
         Assert.Equal(0, second.Evaluated);

@@ -16,16 +16,18 @@ Rules & Gates:
    confidence >= min_confidence (default 0.995).
 4. Field Integrity Validation: Fail-closed validation for positive integer MediaId, valid UUID MBID,
    non-empty Title and Artist, positive finite durations, and valid confidence in [0.0, 1.0].
-5. Version Check: Scans raw Title, raw Album, MatchedTitle, and Disambiguation for all
+5. Version Check: Scans raw Title, MatchedTitle, and Disambiguation for all
    version terms (clean, explicit, live, remix, mix, edit, version, acoustic, instrumental,
    deluxe, demo, bonus, re-recording, 演唱会, 现场, 翻唱, 纯音乐, 单曲, etc.).
-   Any non-empty Disambiguation is also strictly flagged.
+   Any non-empty Disambiguation is also strictly flagged. Album version terms are audit
+   metadata only and do not reject a recording identity in LocalAutoEligibility:v3.
 6. Artist Consistency: Verifies normalized raw artist strictly matches matched artist.
 7. Title Consistency: Verifies normalized raw title strictly matches matched title.
 8. Duration Difference: Disqualifies candidates with |raw_dur - matched_dur| > max_dur_diff (default 3.0s).
-9. MBID Deduplication: Prevents multiple file entries matching the same recording from
-   entering the primary pilot pool.
-10. Encoding/Mojibake Check: Detects and flags garbled/mojibake metadata.
+9. MBID Duplication Audit: Records multiple files matching the same recording for review,
+   while keeping every otherwise eligible file in the primary candidate pool.
+10. Encoding/Mojibake Check: Rejects garbled title/artist metadata. Garbled album metadata
+    is ignored because it is not required to establish a recording identity.
 """
 
 import argparse
@@ -207,10 +209,11 @@ def validate_item_fields(item):
 
 def check_version_terms(raw_title, raw_album, matched_title, disambiguation):
     """
-    Checks if any version term exists across raw title, raw album, matched title, or disambiguation.
+    Checks if any version term exists across raw title, matched title, or disambiguation.
+    Note: Album version terms are intentionally allowed in LocalAutoEligibility:v3.
     Returns (has_version_term, matched_keyword).
     """
-    combined = f'{raw_title or ""} | {raw_album or ""} | {matched_title or ""} | {disambiguation or ""}'
+    combined = f'{raw_title or ""} | {matched_title or ""} | {disambiguation or ""}'
     match = VERSION_REGEX.search(combined)
     if match:
         word = match.group(0).strip()
@@ -323,7 +326,7 @@ def classify_candidates(report_data, existing_ids=None, max_dur_diff=3.0, min_co
         has_version, matched_word = check_version_terms(raw_title, raw_album, matched_title, disambig)
         artist_matched = check_artist_match(raw_artist, matched_artist)
         title_matched = check_title_match(raw_title, matched_title)
-        is_mojibake = check_mojibake(raw_title) or check_mojibake(raw_album) or check_mojibake(raw_artist)
+        is_mojibake = check_mojibake(raw_title) or check_mojibake(raw_artist)
 
         entry = {
             'mediaId': mid,
@@ -351,7 +354,7 @@ def classify_candidates(report_data, existing_ids=None, max_dur_diff=3.0, min_co
             already_identified.append(entry)
             continue
 
-        # 2. Mojibake gate
+        # 2. Mojibake gate (raw title and raw artist only; album mojibake is ignored)
         if is_mojibake:
             mojibake_flagged.append(entry)
             continue
@@ -381,10 +384,9 @@ def classify_candidates(report_data, existing_ids=None, max_dur_diff=3.0, min_co
             confidence_flagged.append(entry)
             continue
 
-        # 8. MBID deduplication gate
+        # 8. MBID deduplication: in LocalAutoEligibility:v3, duplicate MBIDs across files are admitted
         if mbid in seen_mbids:
             duplicate_mbids.append(entry)
-            continue
 
         seen_mbids.add(mbid)
         conservative_pristine.append(entry)

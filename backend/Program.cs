@@ -255,6 +255,7 @@ if (args.Contains("local-identity-auto-scan", StringComparer.OrdinalIgnoreCase))
     var count = 100;
     int? afterId = null;
     string? outFile = null;
+    string? mirrorVersion = null;
 
     for (var index = 0; index < args.Length; index++)
     {
@@ -273,13 +274,24 @@ if (args.Contains("local-identity-auto-scan", StringComparer.OrdinalIgnoreCase))
         var parsedAfter = ReadIntArgument(args, ref index, "--after-id");
         if (parsedAfter.HasValue) { afterId = parsedAfter; continue; }
         if (args[index].Equals("--out", StringComparison.OrdinalIgnoreCase) && index + 1 < args.Length) { outFile = args[++index]; continue; }
-        if (args[index].StartsWith("--out=", StringComparison.OrdinalIgnoreCase)) outFile = args[index]["--out=".Length..];
+        if (args[index].StartsWith("--out=", StringComparison.OrdinalIgnoreCase)) { outFile = args[index]["--out=".Length..]; continue; }
+        if (args[index].Equals("--mirror-version", StringComparison.OrdinalIgnoreCase) && index + 1 < args.Length) { mirrorVersion = args[++index]; continue; }
+        if (args[index].StartsWith("--mirror-version=", StringComparison.OrdinalIgnoreCase)) { mirrorVersion = args[index]["--mirror-version=".Length..]; continue; }
     }
 
     var persistState = args.Contains("--persist-state", StringComparer.OrdinalIgnoreCase);
     if (persistState && app.Environment.IsProduction())
     {
         throw new InvalidOperationException("Production local-identity-auto-scan is dry-run only. Persisted scan state requires a separately approved release.");
+    }
+
+    var effectiveMirrorVersion = !string.IsNullOrWhiteSpace(mirrorVersion)
+        ? mirrorVersion
+        : app.Configuration["MusicBrainz:MirrorVersion"];
+
+    if (string.IsNullOrWhiteSpace(effectiveMirrorVersion))
+    {
+        throw new InvalidOperationException("Local identity auto scan requires a non-empty mirror version. Provide '--mirror-version <version>' or configure 'MusicBrainz:MirrorVersion'.");
     }
 
     var request = new WebMusic.Backend.Services.LocalIdentityAutoScanRequest(
@@ -290,7 +302,7 @@ if (args.Contains("local-identity-auto-scan", StringComparer.OrdinalIgnoreCase))
         afterId,
         DryRun: !persistState,
         PersistState: persistState,
-        MirrorVersion: app.Configuration["MusicBrainz:MirrorVersion"]);
+        MirrorVersion: effectiveMirrorVersion);
     var report = await scanner.ScanAsync(request);
     Console.WriteLine($"Local identity auto scan completed: evaluated={report.Evaluated}, matched={report.Matched}, unmatched={report.Unmatched}, skipped={report.Skipped}, failed={report.Failed}");
     Console.WriteLine($"Input SHA-256: {report.InputSha256}");

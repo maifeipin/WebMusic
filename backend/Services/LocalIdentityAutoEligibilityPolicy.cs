@@ -19,7 +19,7 @@ public sealed record LocalIdentityEligibilityDecision(
 /// </summary>
 public static class LocalIdentityAutoEligibilityPolicy
 {
-    public const string Version = "LocalAutoEligibility:v2";
+    public const string Version = "LocalAutoEligibility:v3";
     public const double MinimumConfidence = 0.995;
     public const double MaximumDurationDifferenceSeconds = 3.0;
 
@@ -57,14 +57,14 @@ public static class LocalIdentityAutoEligibilityPolicy
             return Reject("Skipped", "Title or artist is empty or unknown.", fingerprint);
         }
 
-        // 1. Mojibake gate (source metadata)
-        if (IsMojibake(media.Title) || IsMojibake(media.Album) || IsMojibake(media.Artist))
+        // 1. Mojibake gate (source title and artist only; album mojibake is ignored)
+        if (IsMojibake(media.Title) || IsMojibake(media.Artist))
         {
             return Reject("Skipped", "Source metadata contains mojibake/garbled text.", fingerprint);
         }
 
-        // 2. Source version token gate (raw Title and raw Album)
-        if (HasVersionTerm(media.Title, media.Album, null, null, out var sourceVersionWord))
+        // 2. Source version token gate (track Title only; album version tokens are allowed)
+        if (HasVersionTerm(media.Title, null, null, out var sourceVersionWord))
         {
             return Reject("Skipped", $"Source metadata declares a version or derivative token: {sourceVersionWord}.", fingerprint);
         }
@@ -93,7 +93,7 @@ public static class LocalIdentityAutoEligibilityPolicy
 
         // 3. Version & Disambiguation gate (including candidate title & any non-empty disambiguation)
         string candidateVersionWord = candidate.IsDerivativeOrClip ? "derivative_flag" : string.Empty;
-        if (candidate.IsDerivativeOrClip || HasVersionTerm(media.Title, media.Album, candidate.MatchedTitle, candidate.Disambiguation, out candidateVersionWord))
+        if (candidate.IsDerivativeOrClip || HasVersionTerm(media.Title, candidate.MatchedTitle, candidate.Disambiguation, out candidateVersionWord))
         {
             return Reject("Skipped", $"Candidate is flagged as derivative, versioned, or has disambiguation: {candidateVersionWord}.", fingerprint);
         }
@@ -122,23 +122,17 @@ public static class LocalIdentityAutoEligibilityPolicy
             return Reject("Unmatched", $"Duration difference {difference:F1}s exceeds {MaximumDurationDifferenceSeconds:F1}s.", fingerprint);
         }
 
-        // 7. Deduplication gate
-        if (alreadySelectedRecordingIds?.Contains(candidate.RecordingId) == true)
-        {
-            return Reject("Skipped", "RecordingId is duplicated within this scan batch.", fingerprint);
-        }
-
-        alreadySelectedRecordingIds?.Add(candidate.RecordingId);
         return new LocalIdentityEligibilityDecision(true, "Matched", "Conservative policy accepted candidate.", fingerprint);
     }
 
     public static string ComputeInputFingerprint(MediaFile media)
     {
+        var album = IsMojibake(media.Album) ? string.Empty : NormalizeString(media.Album);
         var payload = string.Join("\n", new[]
         {
             NormalizeString(media.Title),
             NormalizeString(media.Artist),
-            NormalizeString(media.Album),
+            album,
             Math.Round(media.Duration.TotalSeconds, 3).ToString("F3", CultureInfo.InvariantCulture),
             media.FileHash?.Trim() ?? string.Empty
         });
@@ -153,6 +147,9 @@ public static class LocalIdentityAutoEligibilityPolicy
 
     public static bool ContainsVersionOrDerivativeToken(string? value) =>
         HasVersionTerm(value, null, null, null, out _);
+
+    public static bool HasVersionTerm(string? rawTitle, string? matchedTitle, string? disambiguation, out string matchedWord) =>
+        HasVersionTerm(rawTitle, null, matchedTitle, disambiguation, out matchedWord);
 
     public static bool HasVersionTerm(string? rawTitle, string? rawAlbum, string? matchedTitle, string? disambiguation, out string matchedWord)
     {

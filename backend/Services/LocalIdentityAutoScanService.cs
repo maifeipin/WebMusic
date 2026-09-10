@@ -98,6 +98,11 @@ public sealed class LocalIdentityAutoScanService : ILocalIdentityAutoScanService
             throw new ArgumentException("Dry-run scans cannot persist scan state.", nameof(request));
         }
 
+        if (request.PersistState && string.IsNullOrWhiteSpace(request.MirrorVersion))
+        {
+            throw new InvalidOperationException("Persisting scan state requires a non-empty MirrorVersion.");
+        }
+
         if (!await ProcessLock.WaitAsync(0, cancellationToken))
         {
             throw new InvalidOperationException("A local identity auto scan is already in progress.");
@@ -113,7 +118,6 @@ public sealed class LocalIdentityAutoScanService : ILocalIdentityAutoScanService
             }
 
             var (candidates, highestEvaluatedId) = await SelectCandidatesAsync(request, cancellationToken);
-            var selectedRecordingIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var items = new List<LocalIdentityAutoScanItem>(candidates.Count);
 
             foreach (var media in candidates)
@@ -123,11 +127,10 @@ public sealed class LocalIdentityAutoScanService : ILocalIdentityAutoScanService
                 // cursor always advances, but never waste a mirror request on it.
                 var scan = !LocalIdentityAutoEligibilityPolicy.HasUsableMetadata(media)
                     ? new LocalMusicBrainzScanResult(false, null, 200, "Title or artist is empty/unknown.")
-                    : LocalIdentityAutoEligibilityPolicy.ContainsVersionOrDerivativeToken(media.Title) ||
-                      LocalIdentityAutoEligibilityPolicy.ContainsVersionOrDerivativeToken(media.Album)
+                    : LocalIdentityAutoEligibilityPolicy.ContainsVersionOrDerivativeToken(media.Title)
                         ? new LocalMusicBrainzScanResult(false, null, 200, "Source metadata declares a version or derivative.")
                         : await _localMusicBrainz.ScanMediaIdentityAsync(media, cancellationToken);
-                var decision = LocalIdentityAutoEligibilityPolicy.Evaluate(media, scan, selectedRecordingIds);
+                var decision = LocalIdentityAutoEligibilityPolicy.Evaluate(media, scan);
                 var candidate = scan.BestCandidate;
                 LocalMusicBrainzRecordingDetails? details = null;
                 if (decision.Eligible && candidate is not null && _localMusicBrainzDetails is not null)

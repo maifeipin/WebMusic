@@ -32,7 +32,7 @@ public class MediaIdentityScanState
     public string? RecordingId { get; set; }
 
     [MaxLength(64)]
-    public string PolicyVersion { get; set; } = "LocalAutoEligibility:v2";
+    public string PolicyVersion { get; set; } = "LocalAutoEligibility:v3";
 
     [MaxLength(128)]
     public string? MirrorVersion { get; set; }

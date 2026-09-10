@@ -69,23 +69,50 @@ public class LocalIdentityAutoScanServiceTests
         await db.SaveChangesAsync();
         var service = new LocalIdentityAutoScanService(db, LocalService(media => Exact(media)), NullLogger<LocalIdentityAutoScanService>.Instance);
 
-        var first = await service.ScanAsync(new LocalIdentityAutoScanRequest(LocalIdentityScanMode.Incremental, 1, DryRun: false, PersistState: true));
+        var first = await service.ScanAsync(new LocalIdentityAutoScanRequest(LocalIdentityScanMode.Incremental, 1, DryRun: false, PersistState: true, MirrorVersion: "mirror:v1"));
         Assert.Equal(1, first.Matched);
         var state = await db.MediaIdentityScanStates.SingleAsync();
         Assert.Equal(1, state.AttemptCount);
 
-        var second = await service.ScanAsync(new LocalIdentityAutoScanRequest(LocalIdentityScanMode.Incremental, 1, DryRun: false, PersistState: true));
+        var second = await service.ScanAsync(new LocalIdentityAutoScanRequest(LocalIdentityScanMode.Incremental, 1, DryRun: false, PersistState: true, MirrorVersion: "mirror:v1"));
         Assert.Equal(0, second.Evaluated);
 
         media.Title = "Track Renamed";
         await db.SaveChangesAsync();
-        var third = await service.ScanAsync(new LocalIdentityAutoScanRequest(LocalIdentityScanMode.Incremental, 1, DryRun: false, PersistState: true));
+        var third = await service.ScanAsync(new LocalIdentityAutoScanRequest(LocalIdentityScanMode.Incremental, 1, DryRun: false, PersistState: true, MirrorVersion: "mirror:v1"));
         Assert.Equal(1, third.Evaluated);
         Assert.Equal(2, (await db.MediaIdentityScanStates.SingleAsync()).AttemptCount);
     }
 
     [Fact]
-    public async Task Scan_RejectsLowConfidence_DuplicateMbid_AndDerivativeCandidate()
+    public async Task Scan_PersistState_RequiresNonEmptyMirrorVersion()
+    {
+        await using var db = CreateDb();
+        var service = new LocalIdentityAutoScanService(db, LocalService(media => Exact(media)), NullLogger<LocalIdentityAutoScanService>.Instance);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ScanAsync(new LocalIdentityAutoScanRequest(DryRun: false, PersistState: true, MirrorVersion: null)));
+    }
+
+    [Fact]
+    public async Task Scan_AllowsDuplicateMbidAcrossMultipleFiles()
+    {
+        await using var db = CreateDb();
+        var duplicateMbid = "b0c34a5c-523a-4d58-b5ec-8d6ed95596cc";
+        db.MediaFiles.AddRange(
+            new MediaFile { Id = 1, ScanSourceId = 1, FilePath = "smb://test/1.mp3", Title = "Hello", Artist = "Adele", Album = "25", Duration = TimeSpan.FromMinutes(3) },
+            new MediaFile { Id = 2, ScanSourceId = 1, FilePath = "smb://test/2.mp3", Title = "Hello", Artist = "Adele", Album = "25 Deluxe", Duration = TimeSpan.FromMinutes(3) });
+        await db.SaveChangesAsync();
+
+        var service = new LocalIdentityAutoScanService(db, LocalService(media => new LocalMusicBrainzScanResult(true,
+            new LocalMusicBrainzCandidate(duplicateMbid, null, null, media.Title, media.Artist, media.Duration, null, 1, false), 200)), NullLogger<LocalIdentityAutoScanService>.Instance);
+
+        var report = await service.ScanAsync(new LocalIdentityAutoScanRequest(MaxItems: 10));
+        Assert.Equal(2, report.Matched);
+        Assert.All(report.Items, item => Assert.Equal("Matched", item.Outcome));
+    }
+
+    [Fact]
+    public async Task Scan_RejectsLowConfidence_AndDerivativeCandidate()
     {
         await using var db = CreateDb();
         db.MediaFiles.AddRange(
@@ -93,10 +120,9 @@ public class LocalIdentityAutoScanServiceTests
             new MediaFile { Id = 2, ScanSourceId = 1, FilePath = "smb://test/2.mp3", Title = "Two", Artist = "Artist", Album = "A", Duration = TimeSpan.FromMinutes(3) },
             new MediaFile { Id = 3, ScanSourceId = 1, FilePath = "smb://test/3.mp3", Title = "Three", Artist = "Artist", Album = "A", Duration = TimeSpan.FromMinutes(3) });
         await db.SaveChangesAsync();
-        var duplicate = "b0c34a5c-523a-4d58-b5ec-8d6ed95596cc";
         var service = new LocalIdentityAutoScanService(db, LocalService(media => new LocalMusicBrainzScanResult(true,
             new LocalMusicBrainzCandidate(
-                media.Id == 1 ? duplicate : media.Id == 2 ? duplicate : "c0c34a5c-523a-4d58-b5ec-8d6ed95596cc",
+                media.Id == 1 ? "b0c34a5c-523a-4d58-b5ec-8d6ed95596cc" : media.Id == 2 ? "c0c34a5c-523a-4d58-b5ec-8d6ed95596cc" : "d0c34a5c-523a-4d58-b5ec-8d6ed95596cc",
                 null, null, media.Title, media.Artist, media.Duration,
                 media.Id == 3 ? "radio mix" : null,
                 media.Id == 2 ? 0.99 : 1,

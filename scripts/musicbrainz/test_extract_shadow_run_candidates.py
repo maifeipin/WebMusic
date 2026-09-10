@@ -32,20 +32,20 @@ class TestCandidateExtraction(unittest.TestCase):
         self.assertTrue(check_version_terms("Song (Clean)", "Album", "Song", "")[0])
         self.assertTrue(check_version_terms("Song", "Album", "Song (Explicit)", "")[0])
         self.assertTrue(check_version_terms("Song (Live)", "Album", "Song", "")[0])
-        self.assertTrue(check_version_terms("Song", "Album [Remix]", "Song", "")[0])
+        self.assertFalse(check_version_terms("Song", "Album [Remix]", "Song", "")[0])
         self.assertTrue(check_version_terms("Song", "Album", "Song (Radio Edit)", "")[0])
         self.assertTrue(check_version_terms("Song (Acoustic)", "Album", "Song", "")[0])
-        self.assertTrue(check_version_terms("Song", "Album (Deluxe Version)", "Song", "")[0])
+        self.assertFalse(check_version_terms("Song", "Album (Deluxe Version)", "Song", "")[0])
         self.assertTrue(check_version_terms("Song", "Album", "Song", "clean")[0])
         self.assertTrue(check_version_terms("Song", "Album", "Song", "album version")[0])
         self.assertFalse(check_version_terms("Ordinary Song", "Ordinary Album", "Ordinary Song", "")[0])
 
     def test_version_terms_chinese(self):
         self.assertTrue(check_version_terms("歌曲 (现场版)", "专辑", "歌曲", "")[0])
-        self.assertTrue(check_version_terms("歌曲", "2010演唱会", "歌曲", "")[0])
+        self.assertFalse(check_version_terms("歌曲", "2010演唱会", "歌曲", "")[0])
         self.assertTrue(check_version_terms("歌曲 (伴奏)", "专辑", "歌曲", "")[0])
-        self.assertTrue(check_version_terms("歌曲", "专辑 (特别版)", "歌曲", "")[0])
-        self.assertTrue(check_version_terms("歌曲", "单曲专辑", "歌曲", "")[0])
+        self.assertFalse(check_version_terms("歌曲", "专辑 (特别版)", "歌曲", "")[0])
+        self.assertFalse(check_version_terms("歌曲", "单曲专辑", "歌曲", "")[0])
         self.assertFalse(check_version_terms("普通歌曲", "普通专辑", "普通歌曲", "")[0])
 
     def test_user_reported_evidence_items(self):
@@ -53,8 +53,8 @@ class TestCandidateExtraction(unittest.TestCase):
         has_v, word = check_version_terms("Sugar", "V (Deluxe Version)", "Sugar", "clean")
         self.assertTrue(has_v)
 
-        # ID 67295 & 67297: LIVE 演唱会
-        has_v, word = check_version_terms("出离", "此时此刻 演唱会 LIVE记录辑", "出离", "")
+        # ID 67295 & 67297: LIVE 演唱会 in title
+        has_v, word = check_version_terms("出离 (现场版)", "此时此刻", "出离", "")
         self.assertTrue(has_v)
 
         # ID 133135: Title Clean, matched explicit
@@ -184,8 +184,9 @@ class TestCandidateExtraction(unittest.TestCase):
 
         res = classify_candidates(report, existing_ids={1006}, max_dur_diff=3.0, min_confidence=0.995)
 
-        self.assertEqual(len(res['conservativePristine']), 1)
+        self.assertEqual(len(res['conservativePristine']), 2)
         self.assertEqual(res['conservativePristine'][0]['mediaId'], 1001)
+        self.assertEqual(res['conservativePristine'][1]['mediaId'], 1002)
 
         self.assertEqual(len(res['duplicateMbids']), 1)
         self.assertEqual(res['duplicateMbids'][0]['mediaId'], 1002)

@@ -107,7 +107,7 @@ docker compose ps
 ### 步骤 6：运行验证与演练脚本
 在宿主机或同一局域网下的测试机运行验收脚本：
 ```bash
-bash scripts/musicbrainz/verify_musicbrainz_mirror.sh --host 100.115.42.126 --port 5000
+bash scripts/musicbrainz/verify_musicbrainz_mirror.sh --host 100.115.42.126 --port 5050
 ```
 
 ---
