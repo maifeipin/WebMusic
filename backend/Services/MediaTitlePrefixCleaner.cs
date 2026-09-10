@@ -55,7 +55,8 @@ public static class MediaTitlePrefixCleaner
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
-        WriteIndented = true
+        WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     public static async Task<TitlePrefixCleanReport> RunDryRunAsync(
@@ -233,12 +234,24 @@ public static class MediaTitlePrefixCleaner
 
         var targetIds = report.AdmittedItems.Select(x => x.MediaFileId).ToList();
 
-        await using var tx = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken);
+        // Use RepeatableRead to prevent non-repeatable reads and phantom updates
+        await using var tx = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, cancellationToken);
 
-        // Pre-check for manual identity locks in current database
+        // In PostgreSQL, acquire pessimistic row-level locks (FOR UPDATE) to eliminate any TOCTOU window
+        if (db.Database.IsNpgsql() && targetIds.Count > 0)
+        {
+            var p0 = new Npgsql.NpgsqlParameter("p0", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Integer)
+            {
+                Value = targetIds.ToArray()
+            };
+            await db.Database.ExecuteSqlRawAsync("SELECT \"Id\" FROM \"MediaFiles\" WHERE \"Id\" = ANY(@p0) FOR UPDATE", new[] { p0 }, cancellationToken);
+        }
+
+        // Pre-check for manual identity locks in current database (with manual Status or manual MatchMethod)
         var manualConflictIds = await db.MediaIdentities
             .Where(mi => targetIds.Contains(mi.MediaFileId) &&
-                         (mi.MatchMethod.ToLower().Contains("manual") || mi.Status.ToLower() == "manual"))
+                         ((mi.MatchMethod != null && mi.MatchMethod.ToLower().Contains("manual")) ||
+                          (mi.Status != null && mi.Status.ToLower() == "manual")))
             .Select(mi => mi.MediaFileId)
             .ToListAsync(cancellationToken);
 
@@ -297,6 +310,9 @@ public static class MediaTitlePrefixCleaner
             throw new InvalidOperationException($"Database updated {updatedRows} rows, expected exactly {expectedCount}. Aborting transaction.");
         }
 
+        // Commit transaction first so that database changes are guaranteed persisted before manifest is saved
+        await tx.CommitAsync(cancellationToken);
+
         var manifestPath = rollbackManifestPath ?? Path.Combine(
             Path.GetDirectoryName(reportPath) ?? "/tmp",
             $"title_prefix_rollback_manifest_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json"
@@ -316,8 +332,9 @@ public static class MediaTitlePrefixCleaner
             RollbackEntries = rollbackEntries
         }, JsonOptions);
 
-        await File.WriteAllTextAsync(manifestPath, manifestJson, cancellationToken);
-        await tx.CommitAsync(cancellationToken);
+        var tempManifestPath = manifestPath + ".tmp." + Guid.NewGuid().ToString("N");
+        await File.WriteAllTextAsync(tempManifestPath, manifestJson, cancellationToken);
+        File.Move(tempManifestPath, manifestPath, overwrite: true);
 
         return new TitlePrefixApplyResult(updatedRows, actualSha, manifestPath);
     }

@@ -38,6 +38,7 @@ services:
       - "5080:8080"
     volumes:
       - ./data:/app/data
+      - ./reports:/reports
     depends_on:
       - postgres
 
