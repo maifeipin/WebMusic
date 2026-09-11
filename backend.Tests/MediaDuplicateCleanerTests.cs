@@ -218,6 +218,116 @@ public class MediaDuplicateCleanerTests : IDisposable
     }
 
     [Fact]
+    public async Task Apply_ByteHash_PhysicallyDeletesLoserFilesAfterCommit()
+    {
+        var db = CreateInMemoryDbContext("dedupe_phys_" + Guid.NewGuid().ToString("N"));
+        var loser = NewMedia(1, "Song", "A", "Album", 200, 3_200_000, "hash1");
+        var winner = NewMedia(2, "Song", "A", "Album", 200, 8_000_000, "hash1");
+        db.MediaFiles.AddRange(loser, winner);
+        await db.SaveChangesAsync();
+
+        var report = await MediaDuplicateCleaner.RunDryRunAsync(db, "byte-hash");
+        Assert.Equal(1, report.RemoveCount);
+        var reportPath = Path.Combine(_tempDir, "dedupe_phys.json");
+        var sha = await MediaDuplicateCleaner.SaveReportWithSha256Async(report, reportPath);
+
+        var deletedPaths = new List<string>();
+        Func<MediaFile, bool> deleter = m => { deletedPaths.Add(m.FilePath); return true; };
+        Func<MediaFile, bool> exists = _ => true;
+
+        var result = await MediaDuplicateCleaner.ApplyAsync(
+            db, reportPath, sha, 1, Path.Combine(_tempDir, "rb_phys.json"), deleter, exists);
+
+        Assert.Equal(1, result.RemovedCount);
+        Assert.Equal(1, result.PhysicalFilesDeleted);
+        Assert.Equal(0, result.PhysicalFilesFailed);
+        // Only the loser's physical file was deleted; the winner survives.
+        Assert.Equal(new List<string> { loser.FilePath }, deletedPaths);
+        Assert.Null(await db.MediaFiles.FindAsync(loser.Id));
+        Assert.NotNull(await db.MediaFiles.FindAsync(winner.Id));
+    }
+
+    [Fact]
+    public async Task Apply_ByteHash_WinnerFileMissing_SkipsPhysicalDeletion()
+    {
+        var db = CreateInMemoryDbContext("dedupe_phys2_" + Guid.NewGuid().ToString("N"));
+        var loser = NewMedia(1, "Song", "A", "Album", 200, 3_200_000, "hash1");
+        var winner = NewMedia(2, "Song", "A", "Album", 200, 8_000_000, "hash1");
+        db.MediaFiles.AddRange(loser, winner);
+        await db.SaveChangesAsync();
+
+        var report = await MediaDuplicateCleaner.RunDryRunAsync(db, "byte-hash");
+        var reportPath = Path.Combine(_tempDir, "dedupe_phys2.json");
+        var sha = await MediaDuplicateCleaner.SaveReportWithSha256Async(report, reportPath);
+
+        var deletedPaths = new List<string>();
+        Func<MediaFile, bool> deleter = m => { deletedPaths.Add(m.FilePath); return true; };
+        // Winner's physical file is gone: the loser is the last physical copy.
+        Func<MediaFile, bool> exists = m => m.Id == loser.Id;
+
+        var result = await MediaDuplicateCleaner.ApplyAsync(
+            db, reportPath, sha, 1, Path.Combine(_tempDir, "rb_phys2.json"), deleter, exists);
+
+        // DB rows still removed, but no physical file was touched.
+        Assert.Equal(1, result.RemovedCount);
+        Assert.Equal(0, result.PhysicalFilesDeleted);
+        Assert.Empty(deletedPaths);
+    }
+
+    [Fact]
+    public async Task Apply_ByteHash_PhysicalDeleteFailure_RecordedAsOrphan()
+    {
+        var db = CreateInMemoryDbContext("dedupe_phys3_" + Guid.NewGuid().ToString("N"));
+        var loser = NewMedia(1, "Song", "A", "Album", 200, 3_200_000, "hash1");
+        var winner = NewMedia(2, "Song", "A", "Album", 200, 8_000_000, "hash1");
+        db.MediaFiles.AddRange(loser, winner);
+        await db.SaveChangesAsync();
+
+        var report = await MediaDuplicateCleaner.RunDryRunAsync(db, "byte-hash");
+        var reportPath = Path.Combine(_tempDir, "dedupe_phys3.json");
+        var sha = await MediaDuplicateCleaner.SaveReportWithSha256Async(report, reportPath);
+
+        Func<MediaFile, bool> deleter = _ => false; // simulate SMB failure
+        Func<MediaFile, bool> exists = _ => true;
+
+        var result = await MediaDuplicateCleaner.ApplyAsync(
+            db, reportPath, sha, 1, Path.Combine(_tempDir, "rb_phys3.json"), deleter, exists);
+
+        Assert.Equal(1, result.RemovedCount);
+        Assert.Equal(0, result.PhysicalFilesDeleted);
+        Assert.Equal(1, result.PhysicalFilesFailed);
+        Assert.Contains(loser.FilePath, result.PhysicalDeletionFailedPaths!);
+
+        var manifest = await File.ReadAllTextAsync(Path.Combine(_tempDir, "rb_phys3.json"));
+        Assert.Contains("\"FilesFailed\": 1", manifest);
+    }
+
+    [Fact]
+    public async Task Apply_NonByteHashStage_NeverCallsPhysicalDeleter()
+    {
+        var db = CreateInMemoryDbContext("dedupe_phys4_" + Guid.NewGuid().ToString("N"));
+        db.MediaFiles.AddRange(
+            NewMedia(1, "晴天", "周杰伦", "叶惠美", 200, 6_400_000, "h1"),
+            NewMedia(2, "晴天", "周杰伦", "叶惠美", 202, 3_200_000, "h2"));
+        await db.SaveChangesAsync();
+
+        var report = await MediaDuplicateCleaner.RunDryRunAsync(db, "exact-metadata");
+        Assert.Equal(1, report.RemoveCount);
+        var reportPath = Path.Combine(_tempDir, "dedupe_phys4.json");
+        var sha = await MediaDuplicateCleaner.SaveReportWithSha256Async(report, reportPath);
+
+        var called = false;
+        Func<MediaFile, bool> deleter = _ => { called = true; return true; };
+
+        var result = await MediaDuplicateCleaner.ApplyAsync(
+            db, reportPath, sha, 1, Path.Combine(_tempDir, "rb_phys4.json"), deleter, _ => true);
+
+        Assert.Equal(1, result.RemovedCount);
+        Assert.Equal(0, result.PhysicalFilesDeleted);
+        Assert.False(called); // non-byte-hash stages keep physical files untouched
+    }
+
+    [Fact]
     public async Task Apply_ShaMismatch_Aborts()
     {
         var db = CreateInMemoryDbContext("dedupe_sha_" + Guid.NewGuid().ToString("N"));

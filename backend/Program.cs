@@ -457,9 +457,51 @@ if (args.Contains("dedupe-media", StringComparer.OrdinalIgnoreCase))
         if (!expectedCount.HasValue) throw new InvalidOperationException("Apply mode requires '--expected-count <n>'.");
 
         Console.WriteLine($"=== 🚀 Applying Dedupe ({stage}, {expectedCount.Value} removals expected) ===");
+
+        // Stage byte-hash performs a PHYSICAL deletion: the byte-identical duplicate
+        // files themselves are removed over SMB after the database commit. Other
+        // stages only remove database rows and never touch physical files.
+        Func<WebMusic.Backend.Models.MediaFile, bool>? physicalDeleter = null;
+        Func<WebMusic.Backend.Models.MediaFile, bool>? winnerExists = null;
+        if (stage.Equals("byte-hash", StringComparison.OrdinalIgnoreCase))
+        {
+            var smb = scope.ServiceProvider.GetRequiredService<WebMusic.Backend.Services.ISmbService>();
+            physicalDeleter = m =>
+            {
+                if (m.ScanSource == null) return false;
+                try { return smb.Delete(m.ScanSource, m.FilePath, false); }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Physical delete failed for {m.FilePath}: {ex.Message}");
+                    return false;
+                }
+            };
+            winnerExists = m =>
+            {
+                if (m.ScanSource == null) return false;
+                try
+                {
+                    var stream = smb.OpenFile(m.ScanSource, m.FilePath);
+                    stream?.Dispose();
+                    return stream != null;
+                }
+                catch { return false; }
+            };
+            Console.WriteLine("Mode: PHYSICAL deletion (duplicate files will be deleted from storage).");
+        }
+
         var result = await WebMusic.Backend.Services.MediaDuplicateCleaner.ApplyAsync(
-            db, outFile, reportSha, expectedCount.Value, rollbackOut ?? "/reports/dedupe_rollback_manifest.json");
-        Console.WriteLine($"✅ Successfully removed {result.RemovedCount} duplicate rows (physical files untouched).");
+            db, outFile, reportSha, expectedCount.Value, rollbackOut ?? "/reports/dedupe_rollback_manifest.json",
+            physicalDeleter, winnerExists);
+        Console.WriteLine($"✅ Successfully removed {result.RemovedCount} duplicate rows.");
+        if (stage.Equals("byte-hash", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.WriteLine($"Physical files deleted: {result.PhysicalFilesDeleted}, failed: {result.PhysicalFilesFailed}");
+            foreach (var failed in result.PhysicalDeletionFailedPaths ?? Array.Empty<string>())
+            {
+                Console.WriteLine($"  ⚠️ physical delete failed (orphan file remains, re-cleanup later): {failed}");
+            }
+        }
         Console.WriteLine($"Rollback manifest saved -> {result.RollbackManifestPath}");
     }
     else

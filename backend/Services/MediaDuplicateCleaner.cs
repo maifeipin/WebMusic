@@ -46,12 +46,16 @@ public record DedupeReport(
 public record DedupeApplyResult(
     int RemovedCount,
     string ReportSha256,
-    string RollbackManifestPath
+    string RollbackManifestPath,
+    int PhysicalFilesDeleted = 0,
+    int PhysicalFilesFailed = 0,
+    IReadOnlyList<string>? PhysicalDeletionFailedPaths = null
 );
 
 /// <summary>
 /// Four-stage duplicate cleaner.
-/// Stage 1 (byte-hash): identical FileHash — byte-identical files.
+/// Stage 1 (byte-hash): identical FileHash — byte-identical files. Apply performs a
+/// PHYSICAL deletion (database row + physical file via SMB) — no soft delete.
 /// Stage 2 (exact-metadata): identical Title+Artist+Album with duration cluster <= 3s.
 /// Stage 3 (mbid): identical MusicBrainz RecordingId, conservative album constraint.
 /// Stage 4 (fuzzy): normalized Title+Artist with 5s duration bucket — report only.
@@ -221,6 +225,8 @@ public static class MediaDuplicateCleaner
         string expectedReportSha,
         int expectedRemoveCount,
         string rollbackManifestPath,
+        Func<MediaFile, bool>? physicalFileDeleter = null,
+        Func<MediaFile, bool>? winnerFileExists = null,
         CancellationToken cancellationToken = default)
     {
         if (!File.Exists(reportPath))
@@ -273,12 +279,28 @@ public static class MediaDuplicateCleaner
             throw new InvalidOperationException($"Cannot apply: remove candidates gained references since dry run: {string.Join(", ", nowReferenced.Distinct().Take(10))}...");
         }
 
-        var mediaList = await db.MediaFiles.Where(m => removeIds.Contains(m.Id)).ToListAsync(cancellationToken);
+        // Include ScanSource (+StorageCredential) so the byte-hash stage can physically
+        // delete the duplicate files over SMB after the database transaction commits.
+        var mediaList = await db.MediaFiles
+            .Include(m => m.ScanSource!)
+            .ThenInclude(s => s.StorageCredential)
+            .Where(m => removeIds.Contains(m.Id))
+            .ToListAsync(cancellationToken);
         if (mediaList.Count != removeItems.Count)
         {
             throw new InvalidOperationException($"Found {mediaList.Count} MediaFiles, expected {removeItems.Count}.");
         }
         var mediaById = mediaList.ToDictionary(m => m.Id);
+
+        // Winners (kept files) are loaded for the byte-hash physical-deletion guard:
+        // loser files are only deleted when the winner's physical file is reachable.
+        var keptIds = report.Groups.Select(g => g.KeptId).Distinct().ToList();
+        var winnerFiles = await db.MediaFiles
+            .Include(m => m.ScanSource!)
+            .ThenInclude(s => s.StorageCredential)
+            .Where(m => keptIds.Contains(m.Id))
+            .ToListAsync(cancellationToken);
+        var winnerById = winnerFiles.ToDictionary(m => m.Id);
         var rollbackEntries = new List<object>();
 
         // Delete dependants in FK-safe order, then the MediaFile row itself.
@@ -340,6 +362,52 @@ public static class MediaDuplicateCleaner
 
         await tx.CommitAsync(cancellationToken);
 
+        // Stage byte-hash performs a PHYSICAL deletion (no soft delete): after the
+        // database transaction commits, the duplicate files themselves are removed
+        // over SMB. Deletion ordering is deliberately commit-first: a failed physical
+        // delete leaves a harmless orphan file that the next scan re-imports and a
+        // later dedupe run can clean again — the database never keeps ghost rows.
+        var physicalDeleted = 0;
+        var physicalFailed = 0;
+        var physicalFailedPaths = new List<string>();
+        var physicalSkippedGroups = 0;
+
+        var isByteHash = string.Equals(report.Stage, "byte-hash", StringComparison.OrdinalIgnoreCase);
+        if (isByteHash && physicalFileDeleter != null)
+        {
+            var keptIdByRemoveId = report.Groups
+                .SelectMany(g => g.Members
+                    .Where(m => m.Reason.StartsWith("REMOVE", StringComparison.OrdinalIgnoreCase))
+                    .Select(m => (m.MediaFileId, g.KeptId)))
+                .ToDictionary(x => x.MediaFileId, x => x.KeptId);
+
+            foreach (var winnerGroup in removeItems.GroupBy(item => keptIdByRemoveId[item.MediaFileId]))
+            {
+                var winner = winnerById.GetValueOrDefault(winnerGroup.Key);
+
+                // Guard: only delete loser files when the winner's physical file is
+                // confirmed present, so a group never loses its last physical copy.
+                if (winnerFileExists != null && (winner == null || !winnerFileExists(winner)))
+                {
+                    physicalSkippedGroups++;
+                    continue;
+                }
+
+                foreach (var loser in winnerGroup)
+                {
+                    if (mediaById.TryGetValue(loser.MediaFileId, out var media) && physicalFileDeleter(media))
+                    {
+                        physicalDeleted++;
+                    }
+                    else
+                    {
+                        physicalFailed++;
+                        physicalFailedPaths.Add(loser.FilePath);
+                    }
+                }
+            }
+        }
+
         var manifestDir = Path.GetDirectoryName(rollbackManifestPath);
         if (!string.IsNullOrWhiteSpace(manifestDir))
         {
@@ -351,13 +419,27 @@ public static class MediaDuplicateCleaner
             Stage = report.Stage,
             ReportSha256 = actualSha,
             TotalRemoved = removeItems.Count,
+            PhysicalDeletion = new
+            {
+                Enabled = isByteHash,
+                FilesDeleted = physicalDeleted,
+                FilesFailed = physicalFailed,
+                GroupsSkippedWinnerMissing = physicalSkippedGroups,
+                FailedPaths = physicalFailedPaths
+            },
             RollbackEntries = rollbackEntries
         }, JsonOptions);
         var tempPath = rollbackManifestPath + ".tmp." + Guid.NewGuid().ToString("N");
         await File.WriteAllTextAsync(tempPath, manifestJson, cancellationToken);
         File.Move(tempPath, rollbackManifestPath, overwrite: true);
 
-        return new DedupeApplyResult(removeItems.Count, actualSha, rollbackManifestPath);
+        return new DedupeApplyResult(
+            removeItems.Count,
+            actualSha,
+            rollbackManifestPath,
+            PhysicalFilesDeleted: physicalDeleted,
+            PhysicalFilesFailed: physicalFailed,
+            PhysicalDeletionFailedPaths: physicalFailedPaths);
     }
 
     private static int ComputeKeepScore(long sizeBytes, TimeSpan duration, string? album, string? genre, int year, string? coverArt, bool hasIdentity, DateTime addedAt)
