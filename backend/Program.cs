@@ -423,6 +423,64 @@ if (args.Contains("normalize-title-prefixes", StringComparer.OrdinalIgnoreCase))
     return;
 }
 
+// Duplicate Cleaner CLI (four stages: byte-hash | exact-metadata | mbid | fuzzy)
+if (args.Contains("dedupe-media", StringComparer.OrdinalIgnoreCase))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+    var stage = "byte-hash";
+    string? outFile = null;
+    string? reportSha = null;
+    int? expectedCount = null;
+    string? rollbackOut = null;
+    var apply = args.Contains("--apply", StringComparer.OrdinalIgnoreCase);
+
+    for (var index = 0; index < args.Length; index++)
+    {
+        if (args[index].Equals("--stage", StringComparison.OrdinalIgnoreCase) && index + 1 < args.Length) { stage = args[++index]; continue; }
+        if (args[index].StartsWith("--stage=", StringComparison.OrdinalIgnoreCase)) { stage = args[index]["--stage=".Length..]; continue; }
+        if (args[index].Equals("--out", StringComparison.OrdinalIgnoreCase) && index + 1 < args.Length) { outFile = args[++index]; continue; }
+        if (args[index].StartsWith("--out=", StringComparison.OrdinalIgnoreCase)) { outFile = args[index]["--out=".Length..]; continue; }
+        if (args[index].Equals("--report-sha", StringComparison.OrdinalIgnoreCase) && index + 1 < args.Length) { reportSha = args[++index]; continue; }
+        if (args[index].StartsWith("--report-sha=", StringComparison.OrdinalIgnoreCase)) { reportSha = args[index]["--report-sha=".Length..]; continue; }
+        if (args[index].Equals("--rollback-out", StringComparison.OrdinalIgnoreCase) && index + 1 < args.Length) { rollbackOut = args[++index]; continue; }
+        if (args[index].StartsWith("--rollback-out=", StringComparison.OrdinalIgnoreCase)) { rollbackOut = args[index]["--rollback-out=".Length..]; continue; }
+        if (args[index].Equals("--expected-count", StringComparison.OrdinalIgnoreCase) && index + 1 < args.Length && int.TryParse(args[index + 1], out var ec)) { expectedCount = ec; index++; continue; }
+        if (args[index].StartsWith("--expected-count=", StringComparison.OrdinalIgnoreCase) && int.TryParse(args[index]["--expected-count=".Length..], out var ec2)) { expectedCount = ec2; continue; }
+    }
+
+    if (apply)
+    {
+        if (string.IsNullOrWhiteSpace(outFile)) throw new InvalidOperationException("Apply mode requires '--out <report-path>'.");
+        if (string.IsNullOrWhiteSpace(reportSha)) throw new InvalidOperationException("Apply mode requires '--report-sha <hex>'.");
+        if (!expectedCount.HasValue) throw new InvalidOperationException("Apply mode requires '--expected-count <n>'.");
+
+        Console.WriteLine($"=== 🚀 Applying Dedupe ({stage}, {expectedCount.Value} removals expected) ===");
+        var result = await WebMusic.Backend.Services.MediaDuplicateCleaner.ApplyAsync(
+            db, outFile, reportSha, expectedCount.Value, rollbackOut ?? "/reports/dedupe_rollback_manifest.json");
+        Console.WriteLine($"✅ Successfully removed {result.RemovedCount} duplicate rows (physical files untouched).");
+        Console.WriteLine($"Rollback manifest saved -> {result.RollbackManifestPath}");
+    }
+    else
+    {
+        Console.WriteLine($"=== 🧪 Dry Run: Dedupe Stage '{stage}' (Physical Read-Only) ===");
+        var report = await WebMusic.Backend.Services.MediaDuplicateCleaner.RunDryRunAsync(db, stage);
+        Console.WriteLine($"Total files scanned:        {report.TotalFiles}");
+        Console.WriteLine($"Duplicate groups:           {report.TotalGroups}");
+        Console.WriteLine($"Removal candidates:         {report.RemoveCount}");
+        Console.WriteLine($"Protected members kept:     {report.ProtectedSkipCount}");
+
+        if (!string.IsNullOrWhiteSpace(outFile))
+        {
+            var sha = await WebMusic.Backend.Services.MediaDuplicateCleaner.SaveReportWithSha256Async(report, outFile);
+            Console.WriteLine($"\nReport saved -> {outFile}");
+            Console.WriteLine($"File SHA-256 -> {sha}");
+        }
+    }
+    return;
+}
+
 // External Signal Refresh CLI Mode (Controlled pipeline for MusicBrainz and Last.fm score refreshes)
 if (args.Contains("external-signal-refresh", StringComparer.OrdinalIgnoreCase))
 {
