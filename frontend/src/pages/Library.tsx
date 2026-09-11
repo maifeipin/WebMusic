@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { usePlayer } from '../context/PlayerContext';
 import { getFiles, getGroups, getSongsByIds } from '../services/api';
-import { Play, Music, Folder, List, Grid, ChevronRight, ChevronDown, ArrowUp, ArrowDown, CheckSquare, Square, X, ListPlus, HardDrive, Heart, ListMusic } from 'lucide-react';
+import { Play, Music, Folder, List, Grid, ChevronRight, ChevronDown, ArrowUp, ArrowDown, CheckSquare, Square, X, ListPlus, HardDrive, Heart, ListMusic, SlidersHorizontal, Eye, EyeOff, Lock } from 'lucide-react';
 import DirectoryTree from '../components/DirectoryTree';
 import AddToPlaylistModal from '../components/AddToPlaylistModal';
 import { FileManager } from '../components/FileManager';
@@ -38,6 +38,26 @@ interface ActiveFilter {
     value: string;
 }
 
+interface ColumnVisibility {
+    genre: boolean;
+    filePath: boolean;
+    mbRating: boolean;
+    lastFm: boolean;
+    status: boolean;
+    duration: boolean;
+}
+
+const DEFAULT_COLUMNS: ColumnVisibility = {
+    genre: true,
+    filePath: true,
+    mbRating: true,
+    lastFm: true,
+    status: true,
+    duration: true,
+};
+
+const STORAGE_KEY = 'webmusic_library_columns_v1';
+
 export default function Library() {
     const [viewMode, setViewMode] = useState<'flat' | 'group' | 'directory'>('flat');
     const [groupBy, setGroupBy] = useState<string>('artist');
@@ -67,6 +87,101 @@ export default function Library() {
     const [expandedState, setExpandedState] = useState<Record<string, boolean>>({});
 
     const [showFileManager, setShowFileManager] = useState(false);
+
+    const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>(() => {
+        try {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) {
+                return { ...DEFAULT_COLUMNS, ...JSON.parse(saved) };
+            }
+        } catch (e) {
+            console.error('Failed to load column visibility from localStorage', e);
+        }
+        return DEFAULT_COLUMNS;
+    });
+
+    const [showColumnMenu, setShowColumnMenu] = useState(false);
+    const columnMenuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (columnMenuRef.current && !columnMenuRef.current.contains(e.target as Node)) {
+                setShowColumnMenu(false);
+            }
+        };
+        if (showColumnMenu) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [showColumnMenu]);
+
+    const updateColumnVisibility = (updater: (prev: ColumnVisibility) => ColumnVisibility) => {
+        setColumnVisibility(prev => {
+            const next = updater(prev);
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+            } catch (e) {
+                console.error('Failed to save column visibility to localStorage', e);
+            }
+            return next;
+        });
+    };
+
+    const isNonMetaCollapsed = !columnVisibility.filePath && !columnVisibility.mbRating && !columnVisibility.lastFm;
+
+    const toggleCollapseNonMeta = () => {
+        if (isNonMetaCollapsed) {
+            updateColumnVisibility(prev => ({
+                ...prev,
+                genre: true,
+                filePath: true,
+                mbRating: true,
+                lastFm: true,
+            }));
+        } else {
+            updateColumnVisibility(prev => ({
+                ...prev,
+                filePath: false,
+                mbRating: false,
+                lastFm: false,
+            }));
+        }
+    };
+
+    const setPreset = (preset: 'minimal' | 'full' | 'ratings') => {
+        if (preset === 'minimal') {
+            updateColumnVisibility(prev => ({
+                ...prev,
+                genre: false,
+                filePath: false,
+                mbRating: false,
+                lastFm: false,
+                status: true,
+                duration: true,
+            }));
+        } else if (preset === 'full') {
+            updateColumnVisibility(() => ({
+                genre: true,
+                filePath: true,
+                mbRating: true,
+                lastFm: true,
+                status: true,
+                duration: true,
+            }));
+        } else if (preset === 'ratings') {
+            updateColumnVisibility(prev => ({
+                ...prev,
+                genre: false,
+                filePath: false,
+                mbRating: true,
+                lastFm: true,
+                status: true,
+                duration: true,
+            }));
+        }
+    };
 
     const { playSong, playQueue, isFavorite, toggleLike, queue } = usePlayer();
 
@@ -403,7 +518,119 @@ export default function Library() {
                         )}
                     </div>
 
-                    <div className="flex gap-4 items-center">
+                    <div className="flex gap-3 items-center">
+                        {viewMode === 'flat' && (
+                            <>
+                                {/* Quick Collapse / Expand Non-Metadata Columns */}
+                                <button
+                                    onClick={toggleCollapseNonMeta}
+                                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition border ${
+                                        isNonMetaCollapsed
+                                            ? 'bg-blue-600/20 text-blue-400 border-blue-500/40 hover:bg-blue-600/30 shadow-sm'
+                                            : 'bg-gray-800/80 text-gray-300 border-gray-700/60 hover:bg-gray-700 hover:text-white'
+                                    }`}
+                                    title={isNonMetaCollapsed ? '展开扩展列（Path、MB评分、Last.fm）' : '收缩扩展列（一键隐藏非元数据列）'}
+                                >
+                                    {isNonMetaCollapsed ? (
+                                        <>
+                                            <Eye size={14} className="text-blue-400" />
+                                            <span>展开扩展列</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <EyeOff size={14} className="text-gray-400" />
+                                            <span>收缩扩展列</span>
+                                        </>
+                                    )}
+                                </button>
+
+                                {/* Custom Column Visibility Popover */}
+                                <div className="relative" ref={columnMenuRef}>
+                                    <button
+                                        onClick={() => setShowColumnMenu(!showColumnMenu)}
+                                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition border ${
+                                            showColumnMenu
+                                                ? 'bg-gray-700 text-white border-gray-600'
+                                                : 'bg-gray-800/80 text-gray-400 border-gray-700/60 hover:bg-gray-700 hover:text-gray-200'
+                                        }`}
+                                        title="自定义显示/隐藏列"
+                                    >
+                                        <SlidersHorizontal size={14} />
+                                        <span>列配置</span>
+                                    </button>
+
+                                    {showColumnMenu && (
+                                        <div className="absolute right-0 mt-2 w-64 bg-gray-900/95 backdrop-blur-md border border-gray-700/80 rounded-xl shadow-2xl p-3 z-50 text-xs animate-in fade-in zoom-in-95 duration-150">
+                                            <div className="flex items-center justify-between pb-2 mb-2 border-b border-gray-800">
+                                                <span className="font-semibold text-gray-200">表格列显示</span>
+                                                <button
+                                                    onClick={() => setPreset('full')}
+                                                    className="text-[11px] text-gray-500 hover:text-blue-400 transition"
+                                                >
+                                                    重置默认
+                                                </button>
+                                            </div>
+
+                                            {/* Quick presets */}
+                                            <div className="flex gap-1 mb-2">
+                                                <button
+                                                    onClick={() => setPreset('minimal')}
+                                                    className="flex-1 py-1 px-2 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 text-[11px] text-center transition"
+                                                >
+                                                    纯净听歌
+                                                </button>
+                                                <button
+                                                    onClick={() => setPreset('ratings')}
+                                                    className="flex-1 py-1 px-2 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 text-[11px] text-center transition"
+                                                >
+                                                    评分聚焦
+                                                </button>
+                                                <button
+                                                    onClick={() => setPreset('full')}
+                                                    className="flex-1 py-1 px-2 rounded bg-gray-800 hover:bg-gray-700 text-gray-300 text-[11px] text-center transition"
+                                                >
+                                                    全量展开
+                                                </button>
+                                            </div>
+
+                                            <div className="space-y-1 pt-1 border-t border-gray-800/60">
+                                                <div className="text-[10px] font-medium text-gray-500 px-1 pt-1 uppercase tracking-wider">核心元数据</div>
+                                                <div className="flex items-center justify-between px-2 py-1.5 rounded bg-gray-800/40 text-gray-500">
+                                                    <span>标题 / 歌手 / 专辑</span>
+                                                    <Lock size={12} className="text-gray-600" />
+                                                </div>
+
+                                                <div className="text-[10px] font-medium text-gray-500 px-1 pt-2 uppercase tracking-wider">扩展与辅助列</div>
+                                                {[
+                                                    { key: 'genre' as const, label: '音乐流派 (Genre)' },
+                                                    { key: 'filePath' as const, label: '文件路径 (Path)' },
+                                                    { key: 'mbRating' as const, label: 'MB 评分 (MusicBrainz)' },
+                                                    { key: 'lastFm' as const, label: 'Last.fm 热度' },
+                                                    { key: 'status' as const, label: '状态与歌单 (Status)' },
+                                                    { key: 'duration' as const, label: '播放时长 (Time)' },
+                                                ].map(item => (
+                                                    <label
+                                                        key={item.key}
+                                                        className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-gray-800/80 text-gray-300 hover:text-white cursor-pointer transition select-none"
+                                                    >
+                                                        <span>{item.label}</span>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={columnVisibility[item.key]}
+                                                            onChange={e => {
+                                                                const checked = e.target.checked;
+                                                                updateColumnVisibility(prev => ({ ...prev, [item.key]: checked }));
+                                                            }}
+                                                            className="w-4 h-4 rounded bg-gray-800 border-gray-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-gray-900"
+                                                        />
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        )}
                         {viewMode === 'group' && (
                             <select value={groupBy} onChange={e => setGroupBy(e.target.value)} className="bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm focus:outline-none">
                                 <option value="artist">Group by Artist</option>
@@ -450,12 +677,12 @@ export default function Library() {
                                     <SortHeader field="title" label="Title" />
                                     <SortHeader field="artist" label="Artist" />
                                     <SortHeader field="album" label="Album" />
-                                    <SortHeader field="genre" label="Genre" />
-                                    <SortHeader field="filePath" label="Path" className="w-48" />
-                                    <SortHeader field="mbCommunityScore" label="MB 评分" className="w-28" />
-                                    <SortHeader field="lastFmPopularity" label="Last.fm" className="w-28" />
-                                    <th className="px-4 py-3 w-44">Status</th>
-                                    <SortHeader field="duration" label="Time" className="w-20" />
+                                    {columnVisibility.genre && <SortHeader field="genre" label="Genre" />}
+                                    {columnVisibility.filePath && <SortHeader field="filePath" label="Path" className="w-48" />}
+                                    {columnVisibility.mbRating && <SortHeader field="mbCommunityScore" label="MB 评分" className="w-28" />}
+                                    {columnVisibility.lastFm && <SortHeader field="lastFmPopularity" label="Last.fm" className="w-28" />}
+                                    {columnVisibility.status && <th className="px-4 py-3 w-44">Status</th>}
+                                    {columnVisibility.duration && <SortHeader field="duration" label="Time" className="w-20" />}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-800">
@@ -495,56 +722,68 @@ export default function Library() {
                                             >
                                                 {song.album}
                                             </td>
-                                            <td
-                                                className="px-4 py-3 hover:text-blue-400 hover:underline cursor-pointer transition"
-                                                onClick={(e) => { e.stopPropagation(); handleCellClick('genre', song.genre); }}
-                                                title={`Filter by genre: ${song.genre}`}
-                                            >
-                                                {song.genre}
-                                            </td>
-                                            <td
-                                                className="px-4 py-3 hover:text-blue-400 cursor-pointer transition max-w-[200px]"
-                                                onClick={(e) => { e.stopPropagation(); handleCellClick('path', directoryPath, song.filePath); }}
-                                                title={`Filter by path: ${directoryPath}`}
-                                            >
-                                                <div className="truncate text-xs font-mono text-gray-500 hover:text-blue-400">{directoryPath}</div>
-                                            </td>
-                                            <td
-                                                className="px-4 py-3 text-xs whitespace-nowrap"
-                                                title={
-                                                    song.mbRating != null
-                                                        ? `★ ${song.mbRating.toFixed(1)} / 5.0 (${song.mbRatingCount ?? 0} 人评价)\n综合加权分: ${song.mbCommunityScore?.toFixed(1) ?? '—'}`
-                                                        : (song.mbCommunityScore != null ? `综合加权分: ${song.mbCommunityScore.toFixed(1)}` : '暂无评分')
-                                                }
-                                            >
-                                                {song.mbRating != null ? (
-                                                    <span className="text-amber-400 font-medium">★ {song.mbRating.toFixed(1)}</span>
-                                                ) : '—'}
-                                                {song.mbRatingCount != null && song.mbRating != null && (
-                                                    <span className="text-gray-400 text-[11px] ml-1">({song.mbRatingCount})</span>
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-3 text-xs whitespace-nowrap" title={song.lastFmPlaycount != null ? `${formatCompact(song.lastFmListeners)} listeners · ${formatCompact(song.lastFmPlaycount)} plays` : 'No Last.fm score'}>
-                                                {song.lastFmPopularity != null ? <span className="text-amber-300">{song.lastFmPopularity.toFixed(1)}</span> : '—'}
-                                            </td>
-                                            <td className="px-4 py-3">
-                                                <div className="flex items-center gap-2 whitespace-nowrap">
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); toggleLike(song.id); }}
-                                                        className={`p-1 rounded transition ${isFavorite(song.id) ? 'text-pink-500' : 'text-gray-600 hover:text-pink-400'}`}
-                                                        title={isFavorite(song.id) ? '取消收藏' : '收藏'}
-                                                    >
-                                                        <Heart size={16} fill={isFavorite(song.id) ? 'currentColor' : 'none'} />
-                                                    </button>
-                                                    {queue.some(item => item.id === song.id) && <span title="当前播放列表"><ListMusic size={15} className="text-blue-400" /></span>}
-                                                    {!!song.playlists?.length && (
-                                                        <span className="text-xs text-gray-500" title={song.playlists.map(p => p.name).join('、')}>
-                                                            {song.playlists.length} 个歌单
-                                                        </span>
+                                            {columnVisibility.genre && (
+                                                <td
+                                                    className="px-4 py-3 hover:text-blue-400 hover:underline cursor-pointer transition"
+                                                    onClick={(e) => { e.stopPropagation(); handleCellClick('genre', song.genre); }}
+                                                    title={`Filter by genre: ${song.genre}`}
+                                                >
+                                                    {song.genre}
+                                                </td>
+                                            )}
+                                            {columnVisibility.filePath && (
+                                                <td
+                                                    className="px-4 py-3 hover:text-blue-400 cursor-pointer transition max-w-[200px]"
+                                                    onClick={(e) => { e.stopPropagation(); handleCellClick('path', directoryPath, song.filePath); }}
+                                                    title={`Filter by path: ${directoryPath}`}
+                                                >
+                                                    <div className="truncate text-xs font-mono text-gray-500 hover:text-blue-400">{directoryPath}</div>
+                                                </td>
+                                            )}
+                                            {columnVisibility.mbRating && (
+                                                <td
+                                                    className="px-4 py-3 text-xs whitespace-nowrap"
+                                                    title={
+                                                        song.mbRating != null
+                                                            ? `★ ${song.mbRating.toFixed(1)} / 5.0 (${song.mbRatingCount ?? 0} 人评价)\n综合加权分: ${song.mbCommunityScore?.toFixed(1) ?? '—'}`
+                                                            : (song.mbCommunityScore != null ? `综合加权分: ${song.mbCommunityScore.toFixed(1)}` : '暂无评分')
+                                                    }
+                                                >
+                                                    {song.mbRating != null ? (
+                                                        <span className="text-amber-400 font-medium">★ {song.mbRating.toFixed(1)}</span>
+                                                    ) : '—'}
+                                                    {song.mbRatingCount != null && song.mbRating != null && (
+                                                        <span className="text-gray-400 text-[11px] ml-1">({song.mbRatingCount})</span>
                                                     )}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3">{song.duration && formatTime(song.duration)}</td>
+                                                </td>
+                                            )}
+                                            {columnVisibility.lastFm && (
+                                                <td className="px-4 py-3 text-xs whitespace-nowrap" title={song.lastFmPlaycount != null ? `${formatCompact(song.lastFmListeners)} listeners · ${formatCompact(song.lastFmPlaycount)} plays` : 'No Last.fm score'}>
+                                                    {song.lastFmPopularity != null ? <span className="text-amber-300">{song.lastFmPopularity.toFixed(1)}</span> : '—'}
+                                                </td>
+                                            )}
+                                            {columnVisibility.status && (
+                                                <td className="px-4 py-3">
+                                                    <div className="flex items-center gap-2 whitespace-nowrap">
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); toggleLike(song.id); }}
+                                                            className={`p-1 rounded transition ${isFavorite(song.id) ? 'text-pink-500' : 'text-gray-600 hover:text-pink-400'}`}
+                                                            title={isFavorite(song.id) ? '取消收藏' : '收藏'}
+                                                        >
+                                                            <Heart size={16} fill={isFavorite(song.id) ? 'currentColor' : 'none'} />
+                                                        </button>
+                                                        {queue.some(item => item.id === song.id) && <span title="当前播放列表"><ListMusic size={15} className="text-blue-400" /></span>}
+                                                        {!!song.playlists?.length && (
+                                                            <span className="text-xs text-gray-500" title={song.playlists.map(p => p.name).join('、')}>
+                                                                {song.playlists.length} 个歌单
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            )}
+                                            {columnVisibility.duration && (
+                                                <td className="px-4 py-3">{song.duration && formatTime(song.duration)}</td>
+                                            )}
                                         </tr>
                                     );
                                 })}
