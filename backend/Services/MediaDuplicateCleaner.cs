@@ -148,8 +148,9 @@ public static class MediaDuplicateCleaner
                     continue;
                 }
 
-                // Winner: highest-score UNPROTECTED member. Protected members are never removed.
-                var winner = ordered.First(c => !c.IsProtected);
+                // Winner: highest-score protected member, else highest-score member overall.
+                // Rationale: referenced copies must survive; unreferenced copies are removed.
+                var winner = protectedMembers.Count > 0 ? protectedMembers[0] : ordered[0];
                 var losers = ordered.Where(c => c.Id != winner.Id && !c.IsProtected).ToList();
 
                 removeCount += losers.Count;

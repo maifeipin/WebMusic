@@ -76,7 +76,7 @@ public class MediaDuplicateCleanerTests : IDisposable
     }
 
     [Fact]
-    public async Task ByteHash_ReferencedMember_IsProtectedFromRemoval()
+    public async Task ByteHash_ReferencedMember_SurvivesAndUnreferencedCopyRemoved()
     {
         var db = CreateInMemoryDbContext("dedupe_prot_" + Guid.NewGuid().ToString("N"));
         var loser = NewMedia(1, "Song", "A", "Album", 200, 3_200_000, "hash1");
@@ -87,12 +87,12 @@ public class MediaDuplicateCleanerTests : IDisposable
 
         var report = await MediaDuplicateCleaner.RunDryRunAsync(db, "byte-hash");
 
-        // Referenced loser is protected; winner is kept by score; nobody removed? No:
-        // winner is highest-scored member, loser is protected -> loser still loses only if not winner?
-        // Both survive only when ALL members are protected. Here loser is protected but winner is not,
-        // so winner stays (it is the group winner anyway) and loser is protected => kept too.
-        Assert.Equal(0, report.RemoveCount);
-        Assert.Equal(1, report.ProtectedSkipCount);
+        // The favorited copy survives (protection), the unreferenced byte-identical copy is removed.
+        Assert.Equal(1, report.TotalGroups);
+        Assert.Equal(1, report.RemoveCount);
+        var group = report.Groups[0];
+        Assert.Equal(loser.Id, group.KeptId);
+        Assert.Contains(group.Members, m => m.MediaFileId == winner.Id && m.Reason.StartsWith("REMOVE"));
     }
 
     [Fact]
