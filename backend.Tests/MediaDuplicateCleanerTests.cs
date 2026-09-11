@@ -161,6 +161,25 @@ public class MediaDuplicateCleanerTests : IDisposable
     }
 
     [Fact]
+    public async Task ByteHash_SoftDeletedMember_ExcludedFromClustering()
+    {
+        var db = CreateInMemoryDbContext("dedupe_softdel_" + Guid.NewGuid().ToString("N"));
+        var visible = NewMedia(1, "Song", "A", "Album", 200, 3_200_000, "hash1");
+        var softDeleted = NewMedia(2, "Song", "A", "Album", 200, 8_000_000, "hash1");
+        softDeleted.IsDeleted = true;
+        softDeleted.DeletedAt = DateTime.UtcNow;
+        db.MediaFiles.AddRange(visible, softDeleted);
+        await db.SaveChangesAsync();
+
+        var report = await MediaDuplicateCleaner.RunDryRunAsync(db, "byte-hash");
+
+        // The soft-deleted copy is invisible to the library and must not join the
+        // cluster (otherwise it could win and remove the visible copy).
+        Assert.Equal(0, report.TotalGroups);
+        Assert.Equal(0, report.RemoveCount);
+    }
+
+    [Fact]
     public async Task Apply_RemovesOnlyLoserRowsAndDependants_AndWritesManifest()
     {
         var db = CreateInMemoryDbContext("dedupe_apply_" + Guid.NewGuid().ToString("N"));

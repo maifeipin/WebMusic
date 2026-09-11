@@ -80,8 +80,11 @@ public static class MediaDuplicateCleaner
                 await db.Database.ExecuteSqlRawAsync("SET TRANSACTION READ ONLY;", cancellationToken);
             }
 
+            // Soft-deleted files are invisible in the library and must never win a
+            // cluster (winning would remove the visible copy and hide the song).
             var files = await db.MediaFiles
                 .AsNoTracking()
+                .Where(m => !m.IsDeleted)
                 .Select(m => new
                 {
                     m.Id,
