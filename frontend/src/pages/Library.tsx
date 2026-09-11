@@ -452,7 +452,7 @@ export default function Library() {
                                     <SortHeader field="album" label="Album" />
                                     <SortHeader field="genre" label="Genre" />
                                     <SortHeader field="filePath" label="Path" className="w-48" />
-                                    <SortHeader field="mbCommunityScore" label="MB community" className="w-28" />
+                                    <SortHeader field="mbCommunityScore" label="MB 评分" className="w-28" />
                                     <SortHeader field="lastFmPopularity" label="Last.fm" className="w-28" />
                                     <th className="px-4 py-3 w-44">Status</th>
                                     <SortHeader field="duration" label="Time" className="w-20" />
@@ -509,9 +509,20 @@ export default function Library() {
                                             >
                                                 <div className="truncate text-xs font-mono text-gray-500 hover:text-blue-400">{directoryPath}</div>
                                             </td>
-                                            <td className="px-4 py-3 text-xs whitespace-nowrap" title={song.mbRatingCount != null ? `MusicBrainz community rating ${song.mbRating?.toFixed(1) ?? '—'} / 5 (${song.mbRatingCount} votes)` : 'No MusicBrainz community rating'}>
-                                                {song.mbCommunityScore != null ? <span className="text-violet-300">{song.mbCommunityScore.toFixed(1)}</span> : '—'}
-                                                {song.mbRatingCount != null && <span className="text-gray-600 ml-1">({song.mbRatingCount})</span>}
+                                            <td
+                                                className="px-4 py-3 text-xs whitespace-nowrap"
+                                                title={
+                                                    song.mbRating != null
+                                                        ? `★ ${song.mbRating.toFixed(1)} / 5.0 (${song.mbRatingCount ?? 0} 人评价)\n综合加权分: ${song.mbCommunityScore?.toFixed(1) ?? '—'}`
+                                                        : (song.mbCommunityScore != null ? `综合加权分: ${song.mbCommunityScore.toFixed(1)}` : '暂无评分')
+                                                }
+                                            >
+                                                {song.mbRating != null ? (
+                                                    <span className="text-amber-400 font-medium">★ {song.mbRating.toFixed(1)}</span>
+                                                ) : '—'}
+                                                {song.mbRatingCount != null && song.mbRating != null && (
+                                                    <span className="text-gray-400 text-[11px] ml-1">({song.mbRatingCount})</span>
+                                                )}
                                             </td>
                                             <td className="px-4 py-3 text-xs whitespace-nowrap" title={song.lastFmPlaycount != null ? `${formatCompact(song.lastFmListeners)} listeners · ${formatCompact(song.lastFmPlaycount)} plays` : 'No Last.fm score'}>
                                                 {song.lastFmPopularity != null ? <span className="text-amber-300">{song.lastFmPopularity.toFixed(1)}</span> : '—'}

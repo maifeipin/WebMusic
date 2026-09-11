@@ -1848,4 +1848,59 @@ public class PostgreSqlIntegrationTests : IClassFixture<PostgreSqlFixture>
         var batchCount = await db.IdentityImportBatches.CountAsync(b => b.BatchTag == "LegacyPilotRound2_20260908");
         Assert.Equal(0, batchCount);
     }
+
+    [Fact]
+    public async Task SoftDeleteAndRestore_ProtectsPhysicalFile_HidesFromNormalQueries_AndRestores()
+    {
+        using var db = _fixture.CreateDbContext();
+        var scanSource = new ScanSource { Name = "SoftDelSrc", Path = "smb://test/del", Type = "SMB" };
+        db.ScanSources.Add(scanSource);
+        await db.SaveChangesAsync();
+
+        var song = new MediaFile
+        {
+            Title = "SoftDeleteTestSong",
+            Artist = "ArtistA",
+            Album = "AlbumA",
+            Genre = "Pop",
+            Year = 2024,
+            Duration = TimeSpan.FromSeconds(180),
+            SizeBytes = 1000,
+            FilePath = "/music/soft_del_test.mp3",
+            FileHash = "hash_soft_del",
+            ScanSourceId = scanSource.Id,
+            IsDeleted = false
+        };
+        db.MediaFiles.Add(song);
+        await db.SaveChangesAsync();
+
+        var dataService = new DataManagementService(db, NullLogger<DataManagementService>.Instance);
+
+        // 1. Soft delete
+        var (success, _) = await dataService.DeleteMediaAsync(song.Id, force: false, permanent: false);
+        Assert.True(success);
+
+        var queried = await db.MediaFiles.FindAsync(song.Id);
+        Assert.NotNull(queried);
+        Assert.True(queried.IsDeleted);
+        Assert.NotNull(queried.DeletedAt);
+
+        // 2. Query excluding deleted
+        var activeSongs = await db.MediaFiles.Where(m => !m.IsDeleted).ToListAsync();
+        Assert.DoesNotContain(activeSongs, m => m.Id == song.Id);
+
+        // 3. Query only deleted
+        var deletedSongs = await db.MediaFiles.Where(m => m.IsDeleted).ToListAsync();
+        Assert.Contains(deletedSongs, m => m.Id == song.Id);
+
+        // 4. Restore
+        var restored = await dataService.RestoreMediaAsync(song.Id);
+        Assert.True(restored);
+
+        var restoredSong = await db.MediaFiles.FindAsync(song.Id);
+        Assert.NotNull(restoredSong);
+        Assert.False(restoredSong.IsDeleted);
+        Assert.Null(restoredSong.DeletedAt);
+    }
 }
+

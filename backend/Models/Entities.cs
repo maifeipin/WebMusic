@@ -60,6 +60,8 @@ public class MediaFile
     public string FileHash { get; set; } = string.Empty; // For deduplication (e.g. partial MD5)
     public string ParentPath { get; set; } = string.Empty; // For tree view
     public DateTime AddedAt { get; set; } = DateTime.UtcNow;
+    public bool IsDeleted { get; set; } = false;
+    public DateTime? DeletedAt { get; set; }
     
     // Foreign Key to Source? Maybe not strictly needed if path contains it, but useful
     public int ScanSourceId { get; set; }

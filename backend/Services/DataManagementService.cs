@@ -16,9 +16,9 @@ public class DataManagementService
         _logger = logger;
     }
 
-    // --- Deletion Logic ---
+    // --- Deletion & Restore Logic ---
 
-    public async Task<(bool success, object? dependencyDetails)> DeleteMediaAsync(int id, bool force)
+    public async Task<(bool success, object? dependencyDetails)> DeleteMediaAsync(int id, bool force, bool permanent = false)
     {
         var media = await _context.MediaFiles.FindAsync(id);
         if (media == null) return (false, null);
@@ -39,20 +39,51 @@ public class DataManagementService
             });
         }
 
-        // Proceed to delete
-        _context.MediaFiles.Remove(media);
+        if (permanent)
+        {
+            // Hard physical database delete
+            _context.MediaFiles.Remove(media);
+        }
+        else
+        {
+            // Soft delete (Non-physical, reversible, hidden from frontend library)
+            media.IsDeleted = true;
+            media.DeletedAt = DateTime.UtcNow;
+        }
+
         await _context.SaveChangesAsync();
 
         return (true, null);
     }
     
-    public async Task<int> BatchDeleteMediaAsync(List<int> ids, bool force)
+    public async Task<bool> RestoreMediaAsync(int id)
     {
-        // Simple loop for now, optimize later if needed
+        var media = await _context.MediaFiles.FindAsync(id);
+        if (media == null) return false;
+
+        media.IsDeleted = false;
+        media.DeletedAt = null;
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
+    public async Task<int> BatchRestoreMediaAsync(List<int> ids)
+    {
+        var medias = await _context.MediaFiles.Where(m => ids.Contains(m.Id) && m.IsDeleted).ToListAsync();
+        foreach (var m in medias)
+        {
+            m.IsDeleted = false;
+            m.DeletedAt = null;
+        }
+        return await _context.SaveChangesAsync();
+    }
+    
+    public async Task<int> BatchDeleteMediaAsync(List<int> ids, bool force, bool permanent = false)
+    {
         int deletedCount = 0;
         foreach (var id in ids)
         {
-            var (success, _) = await DeleteMediaAsync(id, force);
+            var (success, _) = await DeleteMediaAsync(id, force, permanent);
             if (success) deletedCount++;
         }
         return deletedCount;

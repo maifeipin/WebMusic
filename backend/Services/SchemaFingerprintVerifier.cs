@@ -87,7 +87,9 @@ public static class SchemaFingerprintVerifier
                 ("ParentPath", "text", false),
                 ("AddedAt", "timestamp with time zone", false),
                 ("ScanSourceId", "integer", false),
-                ("CoverArt", "text", true)
+                ("CoverArt", "text", true),
+                ("IsDeleted", "boolean", false),
+                ("DeletedAt", "timestamp with time zone", true)
             },
             ["MediaIdentities"] = new[]
             {
@@ -231,6 +233,7 @@ public static class SchemaFingerprintVerifier
         ("MediaFiles", "IX_MediaFiles_Album", false, "Album"),
         ("MediaFiles", "IX_MediaFiles_Artist", false, "Artist"),
         ("MediaFiles", "IX_MediaFiles_FilePath", true, "FilePath"),
+        ("MediaFiles", "IX_MediaFiles_IsDeleted", false, "IsDeleted"),
         ("MediaFiles", "IX_MediaFiles_ScanSourceId", false, "ScanSourceId"),
         ("MediaIdentities", "IX_MediaIdentities_MediaFileId_Provider", true, "MediaFileId, Provider"),
         ("MediaIdentities", "IX_MediaIdentities_Provider_RecordingId", false, "Provider, RecordingId"),
@@ -251,7 +254,8 @@ public static class SchemaFingerprintVerifier
         ("Users", "IsAdmin", "false"),
         ("Playlists", "Type", "normal"),
         ("EnrichmentJobs", "SongIdsJson", "[]"),
-        ("Plugins", "IsEnabled", "true")
+        ("Plugins", "IsEnabled", "true"),
+        ("MediaFiles", "IsDeleted", "false")
     };
 
     public class VerificationResult

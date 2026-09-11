@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { getUsers, adminResetPassword, createUser, deleteUser, getFavoritesEnrichmentPreview, startFavoritesEnrichment, retryFailedFavoritesEnrichment, getEnrichmentStatus } from '../services/api';
+import { getUsers, adminResetPassword, createUser, deleteUser, getFavoritesEnrichmentPreview, startFavoritesEnrichment, retryFailedFavoritesEnrichment, getEnrichmentStatus, getDeletedFiles, restoreMedia } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { Shield, Key, User, Plus, Trash2, Sparkles, LoaderCircle } from 'lucide-react';
+import { Shield, Key, User, Plus, Trash2, Sparkles, LoaderCircle, RotateCcw, ArchiveRestore } from 'lucide-react';
 
 export default function AdminPage() {
     const { username } = useAuth();
@@ -11,6 +11,9 @@ export default function AdminPage() {
     const [enrichmentPreview, setEnrichmentPreview] = useState<number | null>(null);
     const [enrichmentStatus, setEnrichmentStatus] = useState<{ batchId: string; total: number; processed: number; success?: number; updated?: number; matchedWithoutAssets?: number; unmatched?: number; failed: number; status: string } | null>(null);
     const [enrichmentStarting, setEnrichmentStarting] = useState(false);
+    const [showDeleted, setShowDeleted] = useState(false);
+    const [deletedSongs, setDeletedSongs] = useState<any[]>([]);
+    const [loadingDeleted, setLoadingDeleted] = useState(false);
 
 
     useEffect(() => {
@@ -71,6 +74,35 @@ export default function AdminPage() {
             alert('Failed to retry enrichment: ' + (e.response?.data || e.message));
         } finally {
             setEnrichmentStarting(false);
+        }
+    };
+
+    const loadDeleted = async () => {
+        setLoadingDeleted(true);
+        try {
+            const res = await getDeletedFiles({ pageSize: 100 });
+            setDeletedSongs(res.data?.files || []);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoadingDeleted(false);
+        }
+    };
+
+    const handleToggleShowDeleted = (checked: boolean) => {
+        setShowDeleted(checked);
+        if (checked) {
+            loadDeleted();
+        }
+    };
+
+    const handleRestoreSong = async (id: number, title: string) => {
+        if (!confirm(`确认恢复曲目《${title}》？恢复后将在普通曲库（Library）中重新显示。`)) return;
+        try {
+            await restoreMedia(id);
+            setDeletedSongs(prev => prev.filter(s => s.id !== id));
+        } catch (e: any) {
+            alert('恢复失败: ' + (e.response?.data?.message || e.message));
         }
     };
 
@@ -225,6 +257,101 @@ export default function AdminPage() {
                         </button>
                     )}
                 </div>
+            </div>
+
+            {/* Soft-Deleted Media Management / Trash Section */}
+            <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-gray-700">
+                    <div>
+                        <h2 className="text-xl font-bold flex items-center gap-2">
+                            <ArchiveRestore className="text-amber-400" />
+                            曲库软删除管理（回收站）
+                        </h2>
+                        <p className="text-sm text-gray-400 mt-1">
+                            被软删除的曲目不会在曲库（Library）普通路由和播放器中展示，但物理文件保持安全无损。
+                        </p>
+                    </div>
+                    <label className="inline-flex items-center gap-3 cursor-pointer bg-gray-900/80 px-4 py-2 rounded-lg border border-gray-700 hover:border-gray-600 transition select-none">
+                        <input
+                            type="checkbox"
+                            checked={showDeleted}
+                            onChange={(e) => handleToggleShowDeleted(e.target.checked)}
+                            className="sr-only peer"
+                        />
+                        <div className="relative w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                        <span className="text-sm font-medium text-gray-200">
+                            {showDeleted ? '显示软删除列表' : '隐藏软删除列表'}
+                        </span>
+                    </label>
+                </div>
+
+                {showDeleted && (
+                    <div className="mt-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="text-sm text-gray-400">
+                                已删除曲目数: <span className="text-amber-400 font-bold">{deletedSongs.length}</span>
+                            </div>
+                            <button
+                                onClick={loadDeleted}
+                                disabled={loadingDeleted}
+                                className="flex items-center gap-1 text-xs text-gray-400 hover:text-white px-2 py-1 rounded bg-gray-700/60 hover:bg-gray-700 transition"
+                            >
+                                <RotateCcw size={13} className={loadingDeleted ? 'animate-spin' : ''} />
+                                刷新列表
+                            </button>
+                        </div>
+
+                        {loadingDeleted ? (
+                            <div className="flex items-center justify-center py-10 text-gray-400 text-sm">
+                                <LoaderCircle size={20} className="animate-spin mr-2" />
+                                正在加载软删除曲目...
+                            </div>
+                        ) : deletedSongs.length === 0 ? (
+                            <div className="text-center py-10 text-gray-500 text-sm bg-gray-900/40 rounded-lg border border-gray-800">
+                                回收站暂无软删除曲目，所有库内歌曲均为正常有效状态。
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto rounded-lg border border-gray-700 max-h-96 overflow-y-auto">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-gray-900/90 text-gray-400 text-xs uppercase sticky top-0">
+                                        <tr>
+                                            <th className="px-4 py-3">标题</th>
+                                            <th className="px-4 py-3">歌手</th>
+                                            <th className="px-4 py-3">专辑</th>
+                                            <th className="px-4 py-3">删除时间</th>
+                                            <th className="px-4 py-3 text-right">操作</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-700/50 bg-gray-900/30">
+                                        {deletedSongs.map((song) => (
+                                            <tr key={song.id} className="hover:bg-gray-700/40 transition">
+                                                <td className="px-4 py-3 font-medium text-gray-200">
+                                                    {song.title || '无标题'}
+                                                    <div className="text-xs text-gray-500 font-mono truncate max-w-xs">{song.filePath}</div>
+                                                </td>
+                                                <td className="px-4 py-3 text-gray-400">{song.artist || '—'}</td>
+                                                <td className="px-4 py-3 text-gray-400">{song.album || '—'}</td>
+                                                <td className="px-4 py-3 text-gray-500 text-xs">
+                                                    {song.deletedAt ? new Date(song.deletedAt).toLocaleString() : '—'}
+                                                </td>
+                                                <td className="px-4 py-3 text-right">
+                                                    <button
+                                                        onClick={() => handleRestoreSong(song.id, song.title)}
+                                                        className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-600/80 hover:bg-emerald-600 text-white rounded text-xs font-semibold transition"
+                                                        title="恢复到曲库并在前端重新显示"
+                                                    >
+                                                        <RotateCcw size={12} />
+                                                        恢复
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -166,7 +166,9 @@ CREATE TABLE public."MediaFiles" (
     "ParentPath" text DEFAULT ''::text NOT NULL,
     "AddedAt" timestamp with time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
     "ScanSourceId" integer NOT NULL,
-    "CoverArt" text
+    "CoverArt" text,
+    "IsDeleted" boolean DEFAULT false NOT NULL,
+    "DeletedAt" timestamp with time zone
 );
 
 
@@ -735,6 +737,8 @@ CREATE UNIQUE INDEX "IX_MediaFiles_FilePath" ON public."MediaFiles" USING btree 
 --
 
 CREATE INDEX "IX_MediaFiles_ScanSourceId" ON public."MediaFiles" USING btree ("ScanSourceId");
+
+CREATE INDEX "IX_MediaFiles_IsDeleted" ON public."MediaFiles" USING btree ("IsDeleted");
 
 
 --

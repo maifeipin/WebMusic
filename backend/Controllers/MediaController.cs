@@ -44,9 +44,11 @@ public class MediaController : ControllerBase
     // ... (GetFiles and others remain unchanged, skipping to DeleteMedia)
 
     [HttpDelete("{id}")]
-    public async Task<IActionResult> DeleteMedia(int id, [FromQuery] bool force = false)
+    public async Task<IActionResult> DeleteMedia(int id, [FromQuery] bool force = false, [FromQuery] bool permanent = false)
     {
-        var (success, details) = await _dataService.DeleteMediaAsync(id, force);
+        if (permanent && !User.IsInRole("Admin")) return Forbid();
+
+        var (success, details) = await _dataService.DeleteMediaAsync(id, force, permanent);
 
         if (!success && details != null)
         {
@@ -60,7 +62,28 @@ public class MediaController : ControllerBase
             return NotFound();
         }
 
-        return Ok(new { id, deleted = true });
+        return Ok(new { id, deleted = true, permanent });
+    }
+
+    [HttpPost("{id}/restore")]
+    public async Task<IActionResult> RestoreMedia(int id)
+    {
+        if (!User.IsInRole("Admin")) return Forbid();
+
+        var success = await _dataService.RestoreMediaAsync(id);
+        if (!success) return NotFound();
+
+        return Ok(new { id, restored = true });
+    }
+
+    [HttpPost("batch-restore")]
+    public async Task<IActionResult> BatchRestoreMedia([FromBody] List<int> ids)
+    {
+        if (!User.IsInRole("Admin")) return Forbid();
+        if (ids == null || ids.Count == 0) return BadRequest("No IDs provided");
+
+        var count = await _dataService.BatchRestoreMediaAsync(ids);
+        return Ok(new { restoredCount = count });
     }
 
     [HttpGet]
@@ -74,7 +97,9 @@ public class MediaController : ControllerBase
         [FromQuery] bool recursive = false,
         [FromQuery] List<string>? criteria = null,
         [FromQuery] string? sortBy = null,
-        [FromQuery] string? sortDirection = null)
+        [FromQuery] string? sortDirection = null,
+        [FromQuery] bool includeDeleted = false,
+        [FromQuery] bool onlyDeleted = false)
     {
         var userId = GetUserId();
 
@@ -87,6 +112,18 @@ public class MediaController : ControllerBase
         var query = _context.MediaFiles
             .Where(m => allowedSourceIds.Contains(m.ScanSourceId))
             .AsQueryable();
+
+        // Soft-delete filter: normal library views never show soft-deleted files.
+        // Only Admin can view onlyDeleted or includeDeleted.
+        if (onlyDeleted)
+        {
+            if (!User.IsInRole("Admin")) return Forbid();
+            query = query.Where(m => m.IsDeleted);
+        }
+        else if (!includeDeleted || !User.IsInRole("Admin"))
+        {
+            query = query.Where(m => !m.IsDeleted);
+        }
 
         // Path Filtering (Directory Playback) - Using PathResolver for consistent path handling
         if (!string.IsNullOrEmpty(path))
@@ -236,6 +273,7 @@ public class MediaController : ControllerBase
             .Take(pageSize)
             .Select(m => new { 
                 m.Id, m.Title, m.Artist, m.Album, m.Genre, m.Duration.TotalSeconds, m.Year, m.FilePath, m.CoverArt,
+                m.IsDeleted, m.DeletedAt,
                 isFavorite = _context.Favorites.Any(f => f.UserId == userId && f.MediaFileId == m.Id),
                 playlists = _context.PlaylistSongs
                     .Where(ps => ps.MediaFileId == m.Id && ps.Playlist != null && ps.Playlist.UserId == userId && ps.Playlist.Type == "normal")
