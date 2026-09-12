@@ -1,0 +1,1293 @@
+{
+  "ExecutedAt": "2026-09-12T00:08:57.379509+00:00",
+  "TargetHost": "192.168.2.18",
+  "TotalGroups": 31,
+  "TotalRemovedFiles": 33,
+  "ReclaimedBytes": 895875806,
+  "DeletionResults": {
+    "/volume1/DataSync/sharedata/音乐/QQMusic/NO-VIP/Noel Gallagher's High Flying Birds - Black Star Dancing(1).flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/NO-VIP/Noel Gallagher's High Flying Birds - Black Star Dancing(2).flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/Kygo _ Selena Gomez - It Ain't Me.flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/Snakehips _ Tinashe _ Chance the Rapper - All My Friends.ogg": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/Clean Bandit _ MARINA - Disconnect.flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/twenty one pilots - Heathens.flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/NO-VIP/Goatchrist - Mastery of Physicality[Key; Assiah](1).ogg": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/Clean Bandit _ Zara Larsson - Symphony (feat_ Zara Larsson).flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/NO-VIP/花姐 - 狂浪(1).flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/NO-VIP/花姐 - 狂浪(2).flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/Ed Sheeran - Celestial(1).flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/NO-VIP/山下達郎 (やました たつろう) - クリスマス・イブ (平安夜).ogg": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/Nick Jonas - Jealous.flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/NO-VIP/鬼太鼓座 (おんでこざ;Ondekoza) - 岛歌幻想曲.ogg": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/NO-VIP/Sean Finn _ Dia (디아) - Dirty Moves.ogg": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/Selena Gomez _ A$AP Rocky - Good For You.flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/The Vaccines_Kylie Minogue_Justin Hayward-Young_Cole Marsden Greif Neill_Freddie Cowan_Árni Árnason_Timothy Lanham_Yoann Intonti - LAZY.ogg": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/NO-VIP/Aeden _ Um41k - Ain't Nobody Perfect(1).flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/Kygo _ Maty Noyes - Stay.flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/Dami Im - Smile(1).flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/Alan Walker - Alone.flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/李宗盛 - 山丘.ogg": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/Rag'n'Bone Man - Human.flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/A Great Big World - Younger(1).flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/Post Malone _ 21 Savage - rockstar.ogg": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/Tom Odell - Grow Old with Me (Explicit).flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/Maroon 5 _ Kendrick Lamar - Don't Wanna Know.flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/Zedd _ Selena Gomez - I Want You To Know(1).flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/One Direction - Best Song Ever.flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/Galantis _ Hook N Sling - Love on Me.flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/NO-VIP/水月陵 (みずつき りょう) - 海風と太陽 (Inst_).ogg": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/Little Mix - Shout Out to My Ex.flac": {
+      "success": true
+    },
+    "/volume1/DataSync/sharedata/音乐/QQMusic/VIP/Rita Ora - Your Song.flac": {
+      "success": true
+    }
+  },
+  "AuditGroups": [
+    {
+      "FileHash": "0aec09aaf0e75c3c3638dd9e7f528bcf_59527320",
+      "SizeBytes": 59527320,
+      "Winner": {
+        "Id": 133207,
+        "Title": "Black Star Dancing",
+        "Artist": "Noel Gallagher's High Flying Birds",
+        "Album": "Black Star Dancing",
+        "SizeBytes": 59527320,
+        "FilePath": "sharedata/音乐/QQMusic/NO-VIP/Noel Gallagher's High Flying Birds - Black Star Dancing.flac",
+        "FileHash": "0aec09aaf0e75c3c3638dd9e7f528bcf_59527320",
+        "ScanSourceId": 21,
+        "sourcename": "QQMusic",
+        "sourcepath": "DataSync/sharedata/音乐/QQMusic"
+      },
+      "Losers": [
+        {
+          "Id": 133096,
+          "Title": "Black Star Dancing",
+          "Artist": "Noel Gallagher's High Flying Birds",
+          "Album": "Black Star Dancing",
+          "SizeBytes": 59527320,
+          "FilePath": "sharedata/音乐/QQMusic/NO-VIP/Noel Gallagher's High Flying Birds - Black Star Dancing(1).flac",
+          "FileHash": "0aec09aaf0e75c3c3638dd9e7f528bcf_59527320",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 59527320,
+            "match": true,
+            "status": "OK"
+          }
+        },
+        {
+          "Id": 133097,
+          "Title": "Black Star Dancing",
+          "Artist": "Noel Gallagher's High Flying Birds",
+          "Album": "Black Star Dancing",
+          "SizeBytes": 59527320,
+          "FilePath": "sharedata/音乐/QQMusic/NO-VIP/Noel Gallagher's High Flying Birds - Black Star Dancing(2).flac",
+          "FileHash": "0aec09aaf0e75c3c3638dd9e7f528bcf_59527320",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 59527320,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "1895ac074d803b76257fe244c43c05c7_27926870",
+      "SizeBytes": 27926870,
+      "Winner": {
+        "Id": 1019,
+        "Title": "It Ain't Me",
+        "Artist": "Kygo",
+        "Album": "It Ain't Me",
+        "SizeBytes": 27926870,
+        "FilePath": "sharedata/NetDiskSync/Completed202505/我的音乐/song/KygoSelena Gomez - It Ain't Me [mqms2].flac",
+        "FileHash": "1895ac074d803b76257fe244c43c05c7_27926870",
+        "ScanSourceId": 1,
+        "sourcename": "HitFm",
+        "sourcepath": "DataSync/sharedata/NetDiskSync/Completed202505/我的音乐"
+      },
+      "Losers": [
+        {
+          "Id": 133436,
+          "Title": "It Ain't Me",
+          "Artist": "Kygo",
+          "Album": "It Ain't Me",
+          "SizeBytes": 27926870,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/Kygo _ Selena Gomez - It Ain't Me.flac",
+          "FileHash": "1895ac074d803b76257fe244c43c05c7_27926870",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 27926870,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "198c585f374d3527674a102db59eaed3_10497325",
+      "SizeBytes": 10497325,
+      "Winner": {
+        "Id": 133567,
+        "Title": "All My Friends",
+        "Artist": "Snakehips",
+        "Album": "All My Friends - EP (Explicit)",
+        "SizeBytes": 10497325,
+        "FilePath": "sharedata/音乐/QQMusic/VIP/Snakehips _ Tinashe _ Chance the Rapper - All My Friends (Explicit).ogg",
+        "FileHash": "198c585f374d3527674a102db59eaed3_10497325",
+        "ScanSourceId": 21,
+        "sourcename": "QQMusic",
+        "sourcepath": "DataSync/sharedata/音乐/QQMusic"
+      },
+      "Losers": [
+        {
+          "Id": 133568,
+          "Title": "All My Friends",
+          "Artist": "Snakehips",
+          "Album": "All My Friends - EP (Explicit)",
+          "SizeBytes": 10497325,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/Snakehips _ Tinashe _ Chance the Rapper - All My Friends.ogg",
+          "FileHash": "198c585f374d3527674a102db59eaed3_10497325",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 10497325,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "1cad1fd8332d7f78529b0247ff95a52c_29127389",
+      "SizeBytes": 29127389,
+      "Winner": {
+        "Id": 882,
+        "Title": "Disconnect",
+        "Artist": "Clean Bandit",
+        "Album": "Disconnect",
+        "SizeBytes": 29127389,
+        "FilePath": "sharedata/NetDiskSync/Completed202505/我的音乐/song/Clean BanditMarina And The Diamonds - Disconnect [mqms2].flac",
+        "FileHash": "1cad1fd8332d7f78529b0247ff95a52c_29127389",
+        "ScanSourceId": 1,
+        "sourcename": "HitFm",
+        "sourcepath": "DataSync/sharedata/NetDiskSync/Completed202505/我的音乐"
+      },
+      "Losers": [
+        {
+          "Id": 133327,
+          "Title": "Disconnect",
+          "Artist": "Clean Bandit",
+          "Album": "Disconnect",
+          "SizeBytes": 29127389,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/Clean Bandit _ MARINA - Disconnect.flac",
+          "FileHash": "1cad1fd8332d7f78529b0247ff95a52c_29127389",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 29127389,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "1ea8198699408c175ec63d3cd0e70600_21868167",
+      "SizeBytes": 21868167,
+      "Winner": {
+        "Id": 1203,
+        "Title": "Heathens",
+        "Artist": "Twenty One Pilots",
+        "Album": "Suicide Squad: The Album",
+        "SizeBytes": 21868167,
+        "FilePath": "sharedata/NetDiskSync/Completed202505/我的音乐/song/Twenty One Pilots - Heathens [mqms2].flac",
+        "FileHash": "1ea8198699408c175ec63d3cd0e70600_21868167",
+        "ScanSourceId": 1,
+        "sourcename": "HitFm",
+        "sourcepath": "DataSync/sharedata/NetDiskSync/Completed202505/我的音乐"
+      },
+      "Losers": [
+        {
+          "Id": 133609,
+          "Title": "Heathens",
+          "Artist": "Twenty One Pilots",
+          "Album": "Suicide Squad: The Album",
+          "SizeBytes": 21868167,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/twenty one pilots - Heathens.flac",
+          "FileHash": "1ea8198699408c175ec63d3cd0e70600_21868167",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 21868167,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "22e67f72ad4f0f6d9d32890b15893ab7_7396037",
+      "SizeBytes": 7396037,
+      "Winner": {
+        "Id": 133164,
+        "Title": "Mastery of Physicality[Key; Assiah]",
+        "Artist": "Goatchrist",
+        "Album": "The Philosopher's Hand",
+        "SizeBytes": 7396037,
+        "FilePath": "sharedata/音乐/QQMusic/NO-VIP/Goatchrist - Mastery of Physicality[Key; Assiah].ogg",
+        "FileHash": "22e67f72ad4f0f6d9d32890b15893ab7_7396037",
+        "ScanSourceId": 21,
+        "sourcename": "QQMusic",
+        "sourcepath": "DataSync/sharedata/音乐/QQMusic"
+      },
+      "Losers": [
+        {
+          "Id": 133088,
+          "Title": "Mastery of Physicality[Key; Assiah]",
+          "Artist": "Goatchrist",
+          "Album": "The Philosopher's Hand",
+          "SizeBytes": 7396037,
+          "FilePath": "sharedata/音乐/QQMusic/NO-VIP/Goatchrist - Mastery of Physicality[Key; Assiah](1).ogg",
+          "FileHash": "22e67f72ad4f0f6d9d32890b15893ab7_7396037",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 7396037,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "29def4c3a666e5087180c4dd217b262d_23459617",
+      "SizeBytes": 23459617,
+      "Winner": {
+        "Id": 883,
+        "Title": "Symphony",
+        "Artist": "Clean Bandit",
+        "Album": "Symphony",
+        "SizeBytes": 23459617,
+        "FilePath": "sharedata/NetDiskSync/Completed202505/我的音乐/song/Clean BanditZara Larsson - Symphony [mqms2].flac",
+        "FileHash": "29def4c3a666e5087180c4dd217b262d_23459617",
+        "ScanSourceId": 1,
+        "sourcename": "HitFm",
+        "sourcepath": "DataSync/sharedata/NetDiskSync/Completed202505/我的音乐"
+      },
+      "Losers": [
+        {
+          "Id": 133328,
+          "Title": "Symphony",
+          "Artist": "Clean Bandit",
+          "Album": "Symphony",
+          "SizeBytes": 23459617,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/Clean Bandit _ Zara Larsson - Symphony (feat_ Zara Larsson).flac",
+          "FileHash": "29def4c3a666e5087180c4dd217b262d_23459617",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 23459617,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "2e10b7d48d24ad373ce9589851b1c769_42773816",
+      "SizeBytes": 42773816,
+      "Winner": {
+        "Id": 133249,
+        "Title": "狂浪",
+        "Artist": "花姐",
+        "Album": "狂浪",
+        "SizeBytes": 42773816,
+        "FilePath": "sharedata/音乐/QQMusic/NO-VIP/花姐 - 狂浪.flac",
+        "FileHash": "2e10b7d48d24ad373ce9589851b1c769_42773816",
+        "ScanSourceId": 21,
+        "sourcename": "QQMusic",
+        "sourcepath": "DataSync/sharedata/音乐/QQMusic"
+      },
+      "Losers": [
+        {
+          "Id": 133105,
+          "Title": "狂浪",
+          "Artist": "花姐",
+          "Album": "狂浪",
+          "SizeBytes": 42773816,
+          "FilePath": "sharedata/音乐/QQMusic/NO-VIP/花姐 - 狂浪(1).flac",
+          "FileHash": "2e10b7d48d24ad373ce9589851b1c769_42773816",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 42773816,
+            "match": true,
+            "status": "OK"
+          }
+        },
+        {
+          "Id": 133106,
+          "Title": "狂浪",
+          "Artist": "花姐",
+          "Album": "狂浪",
+          "SizeBytes": 42773816,
+          "FilePath": "sharedata/音乐/QQMusic/NO-VIP/花姐 - 狂浪(2).flac",
+          "FileHash": "2e10b7d48d24ad373ce9589851b1c769_42773816",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 42773816,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "2ec2c650c4fd122ca0c817587166060b_48875336",
+      "SizeBytes": 48875336,
+      "Winner": {
+        "Id": 133360,
+        "Title": "Celestial",
+        "Artist": "Ed Sheeran",
+        "Album": "Celestial",
+        "SizeBytes": 48875336,
+        "FilePath": "sharedata/音乐/QQMusic/VIP/Ed Sheeran - Celestial.flac",
+        "FileHash": "2ec2c650c4fd122ca0c817587166060b_48875336",
+        "ScanSourceId": 21,
+        "sourcename": "QQMusic",
+        "sourcepath": "DataSync/sharedata/音乐/QQMusic"
+      },
+      "Losers": [
+        {
+          "Id": 133359,
+          "Title": "Celestial",
+          "Artist": "Ed Sheeran",
+          "Album": "Celestial",
+          "SizeBytes": 48875336,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/Ed Sheeran - Celestial(1).flac",
+          "FileHash": "2ec2c650c4fd122ca0c817587166060b_48875336",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 48875336,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "315615905e270a99fd913b93805239d4_9965754",
+      "SizeBytes": 9965754,
+      "Winner": {
+        "Id": 133074,
+        "Title": "クリスマス・イブ",
+        "Artist": "山下達郎",
+        "Album": "OPUS ～ALL TIME BEST 1975-2012～",
+        "SizeBytes": 9965754,
+        "FilePath": "sharedata/音乐/QQMusic/NO-VIP/山下達郎 - クリスマス・イブ (平安夜).ogg",
+        "FileHash": "315615905e270a99fd913b93805239d4_9965754",
+        "ScanSourceId": 21,
+        "sourcename": "QQMusic",
+        "sourcepath": "DataSync/sharedata/音乐/QQMusic"
+      },
+      "Losers": [
+        {
+          "Id": 133111,
+          "Title": "クリスマス・イブ",
+          "Artist": "山下達郎",
+          "Album": "OPUS ～ALL TIME BEST 1975-2012～",
+          "SizeBytes": 9965754,
+          "FilePath": "sharedata/音乐/QQMusic/NO-VIP/山下達郎 (やました たつろう) - クリスマス・イブ (平安夜).ogg",
+          "FileHash": "315615905e270a99fd913b93805239d4_9965754",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 9965754,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "31debac224077b93c36f562993d79238_28739089",
+      "SizeBytes": 28739089,
+      "Winner": {
+        "Id": 1083,
+        "Title": "Jealous",
+        "Artist": "Nick Jonas",
+        "Album": "Jealous",
+        "SizeBytes": 28739089,
+        "FilePath": "sharedata/NetDiskSync/Completed202505/我的音乐/song/Nick Jonas - Jealous [mqms2].flac",
+        "FileHash": "31debac224077b93c36f562993d79238_28739089",
+        "ScanSourceId": 1,
+        "sourcename": "HitFm",
+        "sourcepath": "DataSync/sharedata/NetDiskSync/Completed202505/我的音乐"
+      },
+      "Losers": [
+        {
+          "Id": 133498,
+          "Title": "Jealous",
+          "Artist": "Nick Jonas",
+          "Album": "Jealous",
+          "SizeBytes": 28739089,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/Nick Jonas - Jealous.flac",
+          "FileHash": "31debac224077b93c36f562993d79238_28739089",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 28739089,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "348dba64edf689b70a5b7b9fa5667d64_19508097",
+      "SizeBytes": 19508097,
+      "Winner": {
+        "Id": 133072,
+        "Title": "岛歌幻想曲",
+        "Artist": "鬼太鼓座",
+        "Album": "NEW",
+        "SizeBytes": 19508097,
+        "FilePath": "sharedata/音乐/QQMusic/NO-VIP/鬼太鼓座 - 岛歌幻想曲.ogg",
+        "FileHash": "348dba64edf689b70a5b7b9fa5667d64_19508097",
+        "ScanSourceId": 21,
+        "sourcename": "QQMusic",
+        "sourcepath": "DataSync/sharedata/音乐/QQMusic"
+      },
+      "Losers": [
+        {
+          "Id": 133104,
+          "Title": "岛歌幻想曲",
+          "Artist": "鬼太鼓座",
+          "Album": "NEW",
+          "SizeBytes": 19508097,
+          "FilePath": "sharedata/音乐/QQMusic/NO-VIP/鬼太鼓座 (おんでこざ;Ondekoza) - 岛歌幻想曲.ogg",
+          "FileHash": "348dba64edf689b70a5b7b9fa5667d64_19508097",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 19508097,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "3de5519137f52fd95b850c9c707a063c_8332352",
+      "SizeBytes": 8332352,
+      "Winner": {
+        "Id": 133071,
+        "Title": "Dirty Moves (Cj Stone & Milo.Nl Remix)",
+        "Artist": "D.I.A, Sean Finn",
+        "Album": "Dirty Moves",
+        "SizeBytes": 8332352,
+        "FilePath": "sharedata/音乐/QQMusic/NO-VIP/Sean Finn _ Dia - Dirty Moves.ogg",
+        "FileHash": "3de5519137f52fd95b850c9c707a063c_8332352",
+        "ScanSourceId": 21,
+        "sourcename": "QQMusic",
+        "sourcepath": "DataSync/sharedata/音乐/QQMusic"
+      },
+      "Losers": [
+        {
+          "Id": 133100,
+          "Title": "Dirty Moves",
+          "Artist": "Sean Finn",
+          "Album": "Dirty Moves",
+          "SizeBytes": 8332352,
+          "FilePath": "sharedata/音乐/QQMusic/NO-VIP/Sean Finn _ Dia (디아) - Dirty Moves.ogg",
+          "FileHash": "3de5519137f52fd95b850c9c707a063c_8332352",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 8332352,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "4147f3cd6575d26a11a0053880ec8c92_26425558",
+      "SizeBytes": 26425558,
+      "Winner": {
+        "Id": 1154,
+        "Title": "Good For You",
+        "Artist": "Selena Gomez",
+        "Album": "Good For You",
+        "SizeBytes": 26425558,
+        "FilePath": "sharedata/NetDiskSync/Completed202505/我的音乐/song/Selena GomezA$AP Rocky - Good For You [mqms2].flac",
+        "FileHash": "4147f3cd6575d26a11a0053880ec8c92_26425558",
+        "ScanSourceId": 1,
+        "sourcename": "HitFm",
+        "sourcepath": "DataSync/sharedata/NetDiskSync/Completed202505/我的音乐"
+      },
+      "Losers": [
+        {
+          "Id": 133554,
+          "Title": "Good For You",
+          "Artist": "Selena Gomez",
+          "Album": "Good For You",
+          "SizeBytes": 26425558,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/Selena Gomez _ A$AP Rocky - Good For You.flac",
+          "FileHash": "4147f3cd6575d26a11a0053880ec8c92_26425558",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 26425558,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "4b50681faa08f29f5bdd2290550555d4_8627054",
+      "SizeBytes": 8627054,
+      "Winner": {
+        "Id": 133593,
+        "Title": "LAZY",
+        "Artist": "The Vaccines/Kylie Minogue/Justin Hayward-Young/Cole Marsden Greif Neill/Freddie Cowan/羠ni 羠nason/Timothy Lanham/Yoann Intonti",
+        "Album": "A Shaun the Sheep Movie: Farmageddon (Original Motion Picture Soundtrack)",
+        "SizeBytes": 8627054,
+        "FilePath": "sharedata/音乐/QQMusic/VIP/The Vaccines _ Kylie Minogue _ Justin Hayward-Young _ Cole Marsden Greif Neill _ Freddie Cowan _ Árni Árnason _ Timothy Lanham _ Yoann Intonti - LAZY.ogg",
+        "FileHash": "4b50681faa08f29f5bdd2290550555d4_8627054",
+        "ScanSourceId": 21,
+        "sourcename": "QQMusic",
+        "sourcepath": "DataSync/sharedata/音乐/QQMusic"
+      },
+      "Losers": [
+        {
+          "Id": 133594,
+          "Title": "LAZY",
+          "Artist": "The Vaccines/Kylie Minogue/Justin Hayward-Young/Cole Marsden Greif Neill/Freddie Cowan/羠ni 羠nason/Timothy Lanham/Yoann Intonti",
+          "Album": "A Shaun the Sheep Movie: Farmageddon (Original Motion Picture Soundtrack)",
+          "SizeBytes": 8627054,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/The Vaccines_Kylie Minogue_Justin Hayward-Young_Cole Marsden Greif Neill_Freddie Cowan_Árni Árnason_Timothy Lanham_Yoann Intonti - LAZY.ogg",
+          "FileHash": "4b50681faa08f29f5bdd2290550555d4_8627054",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 8627054,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "4f4bdd680b927a058ed8c318dc4c19da_34232734",
+      "SizeBytes": 34232734,
+      "Winner": {
+        "Id": 133123,
+        "Title": "Ain't Nobody Perfect",
+        "Artist": "Aeden/Um41k",
+        "Album": "Ain't Nobody Perfect",
+        "SizeBytes": 34232734,
+        "FilePath": "sharedata/音乐/QQMusic/NO-VIP/Aeden _ Um41k - Ain't Nobody Perfect.flac",
+        "FileHash": "4f4bdd680b927a058ed8c318dc4c19da_34232734",
+        "ScanSourceId": 21,
+        "sourcename": "QQMusic",
+        "sourcepath": "DataSync/sharedata/音乐/QQMusic"
+      },
+      "Losers": [
+        {
+          "Id": 133080,
+          "Title": "Ain't Nobody Perfect",
+          "Artist": "Aeden/Um41k",
+          "Album": "Ain't Nobody Perfect",
+          "SizeBytes": 34232734,
+          "FilePath": "sharedata/音乐/QQMusic/NO-VIP/Aeden _ Um41k - Ain't Nobody Perfect(1).flac",
+          "FileHash": "4f4bdd680b927a058ed8c318dc4c19da_34232734",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 34232734,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "64136767e81feb09cb5f2757180a265f_30468165",
+      "SizeBytes": 30468165,
+      "Winner": {
+        "Id": 1018,
+        "Title": "Stay",
+        "Artist": "Kygo",
+        "Album": "Stay",
+        "SizeBytes": 30468165,
+        "FilePath": "sharedata/NetDiskSync/Completed202505/我的音乐/song/KygoMaty Noyes - Stay [mqms2].flac",
+        "FileHash": "64136767e81feb09cb5f2757180a265f_30468165",
+        "ScanSourceId": 1,
+        "sourcename": "HitFm",
+        "sourcepath": "DataSync/sharedata/NetDiskSync/Completed202505/我的音乐"
+      },
+      "Losers": [
+        {
+          "Id": 133435,
+          "Title": "Stay",
+          "Artist": "Kygo",
+          "Album": "Stay",
+          "SizeBytes": 30468165,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/Kygo _ Maty Noyes - Stay.flac",
+          "FileHash": "64136767e81feb09cb5f2757180a265f_30468165",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 30468165,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "6931c87a511825d3f6776e00eca66922_41656678",
+      "SizeBytes": 41656678,
+      "Winner": {
+        "Id": 133339,
+        "Title": "Smile",
+        "Artist": "Dami Im",
+        "Album": "Smile",
+        "SizeBytes": 41656678,
+        "FilePath": "sharedata/音乐/QQMusic/VIP/Dami Im - Smile.flac",
+        "FileHash": "6931c87a511825d3f6776e00eca66922_41656678",
+        "ScanSourceId": 21,
+        "sourcename": "QQMusic",
+        "sourcepath": "DataSync/sharedata/音乐/QQMusic"
+      },
+      "Losers": [
+        {
+          "Id": 133338,
+          "Title": "Smile",
+          "Artist": "Dami Im",
+          "Album": "Smile",
+          "SizeBytes": 41656678,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/Dami Im - Smile(1).flac",
+          "FileHash": "6931c87a511825d3f6776e00eca66922_41656678",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 41656678,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "70f377d930c116de1603a98a78058522_21330494",
+      "SizeBytes": 21330494,
+      "Winner": {
+        "Id": 839,
+        "Title": "Alone",
+        "Artist": "Alan Walker",
+        "Album": "Alone",
+        "SizeBytes": 21330494,
+        "FilePath": "sharedata/NetDiskSync/Completed202505/我的音乐/song/Alan Walker - Alone [mqms2].flac",
+        "FileHash": "70f377d930c116de1603a98a78058522_21330494",
+        "ScanSourceId": 1,
+        "sourcename": "HitFm",
+        "sourcepath": "DataSync/sharedata/NetDiskSync/Completed202505/我的音乐"
+      },
+      "Losers": [
+        {
+          "Id": 133277,
+          "Title": "Alone",
+          "Artist": "Alan Walker",
+          "Album": "Alone",
+          "SizeBytes": 21330494,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/Alan Walker - Alone.flac",
+          "FileHash": "70f377d930c116de1603a98a78058522_21330494",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 21330494,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "71d18f7f98cd8ce5b8218422c0d132f6_3688562",
+      "SizeBytes": 3688562,
+      "Winner": {
+        "Id": 133656,
+        "Title": "山丘",
+        "Artist": "李宗盛",
+        "Album": "2015江苏卫视新年演唱会",
+        "SizeBytes": 3688562,
+        "FilePath": "sharedata/音乐/QQMusic/VIP/李宗盛 - 山丘 (Live).ogg",
+        "FileHash": "71d18f7f98cd8ce5b8218422c0d132f6_3688562",
+        "ScanSourceId": 21,
+        "sourcename": "QQMusic",
+        "sourcepath": "DataSync/sharedata/音乐/QQMusic"
+      },
+      "Losers": [
+        {
+          "Id": 133657,
+          "Title": "山丘",
+          "Artist": "李宗盛",
+          "Album": "2015江苏卫视新年演唱会",
+          "SizeBytes": 3688562,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/李宗盛 - 山丘.ogg",
+          "FileHash": "71d18f7f98cd8ce5b8218422c0d132f6_3688562",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 3688562,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "7462c51e825f2d47e8db2e08a27dd49f_21634384",
+      "SizeBytes": 21634384,
+      "Winner": {
+        "Id": 1127,
+        "Title": "Human",
+        "Artist": "Rag'N'Bone Man",
+        "Album": "Human",
+        "SizeBytes": 21634384,
+        "FilePath": "sharedata/NetDiskSync/Completed202505/我的音乐/song/Rag'N'Bone Man - Human [mqms2].flac",
+        "FileHash": "7462c51e825f2d47e8db2e08a27dd49f_21634384",
+        "ScanSourceId": 1,
+        "sourcename": "HitFm",
+        "sourcepath": "DataSync/sharedata/NetDiskSync/Completed202505/我的音乐"
+      },
+      "Losers": [
+        {
+          "Id": 133526,
+          "Title": "Human",
+          "Artist": "Rag'N'Bone Man",
+          "Album": "Human",
+          "SizeBytes": 21634384,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/Rag'n'Bone Man - Human.flac",
+          "FileHash": "7462c51e825f2d47e8db2e08a27dd49f_21634384",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 21634384,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "76466f987693c82d62054291440da8fb_50378319",
+      "SizeBytes": 50378319,
+      "Winner": {
+        "Id": 133274,
+        "Title": "Younger",
+        "Artist": "A Great Big World",
+        "Album": "Younger",
+        "SizeBytes": 50378319,
+        "FilePath": "sharedata/音乐/QQMusic/VIP/A Great Big World - Younger.flac",
+        "FileHash": "76466f987693c82d62054291440da8fb_50378319",
+        "ScanSourceId": 21,
+        "sourcename": "QQMusic",
+        "sourcepath": "DataSync/sharedata/音乐/QQMusic"
+      },
+      "Losers": [
+        {
+          "Id": 133273,
+          "Title": "Younger",
+          "Artist": "A Great Big World",
+          "Album": "Younger",
+          "SizeBytes": 50378319,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/A Great Big World - Younger(1).flac",
+          "FileHash": "76466f987693c82d62054291440da8fb_50378319",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 50378319,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "7938efdc12bcb6ec44a3a0dfec964f87_2551949",
+      "SizeBytes": 2551949,
+      "Winner": {
+        "Id": 133524,
+        "Title": "rockstar",
+        "Artist": "Post Malone",
+        "Album": "rockstar",
+        "SizeBytes": 2551949,
+        "FilePath": "sharedata/音乐/QQMusic/VIP/Post Malone _ 21 Savage - rockstar (Explicit).ogg",
+        "FileHash": "7938efdc12bcb6ec44a3a0dfec964f87_2551949",
+        "ScanSourceId": 21,
+        "sourcename": "QQMusic",
+        "sourcepath": "DataSync/sharedata/音乐/QQMusic"
+      },
+      "Losers": [
+        {
+          "Id": 133525,
+          "Title": "rockstar",
+          "Artist": "Post Malone",
+          "Album": "rockstar",
+          "SizeBytes": 2551949,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/Post Malone _ 21 Savage - rockstar.ogg",
+          "FileHash": "7938efdc12bcb6ec44a3a0dfec964f87_2551949",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 2551949,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "809b19d5c673760b6a54bb23abf51f25_19092737",
+      "SizeBytes": 19092737,
+      "Winner": {
+        "Id": 1196,
+        "Title": "Grow Old With Me",
+        "Artist": "Tom Odell",
+        "Album": "Long Way Down (Deluxe)",
+        "SizeBytes": 19092737,
+        "FilePath": "sharedata/NetDiskSync/Completed202505/我的音乐/song/Tom Odell - Grow Old With Me [mqms2].flac",
+        "FileHash": "809b19d5c673760b6a54bb23abf51f25_19092737",
+        "ScanSourceId": 1,
+        "sourcename": "HitFm",
+        "sourcepath": "DataSync/sharedata/NetDiskSync/Completed202505/我的音乐"
+      },
+      "Losers": [
+        {
+          "Id": 133599,
+          "Title": "Grow Old With Me",
+          "Artist": "Tom Odell",
+          "Album": "Long Way Down (Deluxe)",
+          "SizeBytes": 19092737,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/Tom Odell - Grow Old with Me (Explicit).flac",
+          "FileHash": "809b19d5c673760b6a54bb23abf51f25_19092737",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 19092737,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "9c9d01d0c6be155a59db790cb10b82e3_25621888",
+      "SizeBytes": 25621888,
+      "Winner": {
+        "Id": 1057,
+        "Title": "Don't Wanna Know",
+        "Artist": "Maroon 5",
+        "Album": "BRIT Awards 2017",
+        "SizeBytes": 25621888,
+        "FilePath": "sharedata/NetDiskSync/Completed202505/我的音乐/song/Maroon 5Kendrick Lamar - Don't Wanna Know [mqms2].flac",
+        "FileHash": "9c9d01d0c6be155a59db790cb10b82e3_25621888",
+        "ScanSourceId": 1,
+        "sourcename": "HitFm",
+        "sourcepath": "DataSync/sharedata/NetDiskSync/Completed202505/我的音乐"
+      },
+      "Losers": [
+        {
+          "Id": 133474,
+          "Title": "Don't Wanna Know",
+          "Artist": "Maroon 5",
+          "Album": "BRIT Awards 2017",
+          "SizeBytes": 25621888,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/Maroon 5 _ Kendrick Lamar - Don't Wanna Know.flac",
+          "FileHash": "9c9d01d0c6be155a59db790cb10b82e3_25621888",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 25621888,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "a0f89c62881a9a991534868270bde6a6_59628128",
+      "SizeBytes": 59628128,
+      "Winner": {
+        "Id": 133624,
+        "Title": "I Want You To Know",
+        "Artist": "Zedd",
+        "Album": "True Colors",
+        "SizeBytes": 59628128,
+        "FilePath": "sharedata/音乐/QQMusic/VIP/Zedd _ Selena Gomez - I Want You To Know.flac",
+        "FileHash": "a0f89c62881a9a991534868270bde6a6_59628128",
+        "ScanSourceId": 21,
+        "sourcename": "QQMusic",
+        "sourcepath": "DataSync/sharedata/音乐/QQMusic"
+      },
+      "Losers": [
+        {
+          "Id": 133623,
+          "Title": "I Want You To Know",
+          "Artist": "Zedd",
+          "Album": "True Colors",
+          "SizeBytes": 59628128,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/Zedd _ Selena Gomez - I Want You To Know(1).flac",
+          "FileHash": "a0f89c62881a9a991534868270bde6a6_59628128",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 59628128,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "b226dbdc517963fa14691202309e4ed8_25188972",
+      "SizeBytes": 25188972,
+      "Winner": {
+        "Id": 1097,
+        "Title": "Best Song Ever",
+        "Artist": "One Direction",
+        "Album": "Best Song Ever",
+        "SizeBytes": 25188972,
+        "FilePath": "sharedata/NetDiskSync/Completed202505/我的音乐/song/One Direction - Best Song Ever [mqms2].flac",
+        "FileHash": "b226dbdc517963fa14691202309e4ed8_25188972",
+        "ScanSourceId": 1,
+        "sourcename": "HitFm",
+        "sourcepath": "DataSync/sharedata/NetDiskSync/Completed202505/我的音乐"
+      },
+      "Losers": [
+        {
+          "Id": 133505,
+          "Title": "Best Song Ever",
+          "Artist": "One Direction",
+          "Album": "Best Song Ever",
+          "SizeBytes": 25188972,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/One Direction - Best Song Ever.flac",
+          "FileHash": "b226dbdc517963fa14691202309e4ed8_25188972",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 25188972,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "d63919fa5c69a34a6d1e762be0361feb_27629931",
+      "SizeBytes": 27629931,
+      "Winner": {
+        "Id": 938,
+        "Title": "Love On Me",
+        "Artist": "Galantis",
+        "Album": "The Aviary",
+        "SizeBytes": 27629931,
+        "FilePath": "sharedata/NetDiskSync/Completed202505/我的音乐/song/GalantisHook N Sling - Love On Me [mqms2].flac",
+        "FileHash": "d63919fa5c69a34a6d1e762be0361feb_27629931",
+        "ScanSourceId": 1,
+        "sourcename": "HitFm",
+        "sourcepath": "DataSync/sharedata/NetDiskSync/Completed202505/我的音乐"
+      },
+      "Losers": [
+        {
+          "Id": 133380,
+          "Title": "Love On Me",
+          "Artist": "Galantis",
+          "Album": "The Aviary",
+          "SizeBytes": 27629931,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/Galantis _ Hook N Sling - Love on Me.flac",
+          "FileHash": "d63919fa5c69a34a6d1e762be0361feb_27629931",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 27629931,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "d742598fd51ebd51f21b7cdf91bbda93_4786738",
+      "SizeBytes": 4786738,
+      "Winner": {
+        "Id": 133075,
+        "Title": "海風と太陽",
+        "Artist": "水月陵",
+        "Album": "toco-natsu",
+        "SizeBytes": 4786738,
+        "FilePath": "sharedata/音乐/QQMusic/NO-VIP/水月陵 - 海風と太陽 (Inst_).ogg",
+        "FileHash": "d742598fd51ebd51f21b7cdf91bbda93_4786738",
+        "ScanSourceId": 21,
+        "sourcename": "QQMusic",
+        "sourcepath": "DataSync/sharedata/音乐/QQMusic"
+      },
+      "Losers": [
+        {
+          "Id": 133112,
+          "Title": "海風と太陽",
+          "Artist": "水月陵",
+          "Album": "toco-natsu",
+          "SizeBytes": 4786738,
+          "FilePath": "sharedata/音乐/QQMusic/NO-VIP/水月陵 (みずつき りょう) - 海風と太陽 (Inst_).ogg",
+          "FileHash": "d742598fd51ebd51f21b7cdf91bbda93_4786738",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 4786738,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "e3636b8a130768663f51153afc0cbefb_30808562",
+      "SizeBytes": 30808562,
+      "Winner": {
+        "Id": 1034,
+        "Title": "Shout Out to My Ex",
+        "Artist": "Little Mix",
+        "Album": "Glory Days (Deluxe)",
+        "SizeBytes": 30808562,
+        "FilePath": "sharedata/NetDiskSync/Completed202505/我的音乐/song/Little Mix - Shout Out to My Ex [mqms2].flac",
+        "FileHash": "e3636b8a130768663f51153afc0cbefb_30808562",
+        "ScanSourceId": 1,
+        "sourcename": "HitFm",
+        "sourcepath": "DataSync/sharedata/NetDiskSync/Completed202505/我的音乐"
+      },
+      "Losers": [
+        {
+          "Id": 133454,
+          "Title": "Shout Out to My Ex",
+          "Artist": "Little Mix",
+          "Album": "Glory Days (Deluxe)",
+          "SizeBytes": 30808562,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/Little Mix - Shout Out to My Ex.flac",
+          "FileHash": "e3636b8a130768663f51153afc0cbefb_30808562",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 30808562,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    },
+    {
+      "FileHash": "fe56c5ee2561f69a7674613e7e067d0f_21826648",
+      "SizeBytes": 21826648,
+      "Winner": {
+        "Id": 1136,
+        "Title": "Your Song",
+        "Artist": "Rita Ora",
+        "Album": "Your Song",
+        "SizeBytes": 21826648,
+        "FilePath": "sharedata/NetDiskSync/Completed202505/我的音乐/song/Rita Ora - Your Song [mqms2].flac",
+        "FileHash": "fe56c5ee2561f69a7674613e7e067d0f_21826648",
+        "ScanSourceId": 1,
+        "sourcename": "HitFm",
+        "sourcepath": "DataSync/sharedata/NetDiskSync/Completed202505/我的音乐"
+      },
+      "Losers": [
+        {
+          "Id": 133534,
+          "Title": "Your Song",
+          "Artist": "Rita Ora",
+          "Album": "Your Song",
+          "SizeBytes": 21826648,
+          "FilePath": "sharedata/音乐/QQMusic/VIP/Rita Ora - Your Song.flac",
+          "FileHash": "fe56c5ee2561f69a7674613e7e067d0f_21826648",
+          "ScanSourceId": 21,
+          "sourcename": "QQMusic",
+          "sourcepath": "DataSync/sharedata/音乐/QQMusic",
+          "DiskStatus": {
+            "exists": true,
+            "size": 21826648,
+            "match": true,
+            "status": "OK"
+          }
+        }
+      ],
+      "WinnerDiskOk": true
+    }
+  ]
+}
