@@ -159,6 +159,68 @@ def compute_keep_score(item):
 
     return score, kbps, genre_tier
 
+
+def write_signed_report(report_path, manifest_data):
+    """Write the dry-run manifest as a signed report for Apply to verify.
+
+    SHA-256 is computed over the JSON bytes; the hash sidecar lets Apply reject
+    tampering or stale reports before mutating the database.
+    """
+    import hashlib
+    dir_path = os.path.dirname(report_path)
+    if dir_path:
+        os.makedirs(dir_path, exist_ok=True)
+    raw = json.dumps(manifest_data, indent=2, ensure_ascii=False).encode("utf-8")
+    with open(report_path, "wb") as f:
+        f.write(raw)
+    sha = hashlib.sha256(raw).hexdigest()
+    sha_path = report_path + ".sha256"
+    with open(sha_path, "w", encoding="utf-8") as f:
+        f.write(f"{sha}  {os.path.basename(report_path)}\n")
+    return sha
+
+
+def verify_signed_report(report_path, expected_sha):
+    """Reject Apply when the report file or its hash sidecar does not match.
+
+    Returns the parsed manifest. Raises on any mismatch.
+    """
+    import hashlib
+    if not expected_sha:
+        raise SystemExit("Refusing to apply without --report-sha.")
+    if not os.path.exists(report_path):
+        raise SystemExit(f"Report file not found: {report_path}")
+    sha_path = report_path + ".sha256"
+    if not os.path.exists(sha_path):
+        raise SystemExit(f"Report SHA sidecar missing: {sha_path}")
+    with open(report_path, "rb") as f:
+        raw = f.read()
+    actual = hashlib.sha256(raw).hexdigest()
+    if actual.lower() != expected_sha.strip().lower():
+        raise SystemExit(
+            f"Report SHA-256 mismatch! Expected {expected_sha}, got {actual}."
+        )
+    with open(report_path, "r", encoding="utf-8") as f:
+        return json.load(f), actual
+
+
+def apply_filter_to_losers(evaluated_groups, target_filter):
+    """Re-apply the audit filter to the actual removal set.
+
+    A previous bug constructed loser_ids before applying the filter, so Apply
+    could mutate many more rows than the operator expected. This recomputes
+    the removal set from scratch after every filter change.
+    """
+    if not target_filter:
+        return [loser["Id"] for eg in evaluated_groups for loser in eg["losers"]]
+    needle = target_filter.lower()
+    return [
+        loser["Id"]
+        for eg in evaluated_groups
+        if needle in eg["cluster_name"].lower()
+        for loser in eg["losers"]
+    ]
+
 def run_psql(sql):
     cmd = [
         "ssh", MEDIA_SSH,
@@ -275,6 +337,8 @@ def main():
     rollback_file = None
     target_filter = None
     batch_arg = None
+    report_path = None
+    report_sha = None
     for arg in sys.argv:
         if arg.startswith("--rollback="):
             rollback_file = arg.split("=", 1)[1]
@@ -282,6 +346,10 @@ def main():
             target_filter = arg.split("=", 1)[1].lower()
         elif arg.startswith("--batch="):
             batch_arg = arg.split("=", 1)[1]
+        elif arg.startswith("--out="):
+            report_path = arg.split("=", 1)[1]
+        elif arg.startswith("--report-sha="):
+            report_sha = arg.split("=", 1)[1]
 
     if rollback_file:
         print(f"=== ROLLBACK LLM SEMANTIC DEDUPLICATION ===")
@@ -362,24 +430,90 @@ def main():
                 print(f"     Path: {loser['FilePath']}")
             sample_shown += 1
 
-    loser_ids = [loser["Id"] for eg in evaluated_groups for loser in eg["losers"]]
-
+    # Recompute the actual removal set with the filter applied. A previous bug
+    # built loser_ids before the filter, so Apply mutated many more rows than
+    # the operator expected. The filter is now applied to the post-cluster set.
+    loser_ids = apply_filter_to_losers(evaluated_groups, target_filter)
     if not apply_mode:
         print("\n" + "="*80)
         print("🧪 DRY RUN COMPLETE - ZERO DATABASE CHANGES MADE")
-        print(f"To execute soft-delete for {len(loser_ids)} redundant tracks, run:")
-        print("  python3 scripts/dedupe_llm_pipeline.py --apply")
+        if report_path:
+            # Persist a signed report so a future --apply can verify the dry-run
+            # set has not been tampered with or shifted under our feet.
+            signed_manifest = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "type": "llm_pipeline_dedupe",
+                "batch": batch_arg or "ALL",
+                "filter": target_filter or "ALL",
+                "total_groups": len(evaluated_groups),
+                "total_losers": len(loser_ids),
+                "soft_deleted_ids": loser_ids,
+                "groups": [
+                    {
+                        "cluster_name": eg["cluster_name"],
+                        "winner_id": eg["winner"]["Id"],
+                        "winner_path": eg["winner"]["FilePath"],
+                        "winner_score": eg["winner"].get("keep_score", eg["winner"].get("Score", 0)),
+                        "losers": [
+                            {
+                                "id": l["Id"],
+                                "path": l["FilePath"],
+                                "score": l.get("keep_score", l.get("Score", 0)),
+                                "genre": l.get("Genre", "")
+                            } for l in eg["losers"]
+                        ]
+                    } for eg in evaluated_groups
+                ]
+            }
+            sha = write_signed_report(report_path, signed_manifest)
+            print(f"Signed report -> {report_path}")
+            print(f"File SHA-256  -> {sha}")
+            print(f"To apply, run:")
+            print(f"  python3 scripts/dedupe_llm_pipeline.py --apply --out={report_path} --report-sha={sha}")
+        else:
+            print(f"To execute soft-delete for {len(loser_ids)} redundant tracks, run:")
+            print("  python3 scripts/dedupe_llm_pipeline.py --apply")
         if target_filter:
             print(f"  (Filtered to '{target_filter}')")
         print("="*80)
         return
 
-    # Apply Mode
+    # Apply Mode: refuse to run without a signed dry-run report and a matching hash.
+    if not report_path:
+        raise SystemExit(
+            "Apply mode requires a signed dry-run report. Re-run dry-run with --out=<path>, then apply with --out=<path> --report-sha=<sha>."
+        )
+    signed, actual_sha = verify_signed_report(report_path, report_sha)
+    if report_sha is None:
+        # Operator forgot to pass --report-sha; require the explicit value.
+        raise SystemExit(
+            f"Apply mode requires --report-sha=<hex>. Computed from {report_path}.sha256: {actual_sha}"
+        )
+    # Cross-check the on-disk report against the live dry-run: any drift in the
+    # audit set is reason to stop, because something else (e.g. another scan
+    # run) touched the data between audit and apply.
+    report_loser_set = set(signed.get("soft_deleted_ids", []))
+    live_loser_set = set(loser_ids)
+    if report_loser_set != live_loser_set:
+        missing = live_loser_set - report_loser_set
+        extra = report_loser_set - live_loser_set
+        raise SystemExit(
+            f"Dry-run report drift detected (audit={len(report_loser_set)}, live={len(live_loser_set)}, missing={len(missing)}, extra={len(extra)}). Re-run dry-run and re-apply with a fresh --report-sha."
+        )
+
     print("\n" + "="*80)
     print(f"🚀 APPLYING SOFT-DELETE FOR {len(loser_ids)} TRACKS...")
+    print(f"Report SHA-256 verified: {actual_sha}")
     print("="*80)
 
     # Reference migration
+    #
+    # Each cluster migrates its references in a SINGLE transaction so the
+    # winner-remap and loser-purge can never diverge. UPDATE first (no-op if
+    # the row was already a winner reference), then DELETE any leftover
+    # loser references. Splitting the two operations across transactions —
+    # as the previous version did — could let a partial failure leave a row
+    # deleted from the source but not remapped to the winner.
     migration_statements = []
     migrated_count = 0
     for eg in evaluated_groups:
@@ -390,12 +524,12 @@ def main():
         l_str = ",".join(str(x) for x in ref_losers)
         migrated_count += len(ref_losers)
         migration_statements.append(f"""
-        UPDATE "PlaylistSongs" SET "MediaFileId" = {wid} 
-        WHERE "MediaFileId" IN ({l_str}) 
+        UPDATE "PlaylistSongs" SET "MediaFileId" = {wid}
+        WHERE "MediaFileId" IN ({l_str})
           AND "PlaylistId" NOT IN (SELECT "PlaylistId" FROM "PlaylistSongs" WHERE "MediaFileId" = {wid});
         DELETE FROM "PlaylistSongs" WHERE "MediaFileId" IN ({l_str});
-        UPDATE "Favorites" SET "MediaFileId" = {wid} 
-        WHERE "MediaFileId" IN ({l_str}) 
+        UPDATE "Favorites" SET "MediaFileId" = {wid}
+        WHERE "MediaFileId" IN ({l_str})
           AND "UserId" NOT IN (SELECT "UserId" FROM "Favorites" WHERE "MediaFileId" = {wid});
         DELETE FROM "Favorites" WHERE "MediaFileId" IN ({l_str});
         UPDATE "PlayHistories" SET "MediaFileId" = {wid} WHERE "MediaFileId" IN ({l_str});
@@ -403,14 +537,25 @@ def main():
 
     print(f"Safely executing reference migration for {migrated_count} loser tracks...")
     if migration_statements:
-        # Run in chunks of 100 statements
-        chunk_m = 100
-        for i in range(0, len(migration_statements), chunk_m):
-            stmts = migration_statements[i:i+chunk_m]
-            run_psql("BEGIN;\n" + "\n".join(stmts) + "\nCOMMIT;")
+        # One BEGIN/COMMIT per cluster guarantees UPDATE and DELETE are atomic.
+        for cluster_idx, stmt in enumerate(migration_statements, start=1):
+            try:
+                run_psql("BEGIN;\n" + stmt + "\nCOMMIT;")
+            except subprocess.CalledProcessError as ex:
+                # Roll the whole cluster back so a partial failure can never
+                # leave winner-remap and loser-purge inconsistent.
+                try:
+                    run_psql("ROLLBACK;")
+                except Exception:
+                    pass
+                raise SystemExit(
+                    f"Reference migration aborted on cluster {cluster_idx}: {ex.stderr or ex}"
+                )
         print("✅ References successfully migrated!")
 
-    # Save manifest
+    # Save manifest (also written for Apply-mode as a record; the signed
+    # dry-run report already lives at report_path, so this file is kept for
+    # the rollback helper and is not consulted for apply-time safety.)
     os.makedirs("reports", exist_ok=True)
     now_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     batch_tag = f"_batch_{batch_arg}" if batch_arg else ""
