@@ -161,7 +161,8 @@ public class MediaController : ControllerBase
             query = query.Where(m => 
                 m.Title.ToLower().Contains(search) || 
                 m.Artist.ToLower().Contains(search) ||
-                m.Album.ToLower().Contains(search));
+                m.Album.ToLower().Contains(search) ||
+                m.FilePath.ToLower().Contains(search));
         }
 
         // Advanced Criteria Filtering
@@ -266,7 +267,18 @@ public class MediaController : ControllerBase
                     .Where(s => s.ExternalReference!.MediaFileId == m.Id && s.ExternalReference.Provider == "LastFm" && s.SignalKey == "GlobalPopularity")
                     .Select(s => s.NormalizedScore).FirstOrDefault())
                     .ThenBy(m => m.Id),
-            _ => query.OrderBy(m => m.Title).ThenBy(m => m.Id)
+            "deletedat" => descending
+                ? query.OrderByDescending(m => m.DeletedAt).ThenByDescending(m => m.Id)
+                : query.OrderBy(m => m.DeletedAt).ThenBy(m => m.Id),
+            "title" => descending
+                ? query.OrderByDescending(m => m.Title).ThenBy(m => m.Id)
+                : query.OrderBy(m => m.Title).ThenBy(m => m.Id),
+            "artist" => descending
+                ? query.OrderByDescending(m => m.Artist).ThenBy(m => m.Id)
+                : query.OrderBy(m => m.Artist).ThenBy(m => m.Id),
+            _ => onlyDeleted
+                ? (descending ? query.OrderBy(m => m.DeletedAt).ThenBy(m => m.Id) : query.OrderByDescending(m => m.DeletedAt).ThenByDescending(m => m.Id))
+                : query.OrderBy(m => m.Title).ThenBy(m => m.Id)
         };
         var files = await query
             .Skip((page - 1) * pageSize)
