@@ -1,0 +1,89 @@
+{
+  "timestamp": "2026-09-12T00:38:08.215150+00:00",
+  "type": "llm_semantic_dedupe",
+  "total_losers": 19,
+  "soft_deleted_ids": [
+    92252,
+    92104,
+    91583,
+    92472,
+    92429,
+    91638,
+    94563,
+    94631,
+    94689,
+    94636,
+    94650,
+    94622,
+    94625,
+    95434,
+    94616,
+    94623,
+    94702,
+    95368,
+    117725
+  ],
+  "groups": [
+    {
+      "name": "Michael Jackson - Wanna Be Startin' Somethin' (Studio Master)",
+      "winner_id": 92014,
+      "loser_ids": [
+        92252,
+        92104,
+        91583,
+        92472,
+        92429
+      ]
+    },
+    {
+      "name": "Michael Jackson - Wanna Be Startin' Somethin' (Single Edit)",
+      "winner_id": 91968,
+      "loser_ids": [
+        91638
+      ]
+    },
+    {
+      "name": "Avril Lavigne - Complicated (Let Go Studio Master)",
+      "winner_id": 94949,
+      "loser_ids": [
+        94563,
+        94631,
+        94689,
+        94636,
+        94650
+      ]
+    },
+    {
+      "name": "Avril Lavigne - Complicated (Tom Lord-Alge Mix)",
+      "winner_id": 94618,
+      "loser_ids": [
+        94622,
+        94625,
+        95434
+      ]
+    },
+    {
+      "name": "Avril Lavigne - Complicated (The Matrix Mix)",
+      "winner_id": 94843,
+      "loser_ids": [
+        94616,
+        94623
+      ]
+    },
+    {
+      "name": "Avril Lavigne - Complicated (Instrumental / TV Track)",
+      "winner_id": 94562,
+      "loser_ids": [
+        94702,
+        95368
+      ]
+    },
+    {
+      "name": "欧阳靖、Hollis - Complicated",
+      "winner_id": 117770,
+      "loser_ids": [
+        117725
+      ]
+    }
+  ]
+}
