@@ -87,8 +87,10 @@ fun EqualizerDialog(
 
                     HorizontalDivider(color = Color.DarkGray, modifier = Modifier.padding(vertical = 4.dp))
 
-                    // 5 频段纵向滑块调节
-                    Text("频段增益 (-15dB ~ +15dB)", color = Color.LightGray, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    // 设备自适应多频段滑块调节
+                    val minDb = state.minBandLevelMb / 100
+                    val maxDb = state.maxBandLevelMb / 100
+                    Text("频段增益 (${minDb}dB ~ +${maxDb}dB, 共 ${state.bands.size} 段)", color = Color.LightGray, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     state.bands.forEach { band ->
                         val minMb = state.minBandLevelMb.toFloat()
                         val maxMb = state.maxBandLevelMb.toFloat()

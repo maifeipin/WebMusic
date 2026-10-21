@@ -246,7 +246,7 @@ class MainActivity : ComponentActivity() {
         lyricsJob = lifecycleScope.launch {
             // 优先检查本地离线数据库是否已固化该曲目的 LRC 歌词
             val offlineSong = withContext(Dispatchers.IO) {
-                OfflineDownloadManager.getDownloadedSong(this@MainActivity, targetMediaId)
+                OfflineDownloadManager.getDownloadedSong(this@MainActivity, tokenManager.serverUrl, tokenManager.username, targetMediaId)
             }
             if (offlineSong?.lyrics != null) {
                 if (isActive && currentMediaItemState.value?.mediaId?.toIntOrNull() == targetMediaId) {
@@ -434,9 +434,9 @@ fun MainAppScreen(
         var offlineSongs by remember { mutableStateOf<List<DownloadedSong>>(emptyList()) }
         var offlineRefreshTrigger by remember { mutableIntStateOf(0) }
 
-        LaunchedEffect(selectedTab, offlineRefreshTrigger) {
+        LaunchedEffect(selectedTab, offlineRefreshTrigger, tokenManager.token) {
             withContext(Dispatchers.IO) {
-                offlineSongs = OfflineDownloadManager.getAllDownloaded(context)
+                offlineSongs = OfflineDownloadManager.getAllDownloaded(context, tokenManager.serverUrl, tokenManager.username)
             }
         }
 
@@ -557,10 +557,10 @@ fun MainAppScreen(
                     ) {
                         itemsIndexed(mediaList) { index, song ->
                             val isCurrent = currentSongDto?.id == song.id
-                            val isDownloaded = remember(song.id, offlineRefreshTrigger) {
-                                OfflineDownloadManager.isDownloaded(context, song.id)
+                            val isDownloaded = remember(song.id, offlineRefreshTrigger, tokenManager.token) {
+                                OfflineDownloadManager.isDownloaded(context, tokenManager.serverUrl, tokenManager.username, song.id)
                             }
-                            val downloadProgress = OfflineDownloadManager.activeDownloads[song.id]
+                            val downloadProgress = OfflineDownloadManager.getDownloadProgress(tokenManager.serverUrl, tokenManager.username, song.id)
 
                             ListItem(
                                 headlineContent = {
@@ -718,7 +718,7 @@ fun MainAppScreen(
                                 },
                                 trailingContent = {
                                     IconButton(onClick = {
-                                        OfflineDownloadManager.deleteDownload(context, song.id)
+                                        OfflineDownloadManager.deleteDownload(context, tokenManager.serverUrl, tokenManager.username, song.id)
                                         offlineRefreshTrigger++
                                     }) {
                                         Icon(

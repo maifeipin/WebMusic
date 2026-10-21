@@ -285,18 +285,19 @@ WebMusic 现已具备较为完善的 Web 桌面端与基础移动端 PWA 体验�
   - 沉浸全屏播放页 `FullPlayerSheet`（黑胶大唱盘与平滑歌词双向切换）。
 
 ### 阶段 2: 完整离线与音效强化 (已完成核心链路 🚀)
-- [x] **本地离线数据库 (Local Media Database)**：
-  - 接入 `LocalSongDatabase`，基于 SQLite 固化已下载曲目元数据、本地存储路径、封面 URL 及 LRC 完整歌词；
-  - 与网络请求完全解耦，播放与切歌优先命中本地已固化 LRC，实现 0 网络消耗展示；
-- [x] **离线下载管理与双模式曲库 (Offline Download Manager)**：
-  - 接入 `OfflineDownloadManager`，支持流式下载音频主体至应用专属外部存储，实时跟踪下载进度百分比；
-  - 首页顶栏提供“全部曲库”与“离线音乐”双 Tab 无缝切换与计数展示；
-  - 单曲条目支持一键下载、实时进度环反馈、已离线标记 (`DownloadDone`) 及本地文件删除管理；
-  - 离线音乐列表支持本地关键词秒级即时检索，点播直接构造 `file://` 本地媒体源无网秒开。
-- [x] **Android 5 段硬件音频均衡器 (EQ) 调节面板**：
+- [x] **本地离线数据库 (多服务器与多账号强隔离)**：
+  - 接入 `LocalSongDatabase`，以 `(server_hash, username, song_id)` 复合主键固化已下载曲目元数据、账号专属目录、封面 URL 及 LRC 完整歌词；
+  - 彻底阻断多服务器与多账号之间同 ID 歌曲的相互覆盖与旧数据脏读；播放与切歌优先读取当前账号本地已固化 LRC，实现 0 网络消耗展示；
+- [x] **前台单曲离线下载与双模式曲库 (原型阶段)**：
+  - 接入 `OfflineDownloadManager`，将音频主体下载到 `downloads/<server_hash>/<username>/` 隔离目录；
+  - **完整性与原子提交**：校验实际写入字节数（严格比对服务端 `Content-Length`），校验成功后原子替换目标文件并写入数据库，彻底避免半成品文件入库；
+  - **资源与生命周期健壮性**：读取循环中响应协程取消并清理临时文件；`response.use` 自动关闭流连接并在 `finally` 中清理活跃状态；
+  - 首页顶栏提供“全部曲库”与“离线音乐”双 Tab 无缝切换；单曲条目支持一键下载、实时进度环、已离线标记及本地文件删除；离线音乐列表支持本地秒级即时检索与 `file://` 无网播放；
+  - **边界说明**：当前阶段为前台单曲下载原型（由界面协程调度）；后台全局多任务调度、网络中断恢复与 HTTP Range 断点续传将在后续进一步以 WorkManager / DownloadService 强化演进。
+- [x] **设备自适应多频段音频均衡器 (EQ) 调节面板**：
   - 接入 `android.media.audiofx.Equalizer`，声明 `MODIFY_AUDIO_SETTINGS` 权限；
   - 在 `PlaybackService` 中动态挂载 ExoPlayer `audioSessionId`（监听会话重载与变更）；
-  - 提供 `EqualizerDialog` 调音台面板：支持总开关、系统音效预设切换（流行、摇滚、爵士、古典等）、5 频段纵向增益微调 (-15dB ~ +15dB)；
+  - 自适应读取设备实际支持的频段数（根据 SoC / HAL 动态呈现 5~10 段）与中心频率，提供调音台面板：支持总开关、系统音效预设切换与实时增益滑块调节；
   - `SharedPreferences` 持久化用户 EQ 开关、预设及自定义各频段增益；
   - 沉浸全屏播放页 `FullPlayerSheet` 顶栏增加快捷调音台入口 (`Icons.Default.GraphicEq`)。
 - [ ] APE / DSD 音频样本专项测试与兼容性摸底。
