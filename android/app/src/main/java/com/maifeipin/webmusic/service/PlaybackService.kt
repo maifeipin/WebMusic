@@ -37,6 +37,14 @@ class PlaybackService : MediaSessionService() {
             .setSessionActivity(pendingIntent)
             .build()
 
+        // 绑定音频均衡器至当前 ExoPlayer audioSessionId
+        com.maifeipin.webmusic.core.audio.EqualizerManager.attachAudioSession(this, playerAdapter.audioSessionId)
+        playerAdapter.getPlayer().addListener(object : androidx.media3.common.Player.Listener {
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                com.maifeipin.webmusic.core.audio.EqualizerManager.attachAudioSession(this@PlaybackService, audioSessionId)
+            }
+        })
+
         startForegroundNotification()
     }
 
@@ -63,6 +71,7 @@ class PlaybackService : MediaSessionService() {
             release()
             mediaSession = null
         }
+        com.maifeipin.webmusic.core.audio.EqualizerManager.release()
         playerAdapter.release()
         super.onDestroy()
     }

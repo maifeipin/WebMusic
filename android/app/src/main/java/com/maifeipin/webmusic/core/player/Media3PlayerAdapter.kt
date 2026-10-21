@@ -88,18 +88,22 @@ class Media3PlayerAdapter(
         username: String?
     ) {
         val mediaItems = songs.map { song ->
-            val streamUrl = WebMusicNetwork.buildStreamUrl(serverUrl, song.id)
+            val mediaUri = if (song.filePath != null && song.filePath.startsWith("/") && java.io.File(song.filePath).exists()) {
+                Uri.fromFile(java.io.File(song.filePath))
+            } else {
+                Uri.parse(WebMusicNetwork.buildStreamUrl(serverUrl, song.id))
+            }
+
             val metadata = MediaMetadata.Builder()
                 .setTitle(song.title ?: "未知曲目 #${song.id}")
                 .setArtist(song.artist ?: "未知艺术家")
                 .setAlbumTitle(song.album ?: "未知专辑")
                 .build()
 
-            // 隔离维度：服务器地址 + 账号名 + 媒体ID + 文件大小指纹
-            val cacheKey = "webmusic_${serverUrl.hashCode()}_${username ?: "anon"}_${song.id}_${song.sizeBytes ?: 0L}"
+            val cacheKey = WebMusicNetwork.generateSafeCacheKey(serverUrl, username, song)
 
             MediaItem.Builder()
-                .setUri(streamUrl)
+                .setUri(mediaUri)
                 .setMediaId(song.id.toString())
                 .setCustomCacheKey(cacheKey)
                 .setMediaMetadata(metadata)
@@ -110,6 +114,8 @@ class Media3PlayerAdapter(
         player.prepare()
         player.play()
     }
+
+    val audioSessionId: Int get() = player.audioSessionId
 
     fun setPlaybackMode(mode: PlaybackMode) {
         when (mode) {

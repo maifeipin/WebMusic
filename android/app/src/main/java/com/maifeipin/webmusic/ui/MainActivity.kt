@@ -47,6 +47,11 @@ import com.maifeipin.webmusic.ui.theme.DarkBackground
 import com.maifeipin.webmusic.ui.theme.DarkSurface
 import com.maifeipin.webmusic.ui.theme.GreenPrimary
 import com.maifeipin.webmusic.ui.theme.WebMusicTheme
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
+import com.maifeipin.webmusic.core.storage.DownloadedSong
+import com.maifeipin.webmusic.core.storage.OfflineDownloadManager
+import com.maifeipin.webmusic.core.storage.toMediaFileDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -94,6 +99,7 @@ class MainActivity : ComponentActivity() {
                     onNextClick = { mediaController?.seekToNextMediaItem() },
                     onSeekTo = { posMs -> mediaController?.seekTo(posMs) },
                     onToggleMode = { togglePlaybackMode() },
+                    onClearSession = { clearPlaybackSession() },
                     onPlaySongFromList = { songList, index ->
                         playQueue(songList, index)
                     }
@@ -238,6 +244,17 @@ class MainActivity : ComponentActivity() {
         lyricsState.value = emptyList() // 切歌先清空，防止旧歌词闪烁
 
         lyricsJob = lifecycleScope.launch {
+            // 优先检查本地离线数据库是否已固化该曲目的 LRC 歌词
+            val offlineSong = withContext(Dispatchers.IO) {
+                OfflineDownloadManager.getDownloadedSong(this@MainActivity, targetMediaId)
+            }
+            if (offlineSong?.lyrics != null) {
+                if (isActive && currentMediaItemState.value?.mediaId?.toIntOrNull() == targetMediaId) {
+                    lyricsState.value = LyricsParser.parse(offlineSong.lyrics)
+                }
+                return@launch
+            }
+
             try {
                 val api = WebMusicNetwork.createApi(tokenManager)
                 val resp = withContext(Dispatchers.IO) { api.getLyrics(targetMediaId) }
@@ -269,6 +286,20 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun clearPlaybackSession() {
+        lyricsJob?.cancel()
+        mediaController?.let { controller ->
+            controller.stop()
+            controller.clearMediaItems()
+        }
+        isPlayingState.value = false
+        currentMediaItemState.value = null
+        progressState.value = 0f
+        durationMsState.value = 0L
+        currentPositionMsState.value = 0L
+        lyricsState.value = emptyList()
+    }
+
     override fun onDestroy() {
         controllerFuture?.let { MediaController.releaseFuture(it) }
         super.onDestroy()
@@ -291,6 +322,7 @@ fun MainAppScreen(
     onNextClick: () -> Unit,
     onSeekTo: (Long) -> Unit,
     onToggleMode: () -> Unit,
+    onClearSession: () -> Unit,
     onPlaySongFromList: (List<MediaFileDto>, Int) -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -397,36 +429,90 @@ fun MainAppScreen(
         },
         containerColor = DarkBackground
     ) { padding ->
+        val context = LocalContext.current
+        var selectedTab by remember { mutableIntStateOf(0) } // 0: 在线曲库, 1: 离线音乐
+        var offlineSongs by remember { mutableStateOf<List<DownloadedSong>>(emptyList()) }
+        var offlineRefreshTrigger by remember { mutableIntStateOf(0) }
+
+        LaunchedEffect(selectedTab, offlineRefreshTrigger) {
+            withContext(Dispatchers.IO) {
+                offlineSongs = OfflineDownloadManager.getAllDownloaded(context)
+            }
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            // 在线曲库与离线下载顶栏切换
+            TabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = DarkBackground,
+                contentColor = GreenPrimary,
+                divider = { HorizontalDivider(color = Color.DarkGray) }
+            ) {
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = {
+                        Text(
+                            text = "全部曲库 (${totalSongs})",
+                            fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal,
+                            color = if (selectedTab == 0) GreenPrimary else Color.Gray
+                        )
+                    }
+                )
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = {
+                        selectedTab = 1
+                        offlineRefreshTrigger++
+                    },
+                    text = {
+                        Text(
+                            text = "离线音乐 (${offlineSongs.size})",
+                            fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal,
+                            color = if (selectedTab == 1) GreenPrimary else Color.Gray
+                        )
+                    }
+                )
+            }
+
             // 搜索框：版本隔离与防抖机制，防抖期间锁定底部分页抢占
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { newQuery ->
                     searchQuery = newQuery
-                    isDebouncingSearch = true // 标记处于防抖中，防止旧列表底部抢先触发分页
-                    activeFetchJob?.cancel()
-                    val version = ++queryVersion
-                    scope.launch {
-                        delay(400) // 400ms 防抖
-                        if (isActive && version == queryVersion) {
-                            executeQuery(1, newQuery, append = false, version)
+                    if (selectedTab == 0) {
+                        isDebouncingSearch = true // 标记处于防抖中，防止旧列表底部抢先触发分页
+                        activeFetchJob?.cancel()
+                        val version = ++queryVersion
+                        scope.launch {
+                            delay(400) // 400ms 防抖
+                            if (isActive && version == queryVersion) {
+                                executeQuery(1, newQuery, append = false, version)
+                            }
                         }
                     }
                 },
-                placeholder = { Text("搜索全库 $totalSongs 首音乐、歌手、专辑...") },
+                placeholder = {
+                    Text(
+                        if (selectedTab == 0) "搜索全库 $totalSongs 首音乐、歌手、专辑..."
+                        else "搜索 ${offlineSongs.size} 首本地离线音乐..."
+                    )
+                },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = "搜索") },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
                         IconButton(onClick = {
                             searchQuery = ""
-                            isDebouncingSearch = true
-                            activeFetchJob?.cancel()
-                            val version = ++queryVersion
-                            executeQuery(1, null, append = false, version)
+                            if (selectedTab == 0) {
+                                isDebouncingSearch = true
+                                activeFetchJob?.cancel()
+                                val version = ++queryVersion
+                                executeQuery(1, null, append = false, version)
+                            }
                         }) {
                             Icon(Icons.Default.Close, contentDescription = "清空")
                         }
@@ -445,82 +531,208 @@ fun MainAppScreen(
                 singleLine = true
             )
 
-            // 歌曲列表与分页
-            val listState = rememberLazyListState()
+            if (selectedTab == 0) {
+                // 在线曲库列表与分页加载
+                val listState = rememberLazyListState()
 
-            // 仅当非防抖、非加载中且属于已确认查询时，才允许触发下一页加载
-            val shouldLoadMore = remember {
-                derivedStateOf {
-                    val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                    lastVisibleIndex >= mediaList.size - 5 && !isLoading && !isDebouncingSearch && mediaList.size < totalSongs
+                val shouldLoadMore = remember {
+                    derivedStateOf {
+                        val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                        lastVisibleIndex >= mediaList.size - 5 && !isLoading && !isDebouncingSearch && mediaList.size < totalSongs
+                    }
                 }
-            }
 
-            LaunchedEffect(shouldLoadMore.value) {
-                if (shouldLoadMore.value && !isDebouncingSearch) {
-                    val version = queryVersion
-                    executeQuery(currentPage + 1, confirmedQuery, append = true, version)
+                LaunchedEffect(shouldLoadMore.value) {
+                    if (shouldLoadMore.value && !isDebouncingSearch) {
+                        val version = queryVersion
+                        executeQuery(currentPage + 1, confirmedQuery, append = true, version)
+                    }
                 }
-            }
 
-            Box(modifier = Modifier.fillMaxSize()) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 16.dp)
-                ) {
-                    itemsIndexed(mediaList) { index, song ->
-                        val isCurrent = currentSongDto?.id == song.id
-                        ListItem(
-                            headlineContent = {
-                                Text(
-                                    text = song.title ?: "未知标题",
-                                    color = if (isCurrent) GreenPrimary else Color.White,
-                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            },
-                            supportingContent = {
-                                Text(
-                                    text = "${song.artist ?: "未知艺术家"} • ${song.album ?: "未知专辑"}",
-                                    color = Color.Gray,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            },
-                            leadingContent = {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 16.dp)
+                    ) {
+                        itemsIndexed(mediaList) { index, song ->
+                            val isCurrent = currentSongDto?.id == song.id
+                            val isDownloaded = remember(song.id, offlineRefreshTrigger) {
+                                OfflineDownloadManager.isDownloaded(context, song.id)
+                            }
+                            val downloadProgress = OfflineDownloadManager.activeDownloads[song.id]
+
+                            ListItem(
+                                headlineContent = {
+                                    Text(
+                                        text = song.title ?: "未知标题",
+                                        color = if (isCurrent) GreenPrimary else Color.White,
+                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                supportingContent = {
+                                    Text(
+                                        text = "${song.artist ?: "未知艺术家"} • ${song.album ?: "未知专辑"}",
+                                        color = Color.Gray,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                leadingContent = {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isCurrent) GreenPrimary else DarkSurface),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isCurrent && isPlaying) Icons.Default.VolumeUp else Icons.Default.MusicNote,
+                                            contentDescription = null,
+                                            tint = if (isCurrent) Color.Black else Color.Gray,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                },
+                                trailingContent = {
+                                    if (downloadProgress != null) {
+                                        CircularProgressIndicator(
+                                            progress = { downloadProgress },
+                                            modifier = Modifier.size(24.dp),
+                                            color = GreenPrimary,
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else if (isDownloaded) {
+                                        Icon(
+                                            imageVector = Icons.Default.DownloadDone,
+                                            contentDescription = "已离线",
+                                            tint = GreenPrimary,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    } else {
+                                        IconButton(onClick = {
+                                            scope.launch {
+                                                OfflineDownloadManager.downloadSong(context, tokenManager, song)
+                                                offlineRefreshTrigger++
+                                            }
+                                        }) {
+                                            Icon(
+                                                imageVector = Icons.Default.Download,
+                                                contentDescription = "下载到本地",
+                                                tint = Color.Gray,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+                                    }
+                                },
+                                modifier = Modifier
+                                    .clickable { onPlaySongFromList(mediaList, index) }
+                                    .padding(horizontal = 8.dp)
+                            )
+                        }
+
+                        if (isLoading) {
+                            item {
                                 Box(
                                     modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isCurrent) GreenPrimary else DarkSurface),
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        imageVector = if (isCurrent && isPlaying) Icons.Default.VolumeUp else Icons.Default.MusicNote,
-                                        contentDescription = null,
-                                        tint = if (isCurrent) Color.Black else Color.Gray,
-                                        modifier = Modifier.size(20.dp)
-                                    )
+                                    CircularProgressIndicator(color = GreenPrimary, modifier = Modifier.size(28.dp))
                                 }
-                            },
-                            modifier = Modifier
-                                .clickable { onPlaySongFromList(mediaList, index) }
-                                .padding(horizontal = 8.dp)
+                            }
+                        }
+                    }
+                }
+            } else {
+                // 离线音乐列表展示
+                val filteredOffline = remember(offlineSongs, searchQuery) {
+                    if (searchQuery.isEmpty()) offlineSongs
+                    else offlineSongs.filter {
+                        it.title.contains(searchQuery, ignoreCase = true) ||
+                        it.artist.contains(searchQuery, ignoreCase = true) ||
+                        it.album.contains(searchQuery, ignoreCase = true)
+                    }
+                }
+
+                if (filteredOffline.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (searchQuery.isNotEmpty()) "未找到匹配的离线歌曲" else "暂无离线音乐\n在全库中点击下载按钮即可离线收听",
+                            color = Color.Gray,
+                            textAlign = TextAlign.Center,
+                            fontSize = 14.sp
                         )
                     }
+                } else {
+                    val offlineDtoList = remember(filteredOffline) {
+                        filteredOffline.map { it.toMediaFileDto() }
+                    }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 16.dp)
+                    ) {
+                        itemsIndexed(filteredOffline) { index, song ->
+                            val isCurrent = currentSongDto?.id == song.id
+                            val sizeMb = song.sizeBytes / (1024f * 1024f)
 
-                    if (isLoading) {
-                        item {
-                            Box(
+                            ListItem(
+                                headlineContent = {
+                                    Text(
+                                        text = song.title,
+                                        color = if (isCurrent) GreenPrimary else Color.White,
+                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                supportingContent = {
+                                    Text(
+                                        text = "${song.artist} • ${song.album} • ${"%.1f".format(sizeMb)} MB",
+                                        color = Color.Gray,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                },
+                                leadingContent = {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isCurrent) GreenPrimary else DarkSurface),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isCurrent && isPlaying) Icons.Default.VolumeUp else Icons.Default.MusicNote,
+                                            contentDescription = null,
+                                            tint = if (isCurrent) Color.Black else Color.Gray,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                },
+                                trailingContent = {
+                                    IconButton(onClick = {
+                                        OfflineDownloadManager.deleteDownload(context, song.id)
+                                        offlineRefreshTrigger++
+                                    }) {
+                                        Icon(
+                                            imageVector = Icons.Default.DeleteOutline,
+                                            contentDescription = "删除离线文件",
+                                            tint = Color(0xFFFF5252),
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                },
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator(color = GreenPrimary, modifier = Modifier.size(28.dp))
-                            }
+                                    .clickable { onPlaySongFromList(offlineDtoList, index) }
+                                    .padding(horizontal = 8.dp)
+                            )
                         }
                     }
                 }
@@ -554,8 +766,28 @@ fun MainAppScreen(
             onDismiss = { showLoginDialog = false },
             onLoginSuccess = {
                 showLoginDialog = false
+                onClearSession()
+                mediaList.clear()
+                currentPage = 1
+                totalSongs = 0
+                searchQuery = ""
+                confirmedQuery = ""
+                isDebouncingSearch = false
                 val v = ++queryVersion
                 executeQuery(1, null, append = false, v)
+            },
+            onLogout = {
+                tokenManager.clear()
+                onClearSession()
+                mediaList.clear()
+                currentPage = 1
+                totalSongs = 0
+                searchQuery = ""
+                confirmedQuery = ""
+                isDebouncingSearch = false
+            },
+            onStopPlaybackForCacheClear = {
+                onClearSession()
             }
         )
     }
@@ -565,7 +797,9 @@ fun MainAppScreen(
 fun LoginSettingDialog(
     tokenManager: TokenManager,
     onDismiss: () -> Unit,
-    onLoginSuccess: () -> Unit
+    onLoginSuccess: () -> Unit,
+    onLogout: () -> Unit,
+    onStopPlaybackForCacheClear: () -> Unit
 ) {
     var serverUrl by remember { mutableStateOf(tokenManager.serverUrl) }
     var username by remember { mutableStateOf(tokenManager.username ?: "") }
@@ -573,6 +807,7 @@ fun LoginSettingDialog(
     var passwordVisible by remember { mutableStateOf(false) }
     var statusText by remember { mutableStateOf("") }
     var isLoggingIn by remember { mutableStateOf(false) }
+    var isClearingCache by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     AlertDialog(
@@ -623,16 +858,36 @@ fun LoginSettingDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "本地缓存: ${"%.1f".format(cacheSizeBytes / (1024f * 1024f))} MB",
+                        text = "本地缓存快照: ${"%.1f".format(cacheSizeBytes / (1024f * 1024f))} MB",
                         color = Color.Gray,
                         fontSize = 13.sp
                     )
-                    TextButton(onClick = {
-                        com.maifeipin.webmusic.core.cache.MediaCacheManager.clearAllCache(context)
-                        cacheSizeBytes = com.maifeipin.webmusic.core.cache.MediaCacheManager.getCacheSizeBytes(context)
-                        statusText = "已清空本地流媒体缓存！"
-                    }) {
-                        Text("清空缓存", color = Color(0xFFFF5252), fontSize = 13.sp)
+                    TextButton(
+                        enabled = !isClearingCache,
+                        onClick = {
+                            scope.launch {
+                                isClearingCache = true
+                                onStopPlaybackForCacheClear()
+                                withContext(Dispatchers.IO) {
+                                    com.maifeipin.webmusic.core.cache.MediaCacheManager.clearAllCache(context)
+                                }
+                                cacheSizeBytes = withContext(Dispatchers.IO) {
+                                    com.maifeipin.webmusic.core.cache.MediaCacheManager.getCacheSizeBytes(context)
+                                }
+                                statusText = "已停止播放并清空本地缓存！"
+                                isClearingCache = false
+                            }
+                        }
+                    ) {
+                        if (isClearingCache) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = Color(0xFFFF5252),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Text("清空缓存", color = Color(0xFFFF5252), fontSize = 13.sp)
+                        }
                     }
                 }
 
@@ -642,9 +897,8 @@ fun LoginSettingDialog(
                         horizontalArrangement = Arrangement.End
                     ) {
                         TextButton(onClick = {
-                            tokenManager.clear()
-                            statusText = "已退出当前登录"
-                            onLoginSuccess()
+                            onLogout()
+                            statusText = "已退出当前登录并清理播放会话"
                         }) {
                             Text("退出登录", color = Color.Gray, fontSize = 13.sp)
                         }

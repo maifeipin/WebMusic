@@ -48,6 +48,7 @@ fun FullPlayerSheet(
     if (currentSong == null) return
 
     var showLyrics by remember { mutableStateOf(false) }
+    var showEqualizerDialog by remember { mutableStateOf(false) }
 
     val infiniteTransition = rememberInfiniteTransition(label = "vinyl_disc")
     val rotation by infiniteTransition.animateFloat(
@@ -75,7 +76,7 @@ fun FullPlayerSheet(
                 .padding(bottom = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 顶部收起与副标题
+            // 顶部收起、均衡器与副标题
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -89,12 +90,21 @@ fun FullPlayerSheet(
                     style = MaterialTheme.typography.titleSmall,
                     color = Color.Gray
                 )
-                IconButton(onClick = { showLyrics = !showLyrics }) {
-                    Icon(
-                        imageVector = if (showLyrics) Icons.Default.MusicNote else Icons.Default.FormatQuote,
-                        contentDescription = "切换歌词/唱片",
-                        tint = if (showLyrics) GreenPrimary else Color.White
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { showEqualizerDialog = true }) {
+                        Icon(
+                            imageVector = Icons.Default.GraphicEq,
+                            contentDescription = "音频均衡器",
+                            tint = Color.White
+                        )
+                    }
+                    IconButton(onClick = { showLyrics = !showLyrics }) {
+                        Icon(
+                            imageVector = if (showLyrics) Icons.Default.MusicNote else Icons.Default.FormatQuote,
+                            contentDescription = "切换歌词/唱片",
+                            tint = if (showLyrics) GreenPrimary else Color.White
+                        )
+                    }
                 }
             }
 
@@ -260,6 +270,12 @@ fun FullPlayerSheet(
                 }
             }
         }
+    }
+
+    if (showEqualizerDialog) {
+        com.maifeipin.webmusic.ui.EqualizerDialog(
+            onDismiss = { showEqualizerDialog = false }
+        )
     }
 }
 
