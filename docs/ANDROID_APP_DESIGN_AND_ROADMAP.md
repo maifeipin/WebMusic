@@ -267,12 +267,15 @@ WebMusic 现已具备较为完善的 Web 桌面端与基础移动端 PWA 体验�
 
 ### 阶段 1: 核心消费端 MVP 交付 (开发中 🚀)
 - [x] **流式 LRU 缓存**：接入 ExoPlayer `SimpleCache` (2GB 上限) + `CacheDataSource`，实现透明分片缓存；仍在本地缓存中的分片可离线复用免流。
-- [x] **多账号与版本缓存隔离**：`CustomCacheKey` 整合 ServerUrl + Username + MediaId + SizeBytes，杜绝串账号与文件更新脏读。
+- [x] **多账号与版本缓存隔离**：`CustomCacheKey` 整合 ServerUrl SHA-256 + Username + MediaId + FileHash (服务端新增投影)，彻底杜绝同大小内容更新与多账号脏读。
 - [x] **歌词防竞态引擎**：接入 `/api/lyrics/{mediaId}`，支持平滑行级逐行滚动与高亮渲染 (`LyricsView`)，带请求取消与当前曲目 ID 校验防乱序。
-- [x] **原生播放队列与真后台连播**：队列交付底层 ExoPlayer 内核驱动，解耦 Activity 生命周期，支持系统锁屏切歌与自动连播。
-- [x] **现代化消费端 UI**：
-  - 顶部搜索框（带 400ms 防抖与请求取消，防慢响应乱序覆盖）；
-  - 动态无限加载列表（滑动到底部自动分页拉取）；
+- [x] **原生播放队列与生命周期解耦**：
+  - 队列交付底层 ExoPlayer 内核驱动，解耦 Activity 生命周期，支持系统锁屏切歌与自动连播；
+  - 底层默认显式应用 `REPEAT_MODE_ALL` 列表循环，消除首次播放末尾停止问题；
+  - Activity 旋转或重建后，自动同步恢复底层播放模式并主动拉取当前歌曲歌词。
+- [x] **防抢占搜索与分页版本控制**：
+  - 严格分离输入防抖态与已确认查询，防抖期间冻结底部分页触发；
+  - 引入递增 `queryVersion` 校验，彻底阻断慢网络响应与旧关键词的分页乱序混杂；
   - 底部常驻 `MiniPlayerBar`（黑胶唱片小动效、进度条、切歌）；
   - 沉浸全屏播放页 `FullPlayerSheet`（黑胶大唱盘与平滑歌词双向切换）。
 

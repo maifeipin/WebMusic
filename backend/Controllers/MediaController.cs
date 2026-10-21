@@ -285,6 +285,7 @@ public class MediaController : ControllerBase
             .Take(pageSize)
             .Select(m => new { 
                 m.Id, m.Title, m.Artist, m.Album, m.Genre, m.Duration.TotalSeconds, m.Year, m.FilePath, m.CoverArt,
+                m.SizeBytes, m.FileHash,
                 m.IsDeleted, m.DeletedAt,
                 isFavorite = _context.Favorites.Any(f => f.UserId == userId && f.MediaFileId == m.Id),
                 playlists = _context.PlaylistSongs
