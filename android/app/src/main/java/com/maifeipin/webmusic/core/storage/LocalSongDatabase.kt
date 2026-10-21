@@ -27,7 +27,7 @@ class LocalSongDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_N
 
     companion object {
         private const val DATABASE_NAME = "webmusic_offline.db"
-        private const val DATABASE_VERSION = 2
+        private const val DATABASE_VERSION = 3
 
         private const val TABLE_NAME = "downloaded_songs"
         private const val COL_SERVER_HASH = "server_hash"
@@ -93,7 +93,7 @@ class LocalSongDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_N
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) {
-            // 清理旧版本未隔离的物理文件，防止产生不可管理的孤儿垃圾文件
+            // v1 -> v3: 清理旧版本未隔离的物理文件，防止产生不可管理的孤儿垃圾文件
             try {
                 val cursor = db.rawQuery("SELECT file_path FROM $TABLE_NAME", null)
                 cursor.use {
@@ -113,6 +113,82 @@ class LocalSongDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_N
             }
             db.execSQL("DROP TABLE IF EXISTS $TABLE_NAME")
             onCreate(db)
+            return
+        }
+
+        if (oldVersion == 2) {
+            // v2 -> v3: 迁移增加 user_hash 列并重构复合主键 (server_hash, user_hash, song_id)
+            try {
+                db.beginTransaction()
+                val tempTable = "${TABLE_NAME}_v3"
+                val createSql = """
+                    CREATE TABLE $tempTable (
+                        $COL_SERVER_HASH TEXT NOT NULL,
+                        $COL_USER_HASH TEXT NOT NULL,
+                        $COL_USERNAME TEXT NOT NULL,
+                        $COL_SONG_ID INTEGER NOT NULL,
+                        $COL_TITLE TEXT NOT NULL,
+                        $COL_ARTIST TEXT NOT NULL,
+                        $COL_ALBUM TEXT NOT NULL,
+                        $COL_GENRE TEXT,
+                        $COL_DURATION TEXT,
+                        $COL_SIZE_BYTES INTEGER,
+                        $COL_FILE_PATH TEXT NOT NULL,
+                        $COL_LYRICS TEXT,
+                        $COL_COVER_URL TEXT,
+                        $COL_DOWNLOADED_AT INTEGER,
+                        PRIMARY KEY ($COL_SERVER_HASH, $COL_USER_HASH, $COL_SONG_ID)
+                    )
+                """.trimIndent()
+                db.execSQL(createSql)
+
+                val cursor = db.rawQuery("SELECT * FROM $TABLE_NAME", null)
+                cursor.use {
+                    while (it.moveToNext()) {
+                        val sHash = it.getString(it.getColumnIndexOrThrow(COL_SERVER_HASH))
+                        val uName = it.getString(it.getColumnIndexOrThrow(COL_USERNAME))
+                        val uHash = computeUserHash(uName)
+                        val sId = it.getInt(it.getColumnIndexOrThrow(COL_SONG_ID))
+                        val title = it.getString(it.getColumnIndexOrThrow(COL_TITLE))
+                        val artist = it.getString(it.getColumnIndexOrThrow(COL_ARTIST))
+                        val album = it.getString(it.getColumnIndexOrThrow(COL_ALBUM))
+                        val genre = it.getString(it.getColumnIndexOrThrow(COL_GENRE))
+                        val duration = it.getString(it.getColumnIndexOrThrow(COL_DURATION))
+                        val sizeBytes = it.getLong(it.getColumnIndexOrThrow(COL_SIZE_BYTES))
+                        val filePath = it.getString(it.getColumnIndexOrThrow(COL_FILE_PATH))
+                        val lyrics = it.getString(it.getColumnIndexOrThrow(COL_LYRICS))
+                        val coverUrl = it.getString(it.getColumnIndexOrThrow(COL_COVER_URL))
+                        val downloadedAt = it.getLong(it.getColumnIndexOrThrow(COL_DOWNLOADED_AT))
+
+                        val cv = ContentValues().apply {
+                            put(COL_SERVER_HASH, sHash)
+                            put(COL_USER_HASH, uHash)
+                            put(COL_USERNAME, uName)
+                            put(COL_SONG_ID, sId)
+                            put(COL_TITLE, title)
+                            put(COL_ARTIST, artist)
+                            put(COL_ALBUM, album)
+                            put(COL_GENRE, genre)
+                            put(COL_DURATION, duration)
+                            put(COL_SIZE_BYTES, sizeBytes)
+                            put(COL_FILE_PATH, filePath)
+                            put(COL_LYRICS, lyrics)
+                            put(COL_COVER_URL, coverUrl)
+                            put(COL_DOWNLOADED_AT, downloadedAt)
+                        }
+                        db.insert(tempTable, null, cv)
+                    }
+                }
+
+                db.execSQL("DROP TABLE $TABLE_NAME")
+                db.execSQL("ALTER TABLE $tempTable RENAME TO $TABLE_NAME")
+                db.setTransactionSuccessful()
+            } catch (e: Exception) {
+                db.execSQL("DROP TABLE IF EXISTS $TABLE_NAME")
+                onCreate(db)
+            } finally {
+                if (db.inTransaction()) db.endTransaction()
+            }
         }
     }
 
@@ -135,7 +211,10 @@ class LocalSongDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_N
             put(COL_COVER_URL, song.coverUrl)
             put(COL_DOWNLOADED_AT, song.downloadedAt)
         }
-        db.insertWithOnConflict(TABLE_NAME, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+        val rowId = db.insertWithOnConflict(TABLE_NAME, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+        if (rowId == -1L) {
+            throw android.database.SQLException("写入离线歌曲数据库失败 (rowId == -1, songId=${song.id})")
+        }
     }
 
     @Synchronized

@@ -9,14 +9,20 @@ import com.maifeipin.webmusic.core.network.WebMusicNetwork
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.Request
+import okhttp3.Response
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.util.concurrent.CancellationException
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.coroutineContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 object OfflineDownloadManager {
     private const val TAG = "OfflineDownloadManager"
@@ -61,9 +67,10 @@ object OfflineDownloadManager {
         }
         if (!userDir.exists()) userDir.mkdirs()
 
-        // 3. 独立版本临时文件与目标文件
+        // 3. 独立版本临时文件与提交目标文件
         val tempFile = File(userDir, "wm_${song.id}_${System.currentTimeMillis()}.tmp")
-        val committedFile = File(userDir, "wm_${song.id}_${System.currentTimeMillis()}.audio")
+        var committedFile: File? = null
+        var isCommittedToDatabase = false
 
         val currentJob = coroutineContext[Job]
         var cancellationHandle: kotlinx.coroutines.DisposableHandle? = null
@@ -84,8 +91,8 @@ object OfflineDownloadManager {
             activeCalls[taskKey] = call
             if (currentJob != null) {
                 activeJobs[taskKey] = currentJob
-                // 绑定协程取消到 Call.cancel()，在取消时立即关闭底层 socket 中断阻塞读取
-                cancellationHandle = currentJob.invokeOnCompletion { cause ->
+                // 使用 onCancelling = true：协程进入取消中状态（如 Activity 销毁）时立即触发 call.cancel()，中断阻塞 socket
+                cancellationHandle = currentJob.invokeOnCompletion(onCancelling = true) { cause ->
                     if (cause is CancellationException) {
                         call.cancel()
                     }
@@ -95,12 +102,30 @@ object OfflineDownloadManager {
             var totalRead = 0L
             var expectedBytes = song.sizeBytes ?: -1L
 
-            call.execute().use { response ->
-                if (!response.isSuccessful) {
-                    return@withContext Result.failure(IllegalStateException("下载失败: HTTP ${response.code}"))
+            // 采用 suspendCancellableCoroutine + enqueue，直接将协程取消绑定到 Call
+            val response = suspendCancellableCoroutine<Response> { continuation ->
+                continuation.invokeOnCancellation {
+                    call.cancel()
+                }
+                call.enqueue(object : Callback {
+                    override fun onResponse(call: Call, response: Response) {
+                        continuation.resume(response)
+                    }
+
+                    override fun onFailure(call: Call, e: IOException) {
+                        if (continuation.isActive) {
+                            continuation.resumeWithException(e)
+                        }
+                    }
+                })
+            }
+
+            response.use { resp ->
+                if (!resp.isSuccessful) {
+                    return@withContext Result.failure(IllegalStateException("下载失败: HTTP ${resp.code}"))
                 }
 
-                val body = response.body
+                val body = resp.body
                     ?: return@withContext Result.failure(IllegalStateException("响应体为空"))
 
                 val contentLength = body.contentLength()
@@ -133,27 +158,25 @@ object OfflineDownloadManager {
 
             // 完整性校验：必须有读取数据，且若服务端提供了 ContentLength 则必须全量匹配
             if (totalRead <= 0L) {
-                if (tempFile.exists()) tempFile.delete()
                 return@withContext Result.failure(IllegalStateException("下载内容为空"))
             }
             if (expectedBytes > 0 && totalRead != expectedBytes) {
-                if (tempFile.exists()) tempFile.delete()
                 return@withContext Result.failure(IllegalStateException("文件校验失败: 预期 $expectedBytes 字节，实际下载 $totalRead 字节"))
             }
 
             // 提交文件前严格校验协程取消状态
             if (!coroutineContext.isActive) {
-                if (tempFile.exists()) tempFile.delete()
                 throw CancellationException("下载任务已在提交前取消")
             }
 
             // 4. 原子提交新文件：重命名到独立的版本文件，绝不先删旧文件
-            val renameSuccess = tempFile.renameTo(committedFile)
-            if (!renameSuccess || !committedFile.exists() || committedFile.length() != totalRead) {
-                if (tempFile.exists()) tempFile.delete()
-                if (committedFile.exists()) committedFile.delete()
+            val targetVersionFile = File(userDir, "wm_${song.id}_${System.currentTimeMillis()}.audio")
+            val renameSuccess = tempFile.renameTo(targetVersionFile)
+            if (!renameSuccess || !targetVersionFile.exists() || targetVersionFile.length() != totalRead) {
+                if (targetVersionFile.exists()) targetVersionFile.delete()
                 return@withContext Result.failure(IllegalStateException("提交离线目标文件失败"))
             }
+            committedFile = targetVersionFile
 
             // 5. 使用快照拉取 LRC 歌词（若失败不阻断音频保存，遇到取消则重抛）
             var lyricsContent: String? = null
@@ -168,7 +191,6 @@ object OfflineDownloadManager {
 
             // 入库前再次核验取消状态
             if (!coroutineContext.isActive) {
-                if (committedFile.exists()) committedFile.delete()
                 throw CancellationException("下载任务在入库前已被取消")
             }
 
@@ -186,23 +208,19 @@ object OfflineDownloadManager {
                 album = song.album ?: "未知专辑",
                 genre = song.genre,
                 duration = song.duration,
-                sizeBytes = committedFile.length(),
-                localFilePath = committedFile.absolutePath,
+                sizeBytes = targetVersionFile.length(),
+                localFilePath = targetVersionFile.absolutePath,
                 lyrics = lyricsContent,
                 coverUrl = WebMusicNetwork.buildCoverUrl(snapshotServerUrl, song.filePath),
                 downloadedAt = System.currentTimeMillis()
             )
 
-            // 7. 持久化写入本地离线数据库，若写入失败则回滚新文件并保留旧文件
-            try {
-                LocalSongDatabase.getInstance(context).insertOrUpdate(downloadedSong)
-            } catch (dbErr: Exception) {
-                if (committedFile.exists()) committedFile.delete()
-                throw dbErr
-            }
+            // 7. 持久化写入本地离线数据库，若写入失败则抛出异常并触发安全清理
+            LocalSongDatabase.getInstance(context).insertOrUpdate(downloadedSong)
+            isCommittedToDatabase = true
 
             // 8. 仅在数据库更新完全成功后，安全清理历史版本旧文件
-            if (oldFilePath != null && oldFilePath != committedFile.absolutePath) {
+            if (oldFilePath != null && oldFilePath != targetVersionFile.absolutePath) {
                 try {
                     val oldFile = File(oldFilePath)
                     if (oldFile.exists()) oldFile.delete()
@@ -214,7 +232,6 @@ object OfflineDownloadManager {
             onProgress(1f)
             Result.success(downloadedSong)
         } catch (e: Throwable) {
-            if (tempFile.exists()) tempFile.delete()
             if (e is CancellationException) {
                 // 必须重新抛出 CancellationException，绝不吞掉协程取消
                 throw e
@@ -222,6 +239,13 @@ object OfflineDownloadManager {
             Log.e(TAG, "Download song ${song.id} failed", e)
             Result.failure(e as? Exception ?: Exception(e))
         } finally {
+            // 9. 统一收尾：若未成功提交入库，坚决清理新创建的中间文件，彻底防止孤儿文件泄露
+            if (!isCommittedToDatabase && committedFile != null && committedFile.exists()) {
+                committedFile.delete()
+            }
+            if (tempFile.exists()) {
+                tempFile.delete()
+            }
             cancellationHandle?.dispose()
             activeCalls.remove(taskKey)
             activeJobs.remove(taskKey)

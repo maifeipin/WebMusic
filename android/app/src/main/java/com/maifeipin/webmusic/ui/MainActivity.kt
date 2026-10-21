@@ -342,6 +342,7 @@ fun MainAppScreen(
 
     // 活跃请求 Job，保证单一请求链路
     var activeFetchJob by remember { mutableStateOf<Job?>(null) }
+    var offlineRefreshTrigger by remember { mutableIntStateOf(0) }
 
     fun executeQuery(page: Int, search: String?, append: Boolean, targetVersion: Long) {
         if (tokenManager.token == null) return
@@ -433,7 +434,6 @@ fun MainAppScreen(
         val context = LocalContext.current
         var selectedTab by remember { mutableIntStateOf(0) } // 0: 在线曲库, 1: 离线音乐
         var offlineSongs by remember { mutableStateOf<List<DownloadedSong>>(emptyList()) }
-        var offlineRefreshTrigger by remember { mutableIntStateOf(0) }
 
         LaunchedEffect(selectedTab, offlineRefreshTrigger, tokenManager.token) {
             withContext(Dispatchers.IO) {
