@@ -610,6 +610,47 @@ fun LoginSettingDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                val context = androidx.compose.ui.platform.LocalContext.current
+                var cacheSizeBytes by remember {
+                    mutableLongStateOf(com.maifeipin.webmusic.core.cache.MediaCacheManager.getCacheSizeBytes(context))
+                }
+
+                HorizontalDivider(color = Color.DarkGray, modifier = Modifier.padding(vertical = 4.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "本地缓存: ${"%.1f".format(cacheSizeBytes / (1024f * 1024f))} MB",
+                        color = Color.Gray,
+                        fontSize = 13.sp
+                    )
+                    TextButton(onClick = {
+                        com.maifeipin.webmusic.core.cache.MediaCacheManager.clearAllCache(context)
+                        cacheSizeBytes = com.maifeipin.webmusic.core.cache.MediaCacheManager.getCacheSizeBytes(context)
+                        statusText = "已清空本地流媒体缓存！"
+                    }) {
+                        Text("清空缓存", color = Color(0xFFFF5252), fontSize = 13.sp)
+                    }
+                }
+
+                if (tokenManager.token != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = {
+                            tokenManager.clear()
+                            statusText = "已退出当前登录"
+                            onLoginSuccess()
+                        }) {
+                            Text("退出登录", color = Color.Gray, fontSize = 13.sp)
+                        }
+                    }
+                }
+
                 if (statusText.isNotEmpty()) {
                     Text(statusText, color = GreenPrimary, fontSize = 13.sp)
                 }

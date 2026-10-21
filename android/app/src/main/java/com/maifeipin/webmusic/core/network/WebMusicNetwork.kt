@@ -117,17 +117,15 @@ object WebMusicNetwork {
     }
 
     /**
-     * 生成安全、无碰撞的隔离缓存键
-     * 结合：ServerUrl SHA-256 指纹 + 用户身份 + 媒体ID + 服务端内容哈希/版本
+     * 生成安全强隔离缓存键
+     * 结合：ServerUrl 完整 256 位 SHA-256 散列 + 用户身份 + 媒体ID + 服务端内容哈希/版本
+     * 彻底消除截断碰撞风险，杜绝异常时固定字符串降级
      */
     fun generateSafeCacheKey(serverUrl: String, username: String?, song: MediaFileDto): String {
-        val serverHash = try {
-            val md = java.security.MessageDigest.getInstance("SHA-256")
-            val bytes = md.digest(serverUrl.trimEnd('/').toByteArray(Charsets.UTF_8))
-            bytes.take(8).joinToString("") { "%02x".format(it) }
-        } catch (e: Exception) {
-            "srv"
-        }
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        val bytes = md.digest(serverUrl.trimEnd('/').toByteArray(Charsets.UTF_8))
+        val serverHash = bytes.joinToString("") { "%02x".format(it) }
+
         val safeUser = username?.ifEmpty { "anon" } ?: "anon"
         val versionTag = song.fileHash?.ifEmpty { null } ?: "sz_${song.sizeBytes ?: 0L}"
         return "wm_${serverHash}_${safeUser}_${song.id}_${versionTag}"

@@ -13,7 +13,7 @@ import java.io.File
 /**
  * 流式媒体 LRU 缓存管理器 (边听边存)
  * 基于 ExoPlayer SimpleCache，默认上限 2GB，自动淘汰最旧分片
- * 听过的歌曲二次收听 0 流量秒开
+ * 支持清空全库缓存与移除指定曲目缓存，应对同路径文件替换后的脏缓存问题
  */
 object MediaCacheManager {
 
@@ -35,7 +35,7 @@ object MediaCacheManager {
     }
 
     /**
-     * 包装 OkHttp 数据源，生成支持透明边听边存的 CacheDataSource.Factory
+     * 包装 OkHttp 数据源，生成支持透明边播边存的 CacheDataSource.Factory
      */
     fun createCacheDataSourceFactory(
         context: Context,
@@ -47,5 +47,32 @@ object MediaCacheManager {
             .setCache(cache)
             .setUpstreamDataSourceFactory(upstreamFactory)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+    }
+
+    /**
+     * 清理全量流式缓存
+     */
+    @Synchronized
+    fun clearAllCache(context: Context) {
+        val cache = getCache(context)
+        for (key in cache.keys) {
+            cache.removeResource(key)
+        }
+    }
+
+    /**
+     * 移除指定曲目的缓存（强制重新拉取最新版本）
+     */
+    @Synchronized
+    fun removeSongCache(context: Context, cacheKey: String) {
+        val cache = getCache(context)
+        cache.removeResource(cacheKey)
+    }
+
+    /**
+     * 获取当前已占用的缓存字节数
+     */
+    fun getCacheSizeBytes(context: Context): Long {
+        return getCache(context).cacheSpace
     }
 }
