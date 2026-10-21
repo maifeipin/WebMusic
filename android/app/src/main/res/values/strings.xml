@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">WebMusic</string>
+    <string name="channel_name">WebMusic 播放服务</string>
+    <string name="channel_description">保持后台音频播放与媒体控制</string>
+</resources>
