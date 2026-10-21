@@ -8,6 +8,7 @@ import java.security.MessageDigest
 
 data class DownloadedSong(
     val serverHash: String,
+    val userHash: String,
     val username: String,
     val id: Int,
     val title: String,
@@ -30,6 +31,7 @@ class LocalSongDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_N
 
         private const val TABLE_NAME = "downloaded_songs"
         private const val COL_SERVER_HASH = "server_hash"
+        private const val COL_USER_HASH = "user_hash"
         private const val COL_USERNAME = "username"
         private const val COL_SONG_ID = "song_id"
         private const val COL_TITLE = "title"
@@ -57,12 +59,20 @@ class LocalSongDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_N
             val bytes = md.digest(serverUrl.trimEnd('/').toByteArray(Charsets.UTF_8))
             return bytes.joinToString("") { "%02x".format(it) }
         }
+
+        fun computeUserHash(username: String?): String {
+            val raw = username?.trim()?.ifEmpty { "anon" } ?: "anon"
+            val md = MessageDigest.getInstance("SHA-256")
+            val bytes = md.digest(raw.toByteArray(Charsets.UTF_8))
+            return bytes.joinToString("") { "%02x".format(it) }
+        }
     }
 
     override fun onCreate(db: SQLiteDatabase) {
         val createSql = """
             CREATE TABLE $TABLE_NAME (
                 $COL_SERVER_HASH TEXT NOT NULL,
+                $COL_USER_HASH TEXT NOT NULL,
                 $COL_USERNAME TEXT NOT NULL,
                 $COL_SONG_ID INTEGER NOT NULL,
                 $COL_TITLE TEXT NOT NULL,
@@ -75,15 +85,35 @@ class LocalSongDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_N
                 $COL_LYRICS TEXT,
                 $COL_COVER_URL TEXT,
                 $COL_DOWNLOADED_AT INTEGER,
-                PRIMARY KEY ($COL_SERVER_HASH, $COL_USERNAME, $COL_SONG_ID)
+                PRIMARY KEY ($COL_SERVER_HASH, $COL_USER_HASH, $COL_SONG_ID)
             )
         """.trimIndent()
         db.execSQL(createSql)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("DROP TABLE IF EXISTS $TABLE_NAME")
-        onCreate(db)
+        if (oldVersion < 2) {
+            // 清理旧版本未隔离的物理文件，防止产生不可管理的孤儿垃圾文件
+            try {
+                val cursor = db.rawQuery("SELECT file_path FROM $TABLE_NAME", null)
+                cursor.use {
+                    val pathIdx = it.getColumnIndex("file_path")
+                    if (pathIdx >= 0) {
+                        while (it.moveToNext()) {
+                            val path = it.getString(pathIdx)
+                            if (!path.isNullOrEmpty()) {
+                                val file = java.io.File(path)
+                                if (file.exists()) file.delete()
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // 如果旧表不存在或读取失败，继续升级流程
+            }
+            db.execSQL("DROP TABLE IF EXISTS $TABLE_NAME")
+            onCreate(db)
+        }
     }
 
     @Synchronized
@@ -91,6 +121,7 @@ class LocalSongDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         val db = writableDatabase
         val values = ContentValues().apply {
             put(COL_SERVER_HASH, song.serverHash)
+            put(COL_USER_HASH, song.userHash)
             put(COL_USERNAME, song.username)
             put(COL_SONG_ID, song.id)
             put(COL_TITLE, song.title)
@@ -108,22 +139,22 @@ class LocalSongDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_N
     }
 
     @Synchronized
-    fun delete(serverHash: String, username: String, songId: Int): Boolean {
+    fun delete(serverHash: String, userHash: String, songId: Int): Boolean {
         val db = writableDatabase
         val rows = db.delete(
             TABLE_NAME,
-            "$COL_SERVER_HASH = ? AND $COL_USERNAME = ? AND $COL_SONG_ID = ?",
-            arrayOf(serverHash, username, songId.toString())
+            "$COL_SERVER_HASH = ? AND $COL_USER_HASH = ? AND $COL_SONG_ID = ?",
+            arrayOf(serverHash, userHash, songId.toString())
         )
         return rows > 0
     }
 
     @Synchronized
-    fun isDownloaded(serverHash: String, username: String, songId: Int): Boolean {
+    fun isDownloaded(serverHash: String, userHash: String, songId: Int): Boolean {
         val db = readableDatabase
         val cursor = db.rawQuery(
-            "SELECT 1 FROM $TABLE_NAME WHERE $COL_SERVER_HASH = ? AND $COL_USERNAME = ? AND $COL_SONG_ID = ?",
-            arrayOf(serverHash, username, songId.toString())
+            "SELECT 1 FROM $TABLE_NAME WHERE $COL_SERVER_HASH = ? AND $COL_USER_HASH = ? AND $COL_SONG_ID = ?",
+            arrayOf(serverHash, userHash, songId.toString())
         )
         val exists = cursor.moveToFirst()
         cursor.close()
@@ -131,13 +162,13 @@ class LocalSongDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_N
     }
 
     @Synchronized
-    fun getById(serverHash: String, username: String, songId: Int): DownloadedSong? {
+    fun getById(serverHash: String, userHash: String, songId: Int): DownloadedSong? {
         val db = readableDatabase
         val cursor = db.query(
             TABLE_NAME,
             null,
-            "$COL_SERVER_HASH = ? AND $COL_USERNAME = ? AND $COL_SONG_ID = ?",
-            arrayOf(serverHash, username, songId.toString()),
+            "$COL_SERVER_HASH = ? AND $COL_USER_HASH = ? AND $COL_SONG_ID = ?",
+            arrayOf(serverHash, userHash, songId.toString()),
             null,
             null,
             null
@@ -148,14 +179,14 @@ class LocalSongDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_N
     }
 
     @Synchronized
-    fun getAll(serverHash: String, username: String): List<DownloadedSong> {
+    fun getAll(serverHash: String, userHash: String): List<DownloadedSong> {
         val db = readableDatabase
         val list = mutableListOf<DownloadedSong>()
         val cursor = db.query(
             TABLE_NAME,
             null,
-            "$COL_SERVER_HASH = ? AND $COL_USERNAME = ?",
-            arrayOf(serverHash, username),
+            "$COL_SERVER_HASH = ? AND $COL_USER_HASH = ?",
+            arrayOf(serverHash, userHash),
             null,
             null,
             "$COL_DOWNLOADED_AT DESC"
@@ -169,18 +200,18 @@ class LocalSongDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_N
     }
 
     @Synchronized
-    fun search(serverHash: String, username: String, query: String): List<DownloadedSong> {
+    fun search(serverHash: String, userHash: String, query: String): List<DownloadedSong> {
         val db = readableDatabase
         val list = mutableListOf<DownloadedSong>()
         val q = "%$query%"
         val cursor = db.rawQuery(
             """
             SELECT * FROM $TABLE_NAME 
-            WHERE $COL_SERVER_HASH = ? AND $COL_USERNAME = ? 
+            WHERE $COL_SERVER_HASH = ? AND $COL_USER_HASH = ? 
             AND ($COL_TITLE LIKE ? OR $COL_ARTIST LIKE ? OR $COL_ALBUM LIKE ?) 
             ORDER BY $COL_DOWNLOADED_AT DESC
             """.trimIndent(),
-            arrayOf(serverHash, username, q, q, q)
+            arrayOf(serverHash, userHash, q, q, q)
         )
         cursor.use {
             while (it.moveToNext()) {
@@ -193,6 +224,7 @@ class LocalSongDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_N
     private fun cursorToSong(cursor: android.database.Cursor): DownloadedSong {
         return DownloadedSong(
             serverHash = cursor.getString(cursor.getColumnIndexOrThrow(COL_SERVER_HASH)),
+            userHash = cursor.getString(cursor.getColumnIndexOrThrow(COL_USER_HASH)),
             username = cursor.getString(cursor.getColumnIndexOrThrow(COL_USERNAME)),
             id = cursor.getInt(cursor.getColumnIndexOrThrow(COL_SONG_ID)),
             title = cursor.getString(cursor.getColumnIndexOrThrow(COL_TITLE)),

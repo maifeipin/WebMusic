@@ -67,6 +67,31 @@ object WebMusicNetwork {
         }
     }
 
+    private class StaticAuthInterceptor(private val token: String?) : Interceptor {
+        override fun intercept(chain: Interceptor.Chain): Response {
+            val original = chain.request()
+            val requestBuilder = original.newBuilder()
+            if (!token.isNullOrEmpty()) {
+                requestBuilder.header("Authorization", "Bearer $token")
+            }
+            return chain.proceed(requestBuilder.build())
+        }
+    }
+
+    fun createClientWithToken(token: String?): OkHttpClient {
+        val logging = HttpLoggingInterceptor().apply {
+            level = HttpLoggingInterceptor.Level.HEADERS
+            redactHeader("Authorization")
+            redactHeader("Cookie")
+        }
+        return OkHttpClient.Builder()
+            .addInterceptor(StaticAuthInterceptor(token))
+            .addInterceptor(logging)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .build()
+    }
+
     fun createClient(tokenManager: TokenManager): OkHttpClient {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.HEADERS
@@ -82,15 +107,19 @@ object WebMusicNetwork {
             .build()
     }
 
-    fun createApi(tokenManager: TokenManager): WebMusicApi {
-        val baseUrl = if (tokenManager.serverUrl.endsWith("/")) tokenManager.serverUrl else "${tokenManager.serverUrl}/"
-        val client = createClient(tokenManager)
+    fun createApi(serverUrl: String, token: String?): WebMusicApi {
+        val baseUrl = if (serverUrl.endsWith("/")) serverUrl else "$serverUrl/"
+        val client = createClientWithToken(token)
         return Retrofit.Builder()
             .baseUrl(baseUrl)
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(WebMusicApi::class.java)
+    }
+
+    fun createApi(tokenManager: TokenManager): WebMusicApi {
+        return createApi(tokenManager.serverUrl, tokenManager.token)
     }
 
     /**

@@ -7,8 +7,10 @@ import com.maifeipin.webmusic.core.network.MediaFileDto
 import com.maifeipin.webmusic.core.network.TokenManager
 import com.maifeipin.webmusic.core.network.WebMusicNetwork
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import okhttp3.Call
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
@@ -21,9 +23,11 @@ object OfflineDownloadManager {
 
     // 内存中的下载任务进度字典 (taskKey -> Float 0..1)
     val activeDownloads = ConcurrentHashMap<String, Float>()
+    private val activeCalls = ConcurrentHashMap<String, Call>()
+    private val activeJobs = ConcurrentHashMap<String, Job>()
 
-    fun makeTaskKey(serverHash: String, username: String, songId: Int): String {
-        return "${serverHash}_${username}_$songId"
+    fun makeTaskKey(serverHash: String, userHash: String, songId: Int): String {
+        return "${serverHash}_${userHash}_$songId"
     }
 
     suspend fun downloadSong(
@@ -32,41 +36,66 @@ object OfflineDownloadManager {
         song: MediaFileDto,
         onProgress: (Float) -> Unit = {}
     ): Result<DownloadedSong> = withContext(Dispatchers.IO) {
-        val serverUrl = tokenManager.serverUrl.trimEnd('/')
-        val serverHash = LocalSongDatabase.computeServerHash(serverUrl)
-        val safeUser = tokenManager.username?.ifEmpty { "anon" } ?: "anon"
-        val token = tokenManager.token
+        // 1. 拍摄当前会话的不变凭据快照，彻底解耦可变的 TokenManager
+        val snapshotServerUrl = tokenManager.serverUrl.trimEnd('/')
+        val snapshotUsername = tokenManager.username?.ifEmpty { "anon" } ?: "anon"
+        val snapshotToken = tokenManager.token
 
-        if (token.isNullOrEmpty()) {
+        if (snapshotToken.isNullOrEmpty()) {
             return@withContext Result.failure(IllegalStateException("未登录，无法下载"))
         }
 
-        val taskKey = makeTaskKey(serverHash, safeUser, song.id)
+        val serverHash = LocalSongDatabase.computeServerHash(snapshotServerUrl)
+        val userHash = LocalSongDatabase.computeUserHash(snapshotUsername)
+        val taskKey = makeTaskKey(serverHash, userHash, song.id)
 
-        // 强隔离存储目录：downloads/<ServerHash>/<Username>/
+        // 2. 强隔离安全路径校验：使用用户名哈希构造子目录，并校验规范化路径在根目录内
         val musicDir = context.getExternalFilesDir(Environment.DIRECTORY_MUSIC)
             ?: context.filesDir
-        val userDir = File(musicDir, "downloads/$serverHash/$safeUser")
+        val baseDownloadsDir = File(musicDir, "downloads").canonicalFile
+        val serverDir = File(baseDownloadsDir, serverHash).canonicalFile
+        val userDir = File(serverDir, userHash).canonicalFile
+
+        if (!userDir.canonicalPath.startsWith(baseDownloadsDir.canonicalPath)) {
+            return@withContext Result.failure(SecurityException("非法存储路径，已阻止跨目录访问"))
+        }
         if (!userDir.exists()) userDir.mkdirs()
 
-        val targetFile = File(userDir, "wm_${song.id}.audio")
+        // 3. 独立版本临时文件与目标文件
         val tempFile = File(userDir, "wm_${song.id}_${System.currentTimeMillis()}.tmp")
+        val committedFile = File(userDir, "wm_${song.id}_${System.currentTimeMillis()}.audio")
+
+        val currentJob = coroutineContext[Job]
+        var cancellationHandle: kotlinx.coroutines.DisposableHandle? = null
 
         try {
             activeDownloads[taskKey] = 0f
             onProgress(0f)
 
-            val streamUrl = "$serverUrl/api/media/stream/${song.id}"
-            val client = WebMusicNetwork.createClient(tokenManager)
+            val streamUrl = "$snapshotServerUrl/api/media/stream/${song.id}"
+            // 使用凭据快照创建独立的网络客户端，防止后续切账号时混用
+            val client = WebMusicNetwork.createClientWithToken(snapshotToken)
             val request = Request.Builder()
                 .url(streamUrl)
-                .addHeader("Authorization", "Bearer $token")
+                .addHeader("Authorization", "Bearer $snapshotToken")
                 .build()
+
+            val call = client.newCall(request)
+            activeCalls[taskKey] = call
+            if (currentJob != null) {
+                activeJobs[taskKey] = currentJob
+                // 绑定协程取消到 Call.cancel()，在取消时立即关闭底层 socket 中断阻塞读取
+                cancellationHandle = currentJob.invokeOnCompletion { cause ->
+                    if (cause is CancellationException) {
+                        call.cancel()
+                    }
+                }
+            }
 
             var totalRead = 0L
             var expectedBytes = song.sizeBytes ?: -1L
 
-            client.newCall(request).execute().use { response ->
+            call.execute().use { response ->
                 if (!response.isSuccessful) {
                     return@withContext Result.failure(IllegalStateException("下载失败: HTTP ${response.code}"))
                 }
@@ -112,91 +141,146 @@ object OfflineDownloadManager {
                 return@withContext Result.failure(IllegalStateException("文件校验失败: 预期 $expectedBytes 字节，实际下载 $totalRead 字节"))
             }
 
-            // 原子替换文件：先清理目标再重命名，并严格检验重命名返回值
-            if (targetFile.exists()) {
-                targetFile.delete()
-            }
-            val renameSuccess = tempFile.renameTo(targetFile)
-            if (!renameSuccess || !targetFile.exists() || targetFile.length() != totalRead) {
+            // 提交文件前严格校验协程取消状态
+            if (!coroutineContext.isActive) {
                 if (tempFile.exists()) tempFile.delete()
+                throw CancellationException("下载任务已在提交前取消")
+            }
+
+            // 4. 原子提交新文件：重命名到独立的版本文件，绝不先删旧文件
+            val renameSuccess = tempFile.renameTo(committedFile)
+            if (!renameSuccess || !committedFile.exists() || committedFile.length() != totalRead) {
+                if (tempFile.exists()) tempFile.delete()
+                if (committedFile.exists()) committedFile.delete()
                 return@withContext Result.failure(IllegalStateException("提交离线目标文件失败"))
             }
 
-            // 尝试获取该曲目的 LRC 歌词
+            // 5. 使用快照拉取 LRC 歌词（若失败不阻断音频保存，遇到取消则重抛）
             var lyricsContent: String? = null
             try {
-                val api = WebMusicNetwork.createApi(tokenManager)
+                val api = WebMusicNetwork.createApi(snapshotServerUrl, snapshotToken)
                 val lyricsResp = api.getLyrics(song.id)
                 lyricsContent = lyricsResp.content
             } catch (e: Exception) {
+                if (e is CancellationException) throw e
                 Log.w(TAG, "Lyrics not found for song ${song.id}, proceed without lyrics")
             }
 
+            // 入库前再次核验取消状态
+            if (!coroutineContext.isActive) {
+                if (committedFile.exists()) committedFile.delete()
+                throw CancellationException("下载任务在入库前已被取消")
+            }
+
+            // 6. 查找旧记录（以备数据库更新成功后清理旧文件）
+            val oldRecord = LocalSongDatabase.getInstance(context).getById(serverHash, userHash, song.id)
+            val oldFilePath = oldRecord?.localFilePath
+
             val downloadedSong = DownloadedSong(
                 serverHash = serverHash,
-                username = safeUser,
+                userHash = userHash,
+                username = snapshotUsername,
                 id = song.id,
                 title = song.title ?: "未知歌曲",
                 artist = song.artist ?: "未知歌手",
                 album = song.album ?: "未知专辑",
                 genre = song.genre,
                 duration = song.duration,
-                sizeBytes = targetFile.length(),
-                localFilePath = targetFile.absolutePath,
+                sizeBytes = committedFile.length(),
+                localFilePath = committedFile.absolutePath,
                 lyrics = lyricsContent,
-                coverUrl = WebMusicNetwork.buildCoverUrl(serverUrl, song.filePath),
+                coverUrl = WebMusicNetwork.buildCoverUrl(snapshotServerUrl, song.filePath),
                 downloadedAt = System.currentTimeMillis()
             )
 
-            // 仅在物理文件原子提交成功后，才持久化写入本地离线数据库
-            LocalSongDatabase.getInstance(context).insertOrUpdate(downloadedSong)
+            // 7. 持久化写入本地离线数据库，若写入失败则回滚新文件并保留旧文件
+            try {
+                LocalSongDatabase.getInstance(context).insertOrUpdate(downloadedSong)
+            } catch (dbErr: Exception) {
+                if (committedFile.exists()) committedFile.delete()
+                throw dbErr
+            }
+
+            // 8. 仅在数据库更新完全成功后，安全清理历史版本旧文件
+            if (oldFilePath != null && oldFilePath != committedFile.absolutePath) {
+                try {
+                    val oldFile = File(oldFilePath)
+                    if (oldFile.exists()) oldFile.delete()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to clean old file: $oldFilePath", e)
+                }
+            }
+
             onProgress(1f)
             Result.success(downloadedSong)
-        } catch (e: Exception) {
-            Log.e(TAG, "Download song ${song.id} failed", e)
+        } catch (e: Throwable) {
             if (tempFile.exists()) tempFile.delete()
-            Result.failure(e)
+            if (e is CancellationException) {
+                // 必须重新抛出 CancellationException，绝不吞掉协程取消
+                throw e
+            }
+            Log.e(TAG, "Download song ${song.id} failed", e)
+            Result.failure(e as? Exception ?: Exception(e))
         } finally {
-            // 无论成功、失败或取消，一律在 finally 中释放活跃任务状态
+            cancellationHandle?.dispose()
+            activeCalls.remove(taskKey)
+            activeJobs.remove(taskKey)
             activeDownloads.remove(taskKey)
         }
     }
 
     fun getDownloadProgress(serverUrl: String, username: String?, songId: Int): Float? {
         val serverHash = LocalSongDatabase.computeServerHash(serverUrl)
-        val safeUser = username?.ifEmpty { "anon" } ?: "anon"
-        return activeDownloads[makeTaskKey(serverHash, safeUser, songId)]
+        val userHash = LocalSongDatabase.computeUserHash(username)
+        return activeDownloads[makeTaskKey(serverHash, userHash, songId)]
     }
 
     fun deleteDownload(context: Context, serverUrl: String, username: String?, songId: Int): Boolean {
         val serverHash = LocalSongDatabase.computeServerHash(serverUrl)
-        val safeUser = username?.ifEmpty { "anon" } ?: "anon"
+        val userHash = LocalSongDatabase.computeUserHash(username)
         val db = LocalSongDatabase.getInstance(context)
-        val song = db.getById(serverHash, safeUser, songId)
+        val song = db.getById(serverHash, userHash, songId)
         if (song != null) {
             val file = File(song.localFilePath)
             if (file.exists()) file.delete()
-            return db.delete(serverHash, safeUser, songId)
+            return db.delete(serverHash, userHash, songId)
         }
         return false
     }
 
     fun isDownloaded(context: Context, serverUrl: String, username: String?, songId: Int): Boolean {
         val serverHash = LocalSongDatabase.computeServerHash(serverUrl)
-        val safeUser = username?.ifEmpty { "anon" } ?: "anon"
-        return LocalSongDatabase.getInstance(context).isDownloaded(serverHash, safeUser, songId)
+        val userHash = LocalSongDatabase.computeUserHash(username)
+        return LocalSongDatabase.getInstance(context).isDownloaded(serverHash, userHash, songId)
     }
 
     fun getDownloadedSong(context: Context, serverUrl: String, username: String?, songId: Int): DownloadedSong? {
         val serverHash = LocalSongDatabase.computeServerHash(serverUrl)
-        val safeUser = username?.ifEmpty { "anon" } ?: "anon"
-        return LocalSongDatabase.getInstance(context).getById(serverHash, safeUser, songId)
+        val userHash = LocalSongDatabase.computeUserHash(username)
+        return LocalSongDatabase.getInstance(context).getById(serverHash, userHash, songId)
     }
 
     fun getAllDownloaded(context: Context, serverUrl: String, username: String?): List<DownloadedSong> {
         val serverHash = LocalSongDatabase.computeServerHash(serverUrl)
-        val safeUser = username?.ifEmpty { "anon" } ?: "anon"
-        return LocalSongDatabase.getInstance(context).getAll(serverHash, safeUser)
+        val userHash = LocalSongDatabase.computeUserHash(username)
+        return LocalSongDatabase.getInstance(context).getAll(serverHash, userHash)
+    }
+
+    fun cancelDownload(serverUrl: String, username: String?, songId: Int) {
+        val serverHash = LocalSongDatabase.computeServerHash(serverUrl)
+        val userHash = LocalSongDatabase.computeUserHash(username)
+        val key = makeTaskKey(serverHash, userHash, songId)
+        activeCalls.remove(key)?.cancel()
+        activeJobs.remove(key)?.cancel()
+        activeDownloads.remove(key)
+    }
+
+    fun cancelAllDownloads() {
+        activeCalls.values.forEach { it.cancel() }
+        activeCalls.clear()
+        activeJobs.values.forEach { it.cancel() }
+        activeJobs.clear()
+        activeDownloads.clear()
     }
 }
 
@@ -211,7 +295,7 @@ fun DownloadedSong.toMediaFileDto(): MediaFileDto {
         year = null,
         duration = duration,
         sizeBytes = sizeBytes,
-        fileHash = "offline_${serverHash}_${username}_$id",
+        fileHash = "offline_${serverHash}_${userHash}_$id",
         contentVersion = "offline"
     )
 }

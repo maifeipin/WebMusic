@@ -58,6 +58,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.CancellationException
 
 class MainActivity : ComponentActivity() {
 
@@ -614,8 +615,13 @@ fun MainAppScreen(
                                     } else {
                                         IconButton(onClick = {
                                             scope.launch {
-                                                OfflineDownloadManager.downloadSong(context, tokenManager, song)
-                                                offlineRefreshTrigger++
+                                                try {
+                                                    OfflineDownloadManager.downloadSong(context, tokenManager, song)
+                                                } catch (e: CancellationException) {
+                                                    // 任务取消，静默退出
+                                                } finally {
+                                                    offlineRefreshTrigger++
+                                                }
                                             }
                                         }) {
                                             Icon(
@@ -773,18 +779,33 @@ fun MainAppScreen(
                 searchQuery = ""
                 confirmedQuery = ""
                 isDebouncingSearch = false
+                offlineRefreshTrigger++
                 val v = ++queryVersion
                 executeQuery(1, null, append = false, v)
             },
             onLogout = {
+                // 1. 取消在途列表请求并递增版本，防止旧响应在退出后回填
+                activeFetchJob?.cancel()
+                activeFetchJob = null
+                queryVersion++
+
+                // 2. 取消所有在途下载任务，阻断旧会话网络与写入
+                OfflineDownloadManager.cancelAllDownloads()
+
+                // 3. 清理登录凭据
                 tokenManager.clear()
+
+                // 4. 清理播放会话（停止 ExoPlayer、清空 MediaItems、重置播放状态）
                 onClearSession()
+
+                // 5. 清空曲库与状态
                 mediaList.clear()
                 currentPage = 1
                 totalSongs = 0
                 searchQuery = ""
                 confirmedQuery = ""
                 isDebouncingSearch = false
+                offlineRefreshTrigger++
             },
             onStopPlaybackForCacheClear = {
                 onClearSession()
