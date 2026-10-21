@@ -7,10 +7,12 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
-import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.maifeipin.webmusic.core.cache.MediaCacheManager
+import com.maifeipin.webmusic.core.network.MediaFileDto
+import com.maifeipin.webmusic.core.network.WebMusicNetwork
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -25,14 +27,16 @@ class Media3PlayerAdapter(
     private val player: ExoPlayer
 
     init {
-        // 配置渲染工厂：优先 MediaCodec 系统硬件解码，保障省电与低发热
+        // 配置渲染工厂：优先 MediaCodec 系统硬件解码
         val renderersFactory = DefaultRenderersFactory(context.applicationContext).apply {
             setEnableAudioTrackPlaybackParams(true)
         }
 
         // 使用支持 HTTP 206 Range 与透明边播边存的 LRU 缓存数据源
-        val dataSourceFactory = com.maifeipin.webmusic.core.cache.MediaCacheManager
-            .createCacheDataSourceFactory(context.applicationContext, okHttpClient)
+        val dataSourceFactory = MediaCacheManager.createCacheDataSourceFactory(
+            context.applicationContext,
+            okHttpClient
+        )
         val mediaSourceFactory = DefaultMediaSourceFactory(context.applicationContext)
             .setDataSourceFactory(dataSourceFactory)
 
@@ -44,9 +48,9 @@ class Media3PlayerAdapter(
 
         player = ExoPlayer.Builder(context.applicationContext, renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
-            .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true) // 完整接管系统音频焦点 (来电/导航避让)
-            .setHandleAudioBecomingNoisy(true) // 耳机拔出防外放
-            .setWakeMode(C.WAKE_MODE_NETWORK) // 防止系统深度休眠断流
+            .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
+            .setHandleAudioBecomingNoisy(true)
+            .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
     }
 
@@ -71,6 +75,69 @@ class Media3PlayerAdapter(
         player.setMediaItem(mediaItem)
         player.prepare()
         player.play()
+    }
+
+    /**
+     * 将播放队列注入底层 ExoPlayer，实现真后台连播与锁屏上一曲/下一曲无缝支持
+     * 并加入隔离缓存键：防止同服务器多账号串用与文件版本脏读
+     */
+    fun setPlaylist(
+        songs: List<MediaFileDto>,
+        startIndex: Int,
+        serverUrl: String,
+        username: String?
+    ) {
+        val mediaItems = songs.map { song ->
+            val streamUrl = WebMusicNetwork.buildStreamUrl(serverUrl, song.id)
+            val metadata = MediaMetadata.Builder()
+                .setTitle(song.title ?: "未知曲目 #${song.id}")
+                .setArtist(song.artist ?: "未知艺术家")
+                .setAlbumTitle(song.album ?: "未知专辑")
+                .build()
+
+            // 隔离维度：服务器地址 + 账号名 + 媒体ID + 文件大小指纹
+            val cacheKey = "webmusic_${serverUrl.hashCode()}_${username ?: "anon"}_${song.id}_${song.sizeBytes ?: 0L}"
+
+            MediaItem.Builder()
+                .setUri(streamUrl)
+                .setMediaId(song.id.toString())
+                .setCustomCacheKey(cacheKey)
+                .setMediaMetadata(metadata)
+                .build()
+        }
+
+        player.setMediaItems(mediaItems, startIndex, /* startPositionMs = */ 0L)
+        player.prepare()
+        player.play()
+    }
+
+    fun setPlaybackMode(mode: PlaybackMode) {
+        when (mode) {
+            PlaybackMode.SEQUENCE -> {
+                player.repeatMode = Player.REPEAT_MODE_ALL
+                player.shuffleModeEnabled = false
+            }
+            PlaybackMode.REPEAT_ONE -> {
+                player.repeatMode = Player.REPEAT_MODE_ONE
+                player.shuffleModeEnabled = false
+            }
+            PlaybackMode.SHUFFLE -> {
+                player.repeatMode = Player.REPEAT_MODE_ALL
+                player.shuffleModeEnabled = true
+            }
+        }
+    }
+
+    fun seekToNext() {
+        if (player.hasNextMediaItem()) {
+            player.seekToNextMediaItem()
+        }
+    }
+
+    fun seekToPrevious() {
+        if (player.hasPreviousMediaItem()) {
+            player.seekToPreviousMediaItem()
+        }
     }
 
     override fun play() {

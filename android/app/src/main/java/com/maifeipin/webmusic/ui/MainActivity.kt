@@ -40,7 +40,6 @@ import com.maifeipin.webmusic.core.lyrics.LyricLine
 import com.maifeipin.webmusic.core.lyrics.LyricsParser
 import com.maifeipin.webmusic.core.network.*
 import com.maifeipin.webmusic.core.player.PlaybackMode
-import com.maifeipin.webmusic.core.player.PlaybackQueueManager
 import com.maifeipin.webmusic.service.PlaybackService
 import com.maifeipin.webmusic.ui.components.FullPlayerSheet
 import com.maifeipin.webmusic.ui.components.MiniPlayerBar
@@ -49,7 +48,9 @@ import com.maifeipin.webmusic.ui.theme.DarkSurface
 import com.maifeipin.webmusic.ui.theme.GreenPrimary
 import com.maifeipin.webmusic.ui.theme.WebMusicTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -58,16 +59,18 @@ class MainActivity : ComponentActivity() {
     private lateinit var tokenManager: TokenManager
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var mediaController: MediaController? = null
-    private val queueManager = PlaybackQueueManager()
 
-    // 播放与进度状态
+    // 播放与进度状态 (由底层 MediaController 状态驱动，彻底解耦)
     private val isPlayingState = mutableStateOf(false)
-    private val currentSongState = mutableStateOf<MediaFileDto?>(null)
+    private val currentMediaItemState = mutableStateOf<MediaItem?>(null)
     private val progressState = mutableStateOf(0f)
     private val durationMsState = mutableStateOf(0L)
     private val currentPositionMsState = mutableStateOf(0L)
     private val playbackModeState = mutableStateOf(PlaybackMode.SEQUENCE)
     private val lyricsState = mutableStateOf<List<LyricLine>>(emptyList())
+
+    // 歌词防竞态异步 Job
+    private var lyricsJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,20 +83,19 @@ class MainActivity : ComponentActivity() {
                 MainAppScreen(
                     tokenManager = tokenManager,
                     isPlaying = isPlayingState.value,
-                    currentSong = currentSongState.value,
+                    currentMediaItem = currentMediaItemState.value,
                     progress = progressState.value,
                     durationMs = durationMsState.value,
                     currentPosMs = currentPositionMsState.value,
                     playbackMode = playbackModeState.value,
                     lyrics = lyricsState.value,
                     onPlayPauseClick = { togglePlayPause() },
-                    onPreviousClick = { playPrevious() },
-                    onNextClick = { playNext() },
-                    onSeekTo = { posMs -> seekTo(posMs) },
+                    onPreviousClick = { mediaController?.seekToPreviousMediaItem() },
+                    onNextClick = { mediaController?.seekToNextMediaItem() },
+                    onSeekTo = { posMs -> mediaController?.seekTo(posMs) },
                     onToggleMode = { togglePlaybackMode() },
                     onPlaySongFromList = { songList, index ->
-                        queueManager.setQueue(songList, index)
-                        playCurrentQueueItem()
+                        playQueue(songList, index)
                     }
                 )
             }
@@ -112,13 +114,21 @@ class MainActivity : ComponentActivity() {
                     isPlayingState.value = isPlaying
                 }
 
-                override fun onPlaybackStateChanged(playbackState: Int) {
-                    if (playbackState == Player.STATE_ENDED) {
-                        // 播放完毕自动连播下一首
-                        playNext()
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    currentMediaItemState.value = mediaItem
+                    val songId = mediaItem?.mediaId?.toIntOrNull()
+                    if (songId != null) {
+                        fetchLyricsSafely(songId)
+                    } else {
+                        lyricsState.value = emptyList()
                     }
                 }
             })
+            // 初始化同步当前状态
+            mediaController?.let { controller ->
+                isPlayingState.value = controller.isPlaying
+                currentMediaItemState.value = controller.currentMediaItem
+            }
         }, MoreExecutors.directExecutor())
     }
 
@@ -128,65 +138,84 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun playNext() {
-        val nextSong = queueManager.next() ?: return
-        currentSongState.value = nextSong
-        playCurrentQueueItem()
-    }
-
-    private fun playPrevious() {
-        val prevSong = queueManager.previous() ?: return
-        currentSongState.value = prevSong
-        playCurrentQueueItem()
-    }
-
     private fun togglePlaybackMode() {
-        playbackModeState.value = queueManager.toggleMode()
+        val controller = mediaController ?: return
+        val nextMode = when (playbackModeState.value) {
+            PlaybackMode.SEQUENCE -> PlaybackMode.REPEAT_ONE
+            PlaybackMode.REPEAT_ONE -> PlaybackMode.SHUFFLE
+            PlaybackMode.SHUFFLE -> PlaybackMode.SEQUENCE
+        }
+        playbackModeState.value = nextMode
+
+        when (nextMode) {
+            PlaybackMode.SEQUENCE -> {
+                controller.repeatMode = Player.REPEAT_MODE_ALL
+                controller.shuffleModeEnabled = false
+            }
+            PlaybackMode.REPEAT_ONE -> {
+                controller.repeatMode = Player.REPEAT_MODE_ONE
+                controller.shuffleModeEnabled = false
+            }
+            PlaybackMode.SHUFFLE -> {
+                controller.repeatMode = Player.REPEAT_MODE_ALL
+                controller.shuffleModeEnabled = true
+            }
+        }
     }
 
-    private fun seekTo(posMs: Long) {
-        mediaController?.seekTo(posMs)
-    }
+    /**
+     * 将整个播放队列直接交付底层 ExoPlayer 统一管理
+     * 自动实现后台连播、锁屏切歌，彻底解耦 Activity 生命周期
+     * 并使用隔离 CacheKey：防止多账号串用与文件更新脏读
+     */
+    private fun playQueue(songList: List<MediaFileDto>, startIndex: Int) {
+        val controller = mediaController ?: return
+        val serverUrl = tokenManager.serverUrl
+        val username = tokenManager.username ?: "guest"
 
-    private fun playCurrentQueueItem() {
-        val song = queueManager.getCurrentItem() ?: return
-        currentSongState.value = song
+        val mediaItems = songList.map { song ->
+            val streamUrl = WebMusicNetwork.buildStreamUrl(serverUrl, song.id)
+            val metadata = MediaMetadata.Builder()
+                .setTitle(song.title ?: "未知曲目 #${song.id}")
+                .setArtist(song.artist ?: "未知艺术家")
+                .setAlbumTitle(song.album ?: "未知专辑")
+                .build()
 
-        val streamUrl = WebMusicNetwork.buildStreamUrl(tokenManager.serverUrl, song.id)
-        val title = song.title ?: "未知曲目 #${song.id}"
-        val artist = song.artist ?: "未知艺术家"
-        val album = song.album ?: "未知专辑"
+            // 专属隔离缓存键：serverUrl哈希 + 用户名 + 媒体ID + 文件大小指纹
+            val cacheKey = "webmusic_${serverUrl.hashCode()}_${username}_${song.id}_${song.sizeBytes ?: 0L}"
 
-        val metadata = MediaMetadata.Builder()
-            .setTitle(title)
-            .setArtist(artist)
-            .setAlbumTitle(album)
-            .build()
-
-        val mediaItem = MediaItem.Builder()
-            .setUri(streamUrl)
-            .setMediaId(song.id.toString())
-            .setMediaMetadata(metadata)
-            .build()
-
-        mediaController?.run {
-            setMediaItem(mediaItem)
-            prepare()
-            play()
+            MediaItem.Builder()
+                .setUri(streamUrl)
+                .setMediaId(song.id.toString())
+                .setCustomCacheKey(cacheKey)
+                .setMediaMetadata(metadata)
+                .build()
         }
 
-        // 异步获取歌词
-        fetchLyrics(song.id)
+        controller.setMediaItems(mediaItems, startIndex, 0L)
+        controller.prepare()
+        controller.play()
     }
 
-    private fun fetchLyrics(mediaId: Int) {
-        lifecycleScope.launch {
+    /**
+     * 安全获取歌词：取消旧请求，并严格校验响应 ID 是否匹配当前正在播放的曲目
+     */
+    private fun fetchLyricsSafely(targetMediaId: Int) {
+        lyricsJob?.cancel()
+        lyricsState.value = emptyList() // 切歌先清空，防止旧歌词闪烁
+
+        lyricsJob = lifecycleScope.launch {
             try {
                 val api = WebMusicNetwork.createApi(tokenManager)
-                val resp = withContext(Dispatchers.IO) { api.getLyrics(mediaId) }
-                lyricsState.value = LyricsParser.parse(resp.content)
+                val resp = withContext(Dispatchers.IO) { api.getLyrics(targetMediaId) }
+                // 校验：确保当前歌曲依然是请求的目标歌曲，防止快速切歌乱序覆盖
+                if (isActive && currentMediaItemState.value?.mediaId?.toIntOrNull() == targetMediaId) {
+                    lyricsState.value = LyricsParser.parse(resp.content)
+                }
             } catch (e: Exception) {
-                lyricsState.value = emptyList()
+                if (isActive) {
+                    lyricsState.value = emptyList()
+                }
             }
         }
     }
@@ -219,7 +248,7 @@ class MainActivity : ComponentActivity() {
 fun MainAppScreen(
     tokenManager: TokenManager,
     isPlaying: Boolean,
-    currentSong: MediaFileDto?,
+    currentMediaItem: MediaItem?,
     progress: Float,
     durationMs: Long,
     currentPosMs: Long,
@@ -241,34 +270,58 @@ fun MainAppScreen(
     var showFullPlayer by remember { mutableStateOf(false) }
     var showLoginDialog by remember { mutableStateOf(tokenManager.token == null) }
 
+    // 防抖与网络取消 Job
+    var queryJob by remember { mutableStateOf<Job?>(null) }
+
     fun loadMedia(page: Int, search: String? = null, append: Boolean = false) {
         if (tokenManager.token == null) return
-        scope.launch {
+        queryJob?.cancel()
+        queryJob = scope.launch {
             isLoading = true
             try {
                 val api = WebMusicNetwork.createApi(tokenManager)
                 val res = withContext(Dispatchers.IO) {
                     api.getMediaFiles(page = page, pageSize = 40, search = search?.ifEmpty { null })
                 }
-                totalSongs = res.total
-                if (!append) {
-                    mediaList.clear()
+                if (isActive) {
+                    totalSongs = res.total
+                    if (!append) {
+                        mediaList.clear()
+                    }
+                    mediaList.addAll(res.files)
+                    currentPage = page
                 }
-                mediaList.addAll(res.files)
-                currentPage = page
             } catch (e: Exception) {
-                // 忽略或展示错误
+                // 忽略或错误提示
             } finally {
-                isLoading = false
+                if (isActive) {
+                    isLoading = false
+                }
             }
         }
     }
 
-    // 初始化拉取首批曲目
+    // 初始化拉取
     LaunchedEffect(tokenManager.token) {
         if (tokenManager.token != null && mediaList.isEmpty()) {
             loadMedia(1)
         }
+    }
+
+    // 当前曲目转换为临时 DTO 供给 UI 渲染
+    val currentSongDto = remember(currentMediaItem) {
+        if (currentMediaItem == null) null
+        else MediaFileDto(
+            id = currentMediaItem.mediaId.toIntOrNull() ?: 0,
+            filePath = null,
+            title = currentMediaItem.mediaMetadata.title?.toString(),
+            artist = currentMediaItem.mediaMetadata.artist?.toString(),
+            album = currentMediaItem.mediaMetadata.albumTitle?.toString(),
+            genre = null,
+            year = null,
+            duration = null,
+            sizeBytes = null
+        )
     }
 
     Scaffold(
@@ -290,9 +343,9 @@ fun MainAppScreen(
             )
         },
         bottomBar = {
-            if (currentSong != null) {
+            if (currentSongDto != null) {
                 MiniPlayerBar(
-                    currentSong = currentSong,
+                    currentSong = currentSongDto,
                     isPlaying = isPlaying,
                     progress = progress,
                     onPlayPauseClick = onPlayPauseClick,
@@ -308,12 +361,18 @@ fun MainAppScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // 搜索框
+            // 带防抖的搜索框 (取消旧请求 + 400ms 延迟)
             OutlinedTextField(
                 value = searchQuery,
-                onValueChange = {
-                    searchQuery = it
-                    loadMedia(1, it, append = false)
+                onValueChange = { newQuery ->
+                    searchQuery = newQuery
+                    queryJob?.cancel()
+                    queryJob = scope.launch {
+                        delay(400) // 400ms 防抖
+                        if (isActive) {
+                            loadMedia(1, newQuery, append = false)
+                        }
+                    }
                 },
                 placeholder = { Text("搜索全库 $totalSongs 首音乐、歌手、专辑...") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = "搜索") },
@@ -343,7 +402,6 @@ fun MainAppScreen(
             // 歌曲列表与分页
             val listState = rememberLazyListState()
 
-            // 监听滚动到底部自动加载下一页
             val shouldLoadMore = remember {
                 derivedStateOf {
                     val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
@@ -364,7 +422,7 @@ fun MainAppScreen(
                     contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
                     itemsIndexed(mediaList) { index, song ->
-                        val isCurrent = currentSong?.id == song.id
+                        val isCurrent = currentSongDto?.id == song.id
                         ListItem(
                             headlineContent = {
                                 Text(
@@ -422,10 +480,10 @@ fun MainAppScreen(
         }
     }
 
-    // 全屏播放器模态底栏
-    if (showFullPlayer && currentSong != null) {
+    // 全屏沉浸播放器
+    if (showFullPlayer && currentSongDto != null) {
         FullPlayerSheet(
-            currentSong = currentSong,
+            currentSong = currentSongDto,
             isPlaying = isPlaying,
             progress = progress,
             durationMs = durationMs,
@@ -441,7 +499,7 @@ fun MainAppScreen(
         )
     }
 
-    // 登录与设置对话框 (支持密码掩码)
+    // 登录与设置对话框 (密码掩码 + 显隐切换)
     if (showLoginDialog) {
         LoginSettingDialog(
             tokenManager = tokenManager,
