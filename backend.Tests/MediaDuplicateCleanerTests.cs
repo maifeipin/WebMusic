@@ -388,6 +388,151 @@ public class MediaDuplicateCleanerTests : IDisposable
             MediaDuplicateCleaner.ApplyAsync(db, reportPath, sha, report.RemoveCount, Path.Combine(_tempDir, "rb.json")));
         Assert.Contains("report-only", ex.Message);
     }
+
+    // ---- Stage 5: low-quality-fuzzy ----
+
+    [Fact]
+    public async Task LowQualityFuzzy_DropsOnlySubThresholdLosers_PreservesHighScore()
+    {
+        var db = CreateInMemoryDbContext("dedupe_lqf1_" + Guid.NewGuid().ToString("N"));
+        // Winner: high quality, full metadata — should stay.
+        var winner = NewMedia(1, "2002年的第一场雪", "刀郎", "2002年的第一场雪", 255, 8_000_000, "h_win");
+        winner.Genre = "Blues";
+        winner.Year = 2002;
+        // Loser #1: same title, same duration, NO artist, NO album, NO genre, NO year
+        // → all metadata bonuses dropped → score stays low (< 60).
+        var spam = NewMedia(2, "2002年的第一场雪", "Unknown Artist", "Unknown Album", 255, 1_500_000, "h_spam");
+        spam.Genre = "Unknown Genre";
+        spam.Year = 0;
+        // Loser #2: spam genre + missing everything — even lower score.
+        var spam2 = NewMedia(3, "2002年的第一场雪", "Unknown Artist", "Unknown Album", 256, 1_500_000, "h_spam2");
+        spam2.Genre = "[wusunk.com分享]";
+        spam2.Year = 0;
+
+        db.MediaFiles.AddRange(winner, spam, spam2);
+        await db.SaveChangesAsync();
+
+        var report = await MediaDuplicateCleaner.RunDryRunAsync(db, "low-quality-fuzzy");
+
+        Assert.Equal(1, report.TotalGroups);
+        Assert.Equal(2, report.RemoveCount);            // both low-score copies removed
+        Assert.Equal(winner.Id, report.Groups[0].KeptId); // winner kept
+        var removedIds = report.Groups[0].Members.Where(m => m.Reason.StartsWith("REMOVE")).Select(m => m.MediaFileId).ToList();
+        Assert.Contains(spam.Id, removedIds);
+        Assert.Contains(spam2.Id, removedIds);
+        Assert.DoesNotContain(winner.Id, removedIds);
+    }
+
+    [Fact]
+    public async Task LowQualityFuzzy_ReferencedSubThresholdCopy_IsProtected()
+    {
+        var db = CreateInMemoryDbContext("dedupe_lqf2_" + Guid.NewGuid().ToString("N"));
+        var winner = NewMedia(1, "Song", "A", "Album", 200, 8_000_000, "h_win");
+        winner.Genre = "Blues";
+        winner.Year = 2020;
+        var orphan = NewMedia(2, "Song", "Unknown Artist", "Unknown Album", 200, 1_500_000, "h_o");
+        orphan.Genre = "Unknown Genre";
+        orphan.Year = 0;
+        db.MediaFiles.AddRange(winner, orphan);
+        await db.SaveChangesAsync();
+
+        // Mark the sub-threshold loser as referenced AFTER it's been added.
+        db.Favorites.Add(new Favorite { UserId = 1, MediaFileId = orphan.Id });
+        await db.SaveChangesAsync();
+
+        var report = await MediaDuplicateCleaner.RunDryRunAsync(db, "low-quality-fuzzy");
+        // Both are protected (winner: via score; orphan: via favorite). Cluster is
+        // suppressed — group NOT emitted because every member is protected.
+        Assert.Equal(0, report.TotalGroups);
+        Assert.Equal(0, report.RemoveCount);
+    }
+
+    [Fact]
+    public async Task LowQualityFuzzy_DoesNotClusterAcrossDifferentTitles()
+    {
+        var db = CreateInMemoryDbContext("dedupe_lqf3_" + Guid.NewGuid().ToString("N"));
+        // Same duration, different titles → must not cluster together.
+        var a = NewMedia(1, "Song A", "A", "Album", 200, 1_500_000, "h1");
+        var b = NewMedia(2, "Song B", "B", "Album", 200, 1_500_000, "h2");
+        a.Genre = "Unknown Genre"; a.Year = 0;
+        b.Genre = "Unknown Genre"; b.Year = 0;
+        db.MediaFiles.AddRange(a, b);
+        await db.SaveChangesAsync();
+
+        var report = await MediaDuplicateCleaner.RunDryRunAsync(db, "low-quality-fuzzy");
+        Assert.Equal(0, report.TotalGroups); // different titles → 0 groups
+    }
+
+    [Fact]
+    public async Task LowQualityFuzzy_DurationBucketIsRespected()
+    {
+        var db = CreateInMemoryDbContext("dedupe_lqf4_" + Guid.NewGuid().ToString("N"));
+        var winner = NewMedia(1, "Song", "A", "Album", 200, 8_000_000, "h1");
+        winner.Genre = "Pop"; winner.Year = 2020;
+        // 200s vs 210s → diff 10s > 5s bucket → not in same cluster.
+        var far = NewMedia(2, "Song", "Unknown Artist", "Unknown Album", 210, 1_500_000, "h2");
+        far.Genre = "Unknown Genre"; far.Year = 0;
+        db.MediaFiles.AddRange(winner, far);
+        await db.SaveChangesAsync();
+
+        var report = await MediaDuplicateCleaner.RunDryRunAsync(db, "low-quality-fuzzy");
+        Assert.Equal(0, report.TotalGroups);
+    }
+
+    [Fact]
+    public async Task LowQualityFuzzy_Apply_SoftDeletesAndEmitsRollbackManifest()
+    {
+        var db = CreateInMemoryDbContext("dedupe_lqf_apply_" + Guid.NewGuid().ToString("N"));
+        var winner = NewMedia(1, "2002年的第一场雪", "刀郎", "2002年的第一场雪", 255, 8_000_000, "h_win");
+        winner.Genre = "Blues"; winner.Year = 2002;
+        var spam = NewMedia(2, "2002年的第一场雪", "Unknown Artist", "Unknown Album", 255, 1_500_000, "h_spam");
+        spam.Genre = "Unknown Genre"; spam.Year = 0;
+        db.MediaFiles.AddRange(winner, spam);
+        await db.SaveChangesAsync();
+
+        var report = await MediaDuplicateCleaner.RunDryRunAsync(db, "low-quality-fuzzy");
+        Assert.Equal(1, report.RemoveCount);
+        var reportPath = Path.Combine(_tempDir, "dedupe_lqf_apply.json");
+        var sha = await MediaDuplicateCleaner.SaveReportWithSha256Async(report, reportPath);
+        var rbPath = Path.Combine(_tempDir, "dedupe_lqf_apply_rb.json");
+
+        // Pass a deleter that MUST NOT be called for this stage.
+        var called = false;
+        Func<MediaFile, bool> physicalDeleter = _ => { called = true; return true; };
+
+        var result = await MediaDuplicateCleaner.ApplyAsync(
+            db, reportPath, sha, 1, rbPath, physicalDeleter, _ => true);
+
+        Assert.Equal(1, result.RemovedCount);
+        Assert.Equal(0, result.PhysicalFilesDeleted); // soft-delete only
+        Assert.False(called);
+        Assert.Null(await db.MediaFiles.FindAsync(spam.Id));
+        Assert.NotNull(await db.MediaFiles.FindAsync(winner.Id));
+        // Rollback manifest must point at the winner so a rollback can re-insert.
+        var manifestJson = await File.ReadAllTextAsync(rbPath);
+        Assert.Contains($"\"KeptId\": {winner.Id}", manifestJson);
+    }
+
+    [Fact]
+    public async Task LowQualityFuzzy_Apply_BadSha_Aborts()
+    {
+        var db = CreateInMemoryDbContext("dedupe_lqf_sha_" + Guid.NewGuid().ToString("N"));
+        var winner = NewMedia(1, "Song", "A", "Album", 200, 8_000_000, "h1");
+        winner.Genre = "Pop"; winner.Year = 2020;
+        var spam = NewMedia(2, "Song", "Unknown Artist", "Unknown Album", 200, 1_500_000, "h2");
+        spam.Genre = "Unknown Genre"; spam.Year = 0;
+        db.MediaFiles.AddRange(winner, spam);
+        await db.SaveChangesAsync();
+
+        var report = await MediaDuplicateCleaner.RunDryRunAsync(db, "low-quality-fuzzy");
+        var reportPath = Path.Combine(_tempDir, "dedupe_lqf_sha.json");
+        await MediaDuplicateCleaner.SaveReportWithSha256Async(report, reportPath);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            MediaDuplicateCleaner.ApplyAsync(db, reportPath, "deadbeef", 1, Path.Combine(_tempDir, "rb.json")));
+        Assert.Contains("SHA-256 verification failed", ex.Message);
+        Assert.NotNull(await db.MediaFiles.FindAsync(spam.Id)); // nothing removed
+    }
 }
 
 internal static class DedupeReportTestExtensions

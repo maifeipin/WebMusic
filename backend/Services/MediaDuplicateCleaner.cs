@@ -53,17 +53,22 @@ public record DedupeApplyResult(
 );
 
 /// <summary>
-/// Four-stage duplicate cleaner.
+/// Five-stage duplicate cleaner.
 /// Stage 1 (byte-hash): identical FileHash — byte-identical files. Apply performs a
 /// PHYSICAL deletion (database row + physical file via SMB) — no soft delete.
 /// Stage 2 (exact-metadata): identical Title+Artist+Album with duration cluster <= 3s.
 /// Stage 3 (mbid): identical MusicBrainz RecordingId, conservative album constraint.
 /// Stage 4 (fuzzy): normalized Title+Artist with 5s duration bucket — report only.
+/// Stage 5 (low-quality-fuzzy): normalized Title with 5s duration bucket, drops only
+/// sub-threshold KeepScore losers (default < 60). Designed to catch metadata-less
+/// duplicates that the LLM semantic pipeline intentionally leaves untouched
+/// (e.g. Artist=Unknown Artist / Album=Unknown Album). Soft-delete only.
 /// </summary>
 public static class MediaDuplicateCleaner
 {
     private const double ExactMetadataDurationToleranceSeconds = 3.0;
     private const double FuzzyDurationBucketSeconds = 5.0;
+    public const int LowQualityFuzzyScoreThreshold = 60;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -136,7 +141,8 @@ public static class MediaDuplicateCleaner
                 "exact-metadata" => ClusterByExactMetadata(context),
                 "mbid" => await ClusterByMbidAsync(db, context, cancellationToken),
                 "fuzzy" => ClusterByFuzzy(context),
-                _ => throw new ArgumentException($"Unknown stage '{stage}'. Use byte-hash | exact-metadata | mbid | fuzzy.")
+                "low-quality-fuzzy" => ClusterByLowQualityFuzzy(context),
+                _ => throw new ArgumentException($"Unknown stage '{stage}'. Use byte-hash | exact-metadata | mbid | fuzzy | low-quality-fuzzy.")
             };
 
             var groups = new List<DedupeGroupItem>();
@@ -598,15 +604,56 @@ public static class MediaDuplicateCleaner
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Stage 5 (low-quality-fuzzy): group by (normalized Title, 5-second duration
+    /// bucket), then within each cluster pick the highest-KeepScore winner and
+    /// flag only members strictly below <see cref="LowQualityFuzzyScoreThreshold"/>
+    /// as REMOVE. Referenced members are protected.
+    ///
+    /// Deliberately ignores Artist/Album so it can rescue duplicates that the
+    /// LLM semantic pipeline left alone (Unknown Artist / Unknown Album spam
+    /// copies of a clean studio master).
+    /// </summary>
+    internal static List<List<MediaFileScored>> ClusterByLowQualityFuzzy(List<MediaFileScored> files)
+    {
+        var clusters = new List<List<MediaFileScored>>();
+        foreach (var group in files
+                     .Where(f => !string.IsNullOrEmpty(NormalizeFuzzy(f.Title)))
+                     .GroupBy(f => new
+                     {
+                         T = NormalizeFuzzy(f.Title),
+                         Bucket = (int)Math.Floor(f.Duration.TotalSeconds / FuzzyDurationBucketSeconds)
+                     })
+                     .Where(g => g.Count() > 1))
+        {
+            var members = group.ToList();
+            // Winner = highest KeepScore (or smallest Id as tie-breaker).
+            var winner = members
+                .OrderByDescending(m => m.KeepScore)
+                .ThenBy(m => m.Id)
+                .First();
+            // Losers: strictly sub-threshold and NOT protected.
+            var losers = members
+                .Where(m => m.Id != winner.Id && !m.IsProtected && m.KeepScore < LowQualityFuzzyScoreThreshold)
+                .ToList();
+            if (losers.Count == 0) continue;
+            // Cluster contains winner + its eligible losers (so the report shows the
+            // full group; the existing winner/loser split already filters by reason).
+            clusters.Add(members);
+        }
+        return clusters;
+    }
+
     private static string ClusterKey(string stage, List<MediaFileScored> cluster) => stage.ToLowerInvariant() switch
     {
         "byte-hash" => cluster[0].FileHash,
         "exact-metadata" => $"{cluster[0].Title} | {cluster[0].Artist} | {cluster[0].Album}",
         "mbid" => cluster[0].Title,
+        "low-quality-fuzzy" => $"{NormalizeFuzzy(cluster[0].Title)} | bucket={(int)Math.Floor(cluster[0].Duration.TotalSeconds / FuzzyDurationBucketSeconds)}",
         _ => $"{NormalizeFuzzy(cluster[0].Title)} | {NormalizeFuzzy(cluster[0].Artist)}"
     };
 
-    private sealed record MediaFileScored(
+    internal sealed record MediaFileScored(
         int Id,
         string FilePath,
         string Title,
