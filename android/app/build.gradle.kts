@@ -89,6 +89,7 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.coil.compose)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

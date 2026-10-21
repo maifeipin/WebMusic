@@ -30,8 +30,9 @@ class Media3PlayerAdapter(
             setEnableAudioTrackPlaybackParams(true)
         }
 
-        // 使用支持 HTTP 206 Partial Content (Range) 的 OkHttp 数据源
-        val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
+        // 使用支持 HTTP 206 Range 与透明边播边存的 LRU 缓存数据源
+        val dataSourceFactory = com.maifeipin.webmusic.core.cache.MediaCacheManager
+            .createCacheDataSourceFactory(context.applicationContext, okHttpClient)
         val mediaSourceFactory = DefaultMediaSourceFactory(context.applicationContext)
             .setDataSourceFactory(dataSourceFactory)
 

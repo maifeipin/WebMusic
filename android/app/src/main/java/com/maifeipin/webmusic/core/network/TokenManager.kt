@@ -8,7 +8,7 @@ class TokenManager(context: Context) {
         context.getSharedPreferences("webmusic_auth_prefs", Context.MODE_PRIVATE)
 
     var serverUrl: String
-        get() = prefs.getString("server_url", "https://mail.maifeipin.com") ?: "https://mail.maifeipin.com"
+        get() = prefs.getString("server_url", "https://music.maifeipin.com") ?: "https://music.maifeipin.com"
         set(value) {
             val normalized = value.trimEnd('/')
             val current = prefs.getString("server_url", null)

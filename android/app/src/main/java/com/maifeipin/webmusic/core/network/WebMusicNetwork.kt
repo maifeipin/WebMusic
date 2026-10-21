@@ -44,6 +44,11 @@ interface WebMusicApi {
         @Query("pageSize") pageSize: Int = 50,
         @Query("search") search: String? = null
     ): PagedResult<MediaFileDto>
+
+    @GET("api/lyrics/{mediaId}")
+    suspend fun getLyrics(
+        @retrofit2.http.Path("mediaId") mediaId: Int
+    ): com.maifeipin.webmusic.core.lyrics.LyricsResponse
 }
 
 object WebMusicNetwork {
@@ -94,5 +99,19 @@ object WebMusicNetwork {
     fun buildStreamUrl(serverUrl: String, mediaId: Int): String {
         val base = serverUrl.trimEnd('/')
         return "$base/api/media/stream/$mediaId"
+    }
+
+    /**
+     * 生成专辑封面图片完整 URL
+     */
+    fun buildCoverUrl(serverUrl: String, coverArt: String?): String? {
+        if (coverArt.isNullOrEmpty()) return null
+        val base = serverUrl.trimEnd('/')
+        return if (coverArt.startsWith("http://") || coverArt.startsWith("https://")) {
+            coverArt
+        } else {
+            val clean = coverArt.trimStart('/')
+            "$base/$clean"
+        }
     }
 }
