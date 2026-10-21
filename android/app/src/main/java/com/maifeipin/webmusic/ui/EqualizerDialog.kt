@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.maifeipin.webmusic.core.audio.EqualizerManager
 import com.maifeipin.webmusic.core.audio.EqualizerState
+import com.maifeipin.webmusic.ui.theme.GreenPrimary
 
 @Composable
 fun EqualizerDialog(

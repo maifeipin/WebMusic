@@ -3,8 +3,8 @@ package com.maifeipin.webmusic.core.storage
 import android.content.Context
 import android.os.Environment
 import android.util.Log
-import com.maifeipin.webmusic.core.auth.TokenManager
 import com.maifeipin.webmusic.core.network.MediaFileDto
+import com.maifeipin.webmusic.core.network.TokenManager
 import com.maifeipin.webmusic.core.network.WebMusicNetwork
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -44,7 +44,7 @@ object OfflineDownloadManager {
 
             // 1. 流式下载音频主体并计算写入进度
             val streamUrl = "$serverUrl/api/media/stream/${song.id}"
-            val client = WebMusicNetwork.getUnsafeOkHttpClient()
+            val client = WebMusicNetwork.createClient(tokenManager)
             val request = Request.Builder()
                 .url(streamUrl)
                 .addHeader("Authorization", "Bearer $token")
@@ -55,8 +55,12 @@ object OfflineDownloadManager {
                 return@withContext Result.failure(IllegalStateException("下载失败: HTTP ${response.code}"))
             }
 
-            val body = response.body ?: return@withContext Result.failure(IllegalStateException("空响应体"))
-            val totalBytes = body.contentLength().let { if (it > 0) it else song.sizeBytes ?: 1L }
+            val body = response.body
+            if (body == null) {
+                return@withContext Result.failure(IllegalStateException("空响应体"))
+            }
+            val cl = body.contentLength()
+            val totalBytes = if (cl > 0) cl else (song.sizeBytes ?: 1L)
 
             body.byteStream().use { input ->
                 FileOutputStream(tempFile).use { output ->
@@ -101,7 +105,7 @@ object OfflineDownloadManager {
                 sizeBytes = targetFile.length(),
                 localFilePath = targetFile.absolutePath,
                 lyrics = lyricsContent,
-                coverUrl = song.filePath?.let { WebMusicNetwork.getCoverUrl(serverUrl, it) },
+                coverUrl = WebMusicNetwork.buildCoverUrl(serverUrl, song.filePath),
                 downloadedAt = System.currentTimeMillis()
             )
 
