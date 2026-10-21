@@ -268,13 +268,16 @@ WebMusic 现已具备较为完善的 Web 桌面端与基础移动端 PWA 体验�
 ### 阶段 1: 核心消费端 MVP 交付 (开发中 🚀)
 - [x] **流式 LRU 缓存与强制刷新**：
   - 接入 ExoPlayer `SimpleCache` (2GB 上限) + `CacheDataSource`，仍在本地缓存中的分片可离线复用免流；
-  - 客户端设置面板提供**一键清空本地流式缓存**功能，应对服务端同路径文件被替换后的脏缓存场景。
-- [x] **多账号与版本缓存隔离**：`CustomCacheKey` 整合 ServerUrl 完整 256 位 SHA-256 散列 + Username + MediaId + FileHash (服务端新增投影)，杜绝截断风险与多账号脏读。
+  - **强制刷新与脏缓存防护**：由于后端 `ScannerService` 对已有路径跳过且采用首次采样哈希 (`ComputePartialHash`)，同路径文件替换后数据库哈希不会自动刷新。为此客户端在设置面板提供**一键清空本地流式缓存**入口，允许用户手动清除脏缓存分片。
+- [x] **多账号与版本缓存隔离**：
+  - `CustomCacheKey` 采用 ServerUrl 完整 256 位 SHA-256 散列（消除 64 位截断碰撞风险，移除异常硬编码降级）+ Username + MediaId + 版本标识；
+  - 缓存键版本层级：优先支持服务端独立 `ContentVersion`（预留字段），未提供时降级至 `FileHash`，最后降级至 `SizeBytes`；
+  - 服务端后续演进建议：在 `MediaFile` 引入基于文件 mtime/写入事件的独立 `ContentVersion`，并在重新扫描或服务端重写时主动递增。
 - [x] **歌词防竞态引擎**：接入 `/api/lyrics/{mediaId}`，支持平滑行级逐行滚动与高亮渲染 (`LyricsView`)，带请求取消与当前曲目 ID 校验防乱序。
 - [x] **原生播放队列与生命周期解耦**：
   - 队列交付底层 ExoPlayer 内核驱动，解耦 Activity 生命周期，支持系统锁屏切歌与自动连播；
   - 底层默认显式应用 `REPEAT_MODE_ALL` 列表循环，消除首次播放末尾停止问题；
-  - 销毁重建恢复（通过“不保留活动”或进程调度测试）：自动从底层 Session 恢复当前曲目歌词与循环模式。
+  - **销毁重建恢复（真机验收规范）**：因 Manifest 已声明 `orientation|screenSize` 接管屏幕旋转，旋转与切后台均不会触发 Activity 销毁。真实回归测试须在系统“开发者选项”中开启**“不保留活动 (Don't keep activities)”**或通过进程调度触发重建，验证返回 App 时能从底层 Session 准确恢复当前曲目歌词与循环模式。
 - [x] **防抢占搜索与分页版本控制**：
   - 严格分离输入防抖态与已确认查询，防抖期间冻结底部分页触发；
   - 引入递增 `queryVersion` 校验，彻底阻断慢网络响应与旧关键词的分页乱序混杂；

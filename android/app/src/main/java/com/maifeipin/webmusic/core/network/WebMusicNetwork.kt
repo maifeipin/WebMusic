@@ -25,7 +25,8 @@ data class MediaFileDto(
     val year: Int?,
     val duration: String?,
     val sizeBytes: Long?,
-    val fileHash: String?
+    val fileHash: String?,
+    val contentVersion: String? = null
 )
 
 data class PagedResult<T>(
@@ -118,8 +119,8 @@ object WebMusicNetwork {
 
     /**
      * 生成安全强隔离缓存键
-     * 结合：ServerUrl 完整 256 位 SHA-256 散列 + 用户身份 + 媒体ID + 服务端内容哈希/版本
-     * 彻底消除截断碰撞风险，杜绝异常时固定字符串降级
+     * 结合：ServerUrl 完整 256 位 SHA-256 散列（极低碰撞概率，移除异常降级硬编码）+ 用户身份 + 媒体ID + 内容版本/哈希/大小
+     * 优先采用服务端独立 ContentVersion；若未提供则降级至 FileHash，最后降级至 SizeBytes
      */
     fun generateSafeCacheKey(serverUrl: String, username: String?, song: MediaFileDto): String {
         val md = java.security.MessageDigest.getInstance("SHA-256")
@@ -127,7 +128,9 @@ object WebMusicNetwork {
         val serverHash = bytes.joinToString("") { "%02x".format(it) }
 
         val safeUser = username?.ifEmpty { "anon" } ?: "anon"
-        val versionTag = song.fileHash?.ifEmpty { null } ?: "sz_${song.sizeBytes ?: 0L}"
+        val versionTag = song.contentVersion?.ifEmpty { null }
+            ?: song.fileHash?.ifEmpty { null }
+            ?: "sz_${song.sizeBytes ?: 0L}"
         return "wm_${serverHash}_${safeUser}_${song.id}_${versionTag}"
     }
 }
