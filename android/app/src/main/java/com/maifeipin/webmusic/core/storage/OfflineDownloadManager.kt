@@ -91,8 +91,7 @@ object OfflineDownloadManager {
             activeCalls[taskKey] = call
             if (currentJob != null) {
                 activeJobs[taskKey] = currentJob
-                // 使用 onCancelling = true：协程进入取消中状态（如 Activity 销毁）时立即触发 call.cancel()，中断阻塞 socket
-                cancellationHandle = currentJob.invokeOnCompletion(onCancelling = true) { cause ->
+                cancellationHandle = currentJob.invokeOnCompletion { cause ->
                     if (cause is CancellationException) {
                         call.cancel()
                     }
