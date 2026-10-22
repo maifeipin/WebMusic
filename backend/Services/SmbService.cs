@@ -591,7 +591,13 @@ public class SmbFileStream : Stream
         AccessMask am = (access == FileAccess.Read) ? AccessMask.GENERIC_READ : AccessMask.GENERIC_WRITE;
         CreateDisposition cd = (access == FileAccess.Read) ? CreateDisposition.FILE_OPEN : CreateDisposition.FILE_OVERWRITE_IF;
 
-        var status = _store.CreateFile(out _handle, out _, path, am, SMBLibrary.FileAttributes.Normal, ShareAccess.None, cd, CreateOptions.FILE_NON_DIRECTORY_FILE, null);
+        // 读打开必须允许其他读者共享：播放器的 Range 请求与「播放即缓存」的下载请求是两条独立的
+        // HTTP 请求，各自 new 一个 SmbFileStream。ShareAccess.None 是严格独占，第二个句柄会拿到
+        // STATUS_SHARING_VIOLATION，被 OpenFile 吞成 null 后线上表现为 404（2026-10-23 线上日志实测）。
+        // 写打开仍保持独占，避免读到写了一半的文件。
+        var shareAccess = access == FileAccess.Read ? ShareAccess.Read : ShareAccess.None;
+
+        var status = _store.CreateFile(out _handle, out _, path, am, SMBLibrary.FileAttributes.Normal, shareAccess, cd, CreateOptions.FILE_NON_DIRECTORY_FILE, null);
         
         if (status != NTStatus.STATUS_SUCCESS) throw new FileNotFoundException($"SMB CreateFile failed ({access}): " + status);
         
