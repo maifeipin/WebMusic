@@ -21,7 +21,14 @@ data class DownloadedSong(
     val lyrics: String?,
     val coverUrl: String?,
     val downloadedAt: Long
-)
+) {
+    fun isVideo(): Boolean {
+        val path = localFilePath.lowercase()
+        return path.endsWith(".mp4") || path.endsWith(".mkv") || path.endsWith(".webm") ||
+               path.endsWith(".avi") || path.endsWith(".mov") || path.endsWith(".flv") ||
+               path.endsWith(".ts") || path.endsWith(".m4v")
+    }
+}
 
 class LocalSongDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_NAME, null, DATABASE_VERSION) {
 

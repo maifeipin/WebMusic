@@ -50,6 +50,7 @@ import com.maifeipin.webmusic.ui.components.LyricsManagerSheet
 import com.maifeipin.webmusic.ui.components.MiniPlayerBar
 import com.maifeipin.webmusic.ui.components.PlaylistDetailView
 import com.maifeipin.webmusic.ui.components.SongDownloadAction
+import com.maifeipin.webmusic.ui.components.VideoPlayerDialog
 import java.util.concurrent.CancellationException
 import com.maifeipin.webmusic.ui.theme.DarkBackground
 import com.maifeipin.webmusic.ui.theme.DarkSurface
@@ -266,10 +267,18 @@ class MainActivity : ComponentActivity() {
     private fun playQueue(songList: List<MediaFileDto>, startIndex: Int) {
         val controller = mediaController ?: return
         if (songList.isEmpty()) return
-        PlaybackTimeline.onClick(songList.size)
+        val currentSong = songList.getOrNull(startIndex)
+        val audioList = songList.filter { !it.isVideo() }
+        if (audioList.isEmpty()) return
+        val safeStartIndex = if (currentSong != null) {
+            val idx = audioList.indexOfFirst { it.id == currentSong.id }
+            if (idx >= 0) idx else startIndex.coerceIn(0, audioList.lastIndex)
+        } else {
+            startIndex.coerceIn(0, audioList.lastIndex)
+        }
+        PlaybackTimeline.onClick(audioList.size)
         val serverUrl = tokenManager.serverUrl
         val username = tokenManager.username
-        val safeStartIndex = startIndex.coerceIn(0, songList.lastIndex)
 
         // 快速连续点不同歌单时，只保留最后一次队列注入
         playQueueJob?.cancel()
@@ -279,7 +288,7 @@ class MainActivity : ComponentActivity() {
                     LocalSongDatabase.getInstance(this@MainActivity).getLocalPaths(
                         LocalSongDatabase.computeServerHash(serverUrl),
                         LocalSongDatabase.computeUserHash(username),
-                        songList.map { it.id }
+                        audioList.map { it.id }
                     )
                 }.getOrDefault(emptyMap())
             }
@@ -292,7 +301,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            val mediaItems = songList.map { song ->
+            val mediaItems = audioList.map { song ->
                 buildQueueMediaItem(serverUrl, username, song, verifiedLocalPaths[song.id])
             }
             PlaybackTimeline.onQueueBuilt()
@@ -484,6 +493,21 @@ fun MainAppScreen(
     var isDebouncingSearch by remember { mutableStateOf(false) }
     var queryVersion by remember { mutableLongStateOf(0L) }
 
+    // MV 视频列表与状态
+    val mvList = remember { mutableStateListOf<MediaFileDto>() }
+    var currentMvPage by remember { mutableIntStateOf(1) }
+    var totalMvs by remember { mutableIntStateOf(0) }
+    var isMvLoading by remember { mutableStateOf(false) }
+    var mvSearchQuery by remember { mutableStateOf("") }
+    var confirmedMvQuery by remember { mutableStateOf("") }
+    var isDebouncingMvSearch by remember { mutableStateOf(false) }
+    var mvQueryVersion by remember { mutableLongStateOf(0L) }
+    var activeMvFetchJob by remember { mutableStateOf<Job?>(null) }
+
+    // 当前全屏播放的视频与本地路径
+    var activeVideoSong by remember { mutableStateOf<MediaFileDto?>(null) }
+    var activeVideoLocalPath by remember { mutableStateOf<String?>(null) }
+
     var showFullPlayer by remember { mutableStateOf(false) }
     // 歌词管理面板的目标曲目（网易云匹配 / AI 生成）
     var lyricsManagerSong by remember { mutableStateOf<MediaFileDto?>(null) }
@@ -674,6 +698,35 @@ fun MainAppScreen(
         }
     }
 
+    fun executeMvQuery(page: Int, search: String?, append: Boolean, targetVersion: Long) {
+        if (tokenManager.token == null) return
+        activeMvFetchJob?.cancel()
+        activeMvFetchJob = scope.launch {
+            isMvLoading = true
+            try {
+                val api = WebMusicNetwork.createApi(tokenManager)
+                val res = withContext(Dispatchers.IO) {
+                    api.getMediaFiles(page = page, pageSize = 40, search = search?.ifEmpty { null }, mediaType = "video")
+                }
+                if (isActive && targetVersion == mvQueryVersion) {
+                    totalMvs = res.total
+                    if (!append) {
+                        mvList.clear()
+                    }
+                    mvList.addAll(res.files)
+                    currentMvPage = page
+                    confirmedMvQuery = search ?: ""
+                }
+            } catch (e: Exception) {
+            } finally {
+                if (isActive && targetVersion == mvQueryVersion) {
+                    isMvLoading = false
+                    isDebouncingMvSearch = false
+                }
+            }
+        }
+    }
+
     // 初始化拉取
     LaunchedEffect(tokenManager.token) {
         if (tokenManager.token != null) {
@@ -681,6 +734,10 @@ fun MainAppScreen(
             if (mediaList.isEmpty()) {
                 queryVersion++
                 executeQuery(1, null, append = false, queryVersion)
+            }
+            if (mvList.isEmpty()) {
+                mvQueryVersion++
+                executeMvQuery(1, null, append = false, mvQueryVersion)
             }
         }
     }
@@ -733,7 +790,7 @@ fun MainAppScreen(
         },
         containerColor = DarkBackground
     ) { padding ->
-        var selectedTab by remember { mutableIntStateOf(0) } // 0: 全部曲库, 1: 我的收藏, 2: 自建歌单, 3: 播放历史, 4: 离线音乐
+        var selectedTab by remember { mutableIntStateOf(0) } // 0: 全部曲库, 1: MV视频, 2: 我的收藏, 3: 自建歌单, 4: 播放历史, 5: 离线音乐
         var offlineSongs by remember { mutableStateOf<List<DownloadedSong>>(emptyList()) }
 
         // 自动缓存有新曲目落盘后，刷新离线列表计数与内容
@@ -748,10 +805,16 @@ fun MainAppScreen(
                     0 -> {
                         if (favoriteSongIds.isEmpty()) loadFavoriteIds()
                     }
-                    1 -> loadFavoritesList()
-                    2 -> loadPlaylists()
-                    3 -> loadHistoryList()
-                    4 -> {
+                    1 -> {
+                        if (mvList.isEmpty()) {
+                            mvQueryVersion++
+                            executeMvQuery(1, null, append = false, mvQueryVersion)
+                        }
+                    }
+                    2 -> loadFavoritesList()
+                    3 -> loadPlaylists()
+                    4 -> loadHistoryList()
+                    5 -> {
                         withContext(Dispatchers.IO) {
                             offlineSongs = OfflineDownloadManager.getAllDownloaded(context, tokenManager.serverUrl, tokenManager.username)
                         }
@@ -765,7 +828,7 @@ fun MainAppScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // 五大核心业务栏切换 (支持水平滑动，防止小屏截断)
+            // 六大核心业务栏切换 (支持水平滑动，防止小屏截断)
             ScrollableTabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = DarkBackground,
@@ -788,11 +851,14 @@ fun MainAppScreen(
                     selected = selectedTab == 1,
                     onClick = {
                         selectedTab = 1
-                        loadFavoritesList()
+                        if (mvList.isEmpty()) {
+                            mvQueryVersion++
+                            executeMvQuery(1, null, append = false, mvQueryVersion)
+                        }
                     },
                     text = {
                         Text(
-                            text = "我的收藏 (${favoriteSongIds.size})",
+                            text = "MV视频 (${totalMvs})",
                             fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal,
                             color = if (selectedTab == 1) GreenPrimary else Color.Gray
                         )
@@ -802,11 +868,11 @@ fun MainAppScreen(
                     selected = selectedTab == 2,
                     onClick = {
                         selectedTab = 2
-                        loadPlaylists()
+                        loadFavoritesList()
                     },
                     text = {
                         Text(
-                            text = "自建歌单 (${playlists.size})",
+                            text = "我的收藏 (${favoriteSongIds.size})",
                             fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal,
                             color = if (selectedTab == 2) GreenPrimary else Color.Gray
                         )
@@ -816,11 +882,11 @@ fun MainAppScreen(
                     selected = selectedTab == 3,
                     onClick = {
                         selectedTab = 3
-                        loadHistoryList()
+                        loadPlaylists()
                     },
                     text = {
                         Text(
-                            text = "播放历史",
+                            text = "自建歌单 (${playlists.size})",
                             fontWeight = if (selectedTab == 3) FontWeight.Bold else FontWeight.Normal,
                             color = if (selectedTab == 3) GreenPrimary else Color.Gray
                         )
@@ -830,52 +896,103 @@ fun MainAppScreen(
                     selected = selectedTab == 4,
                     onClick = {
                         selectedTab = 4
-                        offlineRefreshTrigger++
+                        loadHistoryList()
                     },
                     text = {
                         Text(
-                            text = "离线音乐 (${offlineSongs.size})",
+                            text = "播放历史",
                             fontWeight = if (selectedTab == 4) FontWeight.Bold else FontWeight.Normal,
                             color = if (selectedTab == 4) GreenPrimary else Color.Gray
                         )
                     }
                 )
+                Tab(
+                    selected = selectedTab == 5,
+                    onClick = {
+                        selectedTab = 5
+                        offlineRefreshTrigger++
+                    },
+                    text = {
+                        Text(
+                            text = "离线音乐 (${offlineSongs.size})",
+                            fontWeight = if (selectedTab == 5) FontWeight.Bold else FontWeight.Normal,
+                            color = if (selectedTab == 5) GreenPrimary else Color.Gray
+                        )
+                    }
+                )
             }
 
-            // 搜索框 (仅在全部曲库与离线音乐展示)
-            if (selectedTab == 0 || selectedTab == 4) {
+            // 搜索框 (在全部曲库、MV视频与离线音乐展示)
+            if (selectedTab == 0 || selectedTab == 1 || selectedTab == 5) {
+                val currentQueryText = when (selectedTab) {
+                    0 -> searchQuery
+                    1 -> mvSearchQuery
+                    else -> searchQuery
+                }
                 OutlinedTextField(
-                    value = searchQuery,
+                    value = currentQueryText,
                     onValueChange = { newQuery ->
-                        searchQuery = newQuery
-                        if (selectedTab == 0) {
-                            isDebouncingSearch = true
-                            activeFetchJob?.cancel()
-                            val version = ++queryVersion
-                            scope.launch {
-                                delay(400)
-                                if (isActive && version == queryVersion) {
-                                    executeQuery(1, newQuery, append = false, version)
+                        when (selectedTab) {
+                            0 -> {
+                                searchQuery = newQuery
+                                isDebouncingSearch = true
+                                activeFetchJob?.cancel()
+                                val version = ++queryVersion
+                                scope.launch {
+                                    delay(400)
+                                    if (isActive && version == queryVersion) {
+                                        executeQuery(1, newQuery, append = false, version)
+                                    }
                                 }
+                            }
+                            1 -> {
+                                mvSearchQuery = newQuery
+                                isDebouncingMvSearch = true
+                                activeMvFetchJob?.cancel()
+                                val version = ++mvQueryVersion
+                                scope.launch {
+                                    delay(400)
+                                    if (isActive && version == mvQueryVersion) {
+                                        executeMvQuery(1, newQuery, append = false, version)
+                                    }
+                                }
+                            }
+                            5 -> {
+                                searchQuery = newQuery
                             }
                         }
                     },
                     placeholder = {
                         Text(
-                            if (selectedTab == 0) "搜索全库 $totalSongs 首音乐、歌手、专辑..."
-                            else "搜索 ${offlineSongs.size} 首本地离线音乐..."
+                            when (selectedTab) {
+                                0 -> "搜索全库 $totalSongs 首音乐、歌手、专辑..."
+                                1 -> "搜索 $totalMvs 部 MV 视频、歌手..."
+                                else -> "搜索 ${offlineSongs.size} 首本地离线音乐..."
+                            }
                         )
                     },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = "搜索") },
                     trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
+                        if (currentQueryText.isNotEmpty()) {
                             IconButton(onClick = {
-                                searchQuery = ""
-                                if (selectedTab == 0) {
-                                    isDebouncingSearch = true
-                                    activeFetchJob?.cancel()
-                                    val version = ++queryVersion
-                                    executeQuery(1, null, append = false, version)
+                                when (selectedTab) {
+                                    0 -> {
+                                        searchQuery = ""
+                                        isDebouncingSearch = true
+                                        activeFetchJob?.cancel()
+                                        val version = ++queryVersion
+                                        executeQuery(1, null, append = false, version)
+                                    }
+                                    1 -> {
+                                        mvSearchQuery = ""
+                                        isDebouncingMvSearch = true
+                                        activeMvFetchJob?.cancel()
+                                        val version = ++mvQueryVersion
+                                        executeMvQuery(1, null, append = false, version)
+                                    }
+                                    5 -> {
+                                        searchQuery = ""
+                                    }
                                 }
                             }) {
                                 Icon(Icons.Default.Close, contentDescription = "清空")
@@ -1019,6 +1136,148 @@ fun MainAppScreen(
                     }
                 }
                 1 -> {
+                    // MV视频列表
+                    val mvListState = rememberLazyListState()
+                    val shouldLoadMoreMv = remember {
+                        derivedStateOf {
+                            val lastVisibleIndex = mvListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                            lastVisibleIndex >= mvList.size - 5 && !isMvLoading && !isDebouncingMvSearch && mvList.size < totalMvs
+                        }
+                    }
+
+                    LaunchedEffect(shouldLoadMoreMv.value) {
+                        if (shouldLoadMoreMv.value && !isDebouncingMvSearch) {
+                            val version = mvQueryVersion
+                            executeMvQuery(currentMvPage + 1, confirmedMvQuery, append = true, version)
+                        }
+                    }
+
+                    if (isMvLoading && mvList.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = GreenPrimary)
+                        }
+                    } else if (mvList.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = if (confirmedMvQuery.isNotEmpty()) "未找到匹配的 MV 视频" else "暂无 MV 视频\n服务端扫描到视频文件后将在此展示",
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center,
+                                fontSize = 14.sp
+                            )
+                        }
+                    } else {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            LazyColumn(
+                                state = mvListState,
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(bottom = 16.dp)
+                            ) {
+                                itemsIndexed(mvList) { index, mv ->
+                                    val isFav = favoriteSongIds.contains(mv.id)
+                                    val isDownloaded = remember(mv.id, offlineRefreshTrigger, tokenManager.token) {
+                                        OfflineDownloadManager.isDownloaded(context, tokenManager.serverUrl, tokenManager.username, mv.id)
+                                    }
+                                    val downloadTaskKey = remember(mv.id, tokenManager.serverUrl, tokenManager.username) {
+                                        OfflineDownloadManager.taskKeyFor(tokenManager.serverUrl, tokenManager.username, mv.id)
+                                    }
+                                    val downloadProgress = downloadStates[downloadTaskKey]
+
+                                    ListItem(
+                                        headlineContent = {
+                                            Text(
+                                                text = mv.title ?: "未知 MV",
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Medium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        },
+                                        supportingContent = {
+                                            Text(
+                                                text = "${mv.artist ?: "未知艺术家"}${if (!mv.duration.isNullOrEmpty()) " • ${mv.duration}" else ""}",
+                                                color = Color.Gray,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        },
+                                        leadingContent = {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(44.dp)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(DarkSurface),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.PlayCircleOutline,
+                                                    contentDescription = "播放 MV",
+                                                    tint = GreenPrimary,
+                                                    modifier = Modifier.size(26.dp)
+                                                )
+                                            }
+                                        },
+                                        trailingContent = {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                IconButton(
+                                                    onClick = { toggleFavorite(mv.id) },
+                                                    modifier = Modifier.size(36.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                                        contentDescription = if (isFav) "取消收藏" else "收藏",
+                                                        tint = if (isFav) Color(0xFFE91E63) else Color.Gray,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                                IconButton(
+                                                    onClick = { songToAddToPlaylist = mv },
+                                                    modifier = Modifier.size(36.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.PlaylistAdd,
+                                                        contentDescription = "添加到歌单",
+                                                        tint = Color.Gray,
+                                                        modifier = Modifier.size(22.dp)
+                                                    )
+                                                }
+                                                SongDownloadAction(
+                                                    isDownloaded = isDownloaded,
+                                                    progress = downloadProgress,
+                                                    onStartDownload = { startDownload(mv) }
+                                                )
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .clickable {
+                                                if (isPlaying) {
+                                                    onPlayPauseClick()
+                                                }
+                                                val downloaded = OfflineDownloadManager.getDownloadedSong(context, tokenManager.serverUrl, tokenManager.username, mv.id)
+                                                val localPath = if (downloaded != null && File(downloaded.localFilePath).exists()) downloaded.localFilePath else null
+                                                activeVideoSong = mv
+                                                activeVideoLocalPath = localPath
+                                            }
+                                            .padding(horizontal = 8.dp)
+                                    )
+                                }
+
+                                if (isMvLoading) {
+                                    item {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(16.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator(color = GreenPrimary, modifier = Modifier.size(28.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                2 -> {
                     val favSongDtos = favoriteList.mapNotNull { it.mediaFile?.toMediaFileDto() }
 
                     Row(
@@ -1035,11 +1294,12 @@ fun MainAppScreen(
                         )
                         Button(
                             onClick = {
-                                if (favSongDtos.isNotEmpty()) {
-                                    onPlaySongFromList(favSongDtos, 0)
+                                val playable = favSongDtos.filter { !it.isVideo() }
+                                if (playable.isNotEmpty()) {
+                                    onPlaySongFromList(playable, 0)
                                 }
                             },
-                            enabled = favSongDtos.isNotEmpty(),
+                            enabled = favSongDtos.any { !it.isVideo() },
                             colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
                             shape = RoundedCornerShape(20.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
@@ -1111,9 +1371,9 @@ fun MainAppScreen(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
-                                                imageVector = if (isCurrent && isPlaying) Icons.Default.VolumeUp else Icons.Default.MusicNote,
+                                                imageVector = if (song.isVideo()) Icons.Default.PlayCircleOutline else if (isCurrent && isPlaying) Icons.Default.VolumeUp else Icons.Default.MusicNote,
                                                 contentDescription = null,
-                                                tint = if (isCurrent) Color.Black else Color.Gray,
+                                                tint = if (isCurrent) Color.Black else if (song.isVideo()) GreenPrimary else Color.Gray,
                                                 modifier = Modifier.size(20.dp)
                                             )
                                         }
@@ -1153,14 +1413,30 @@ fun MainAppScreen(
                                         }
                                     },
                                     modifier = Modifier
-                                        .clickable { onPlaySongFromList(favSongDtos, index) }
+                                        .clickable {
+                                            if (song.isVideo()) {
+                                                if (isPlaying) {
+                                                    onPlayPauseClick()
+                                                }
+                                                val downloaded = OfflineDownloadManager.getDownloadedSong(context, tokenManager.serverUrl, tokenManager.username, song.id)
+                                                val localPath = if (downloaded != null && File(downloaded.localFilePath).exists()) downloaded.localFilePath else null
+                                                activeVideoSong = song
+                                                activeVideoLocalPath = localPath
+                                            } else {
+                                                val audioList = favSongDtos.filter { !it.isVideo() }
+                                                val audioIndex = audioList.indexOfFirst { it.id == song.id }
+                                                if (audioIndex >= 0) {
+                                                    onPlaySongFromList(audioList, audioIndex)
+                                                }
+                                            }
+                                        }
                                         .padding(horizontal = 8.dp)
                                 )
                             }
                         }
                     }
                 }
-                2 -> {
+                3 -> {
                     // 自建歌单
                     if (activePlaylistId != null) {
                         PlaylistDetailView(
@@ -1174,7 +1450,24 @@ fun MainAppScreen(
                                 activePlaylistId = null
                                 loadPlaylists()
                             },
-                            onPlaySongFromList = onPlaySongFromList,
+                            onPlaySongFromList = { songs, index ->
+                                val song = songs.getOrNull(index)
+                                if (song != null && song.isVideo()) {
+                                    if (isPlaying) {
+                                        onPlayPauseClick()
+                                    }
+                                    val downloaded = OfflineDownloadManager.getDownloadedSong(context, tokenManager.serverUrl, tokenManager.username, song.id)
+                                    val localPath = if (downloaded != null && File(downloaded.localFilePath).exists()) downloaded.localFilePath else null
+                                    activeVideoSong = song
+                                    activeVideoLocalPath = localPath
+                                } else {
+                                    val audioList = songs.filter { !it.isVideo() }
+                                    val audioIndex = audioList.indexOfFirst { it.id == song?.id }
+                                    if (audioIndex >= 0) {
+                                        onPlaySongFromList(audioList, audioIndex)
+                                    }
+                                }
+                            },
                             onToggleFavorite = { toggleFavorite(it) },
                             onStartDownload = { startDownload(it) }
                         )
@@ -1293,7 +1586,7 @@ fun MainAppScreen(
                         }
                     }
                 }
-                3 -> {
+                4 -> {
                     val historySongDtos = historyList.mapNotNull { it.mediaFile?.toMediaFileDto() }
 
                     Row(
@@ -1310,11 +1603,12 @@ fun MainAppScreen(
                         )
                         Button(
                             onClick = {
-                                if (historySongDtos.isNotEmpty()) {
-                                    onPlaySongFromList(historySongDtos, 0)
+                                val playable = historySongDtos.filter { !it.isVideo() }
+                                if (playable.isNotEmpty()) {
+                                    onPlaySongFromList(playable, 0)
                                 }
                             },
-                            enabled = historySongDtos.isNotEmpty(),
+                            enabled = historySongDtos.any { !it.isVideo() },
                             colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
                             shape = RoundedCornerShape(20.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
@@ -1387,9 +1681,9 @@ fun MainAppScreen(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
-                                                imageVector = if (isCurrent && isPlaying) Icons.Default.VolumeUp else Icons.Default.MusicNote,
+                                                imageVector = if (song.isVideo()) Icons.Default.PlayCircleOutline else if (isCurrent && isPlaying) Icons.Default.VolumeUp else Icons.Default.MusicNote,
                                                 contentDescription = null,
-                                                tint = if (isCurrent) Color.Black else Color.Gray,
+                                                tint = if (isCurrent) Color.Black else if (song.isVideo()) GreenPrimary else Color.Gray,
                                                 modifier = Modifier.size(20.dp)
                                             )
                                         }
@@ -1426,14 +1720,30 @@ fun MainAppScreen(
                                         }
                                     },
                                     modifier = Modifier
-                                        .clickable { onPlaySongFromList(historySongDtos, index) }
+                                        .clickable {
+                                            if (song.isVideo()) {
+                                                if (isPlaying) {
+                                                    onPlayPauseClick()
+                                                }
+                                                val downloaded = OfflineDownloadManager.getDownloadedSong(context, tokenManager.serverUrl, tokenManager.username, song.id)
+                                                val localPath = if (downloaded != null && File(downloaded.localFilePath).exists()) downloaded.localFilePath else null
+                                                activeVideoSong = song
+                                                activeVideoLocalPath = localPath
+                                            } else {
+                                                val audioList = historySongDtos.filter { !it.isVideo() }
+                                                val audioIndex = audioList.indexOfFirst { it.id == song.id }
+                                                if (audioIndex >= 0) {
+                                                    onPlaySongFromList(audioList, audioIndex)
+                                                }
+                                            }
+                                        }
                                         .padding(horizontal = 8.dp)
                                 )
                             }
                         }
                     }
                 }
-                4 -> {
+                5 -> {
                     // 离线音乐列表展示
                     val settings = remember { AppSettings.getInstance(context) }
                     var autoCacheOn by remember { mutableStateOf(settings.autoCacheEnabled) }
@@ -1558,9 +1868,9 @@ fun MainAppScreen(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
-                                                imageVector = if (isCurrent && isPlaying) Icons.Default.VolumeUp else Icons.Default.MusicNote,
+                                                imageVector = if (song.isVideo()) Icons.Default.PlayCircleOutline else if (isCurrent && isPlaying) Icons.Default.VolumeUp else Icons.Default.MusicNote,
                                                 contentDescription = null,
-                                                tint = if (isCurrent) Color.Black else Color.Gray,
+                                                tint = if (isCurrent) Color.Black else if (song.isVideo()) GreenPrimary else Color.Gray,
                                                 modifier = Modifier.size(20.dp)
                                             )
                                         }
@@ -1579,7 +1889,21 @@ fun MainAppScreen(
                                         }
                                     },
                                     modifier = Modifier
-                                        .clickable { onPlaySongFromList(offlineDtoList, index) }
+                                        .clickable {
+                                            if (song.isVideo()) {
+                                                if (isPlaying) {
+                                                    onPlayPauseClick()
+                                                }
+                                                activeVideoSong = song.toMediaFileDto()
+                                                activeVideoLocalPath = song.localFilePath
+                                            } else {
+                                                val audioList = offlineDtoList.filter { !it.isVideo() }
+                                                val audioIndex = audioList.indexOfFirst { it.id == song.id }
+                                                if (audioIndex >= 0) {
+                                                    onPlaySongFromList(audioList, audioIndex)
+                                                }
+                                            }
+                                        }
                                         .padding(horizontal = 8.dp)
                                 )
                             }
@@ -1710,12 +2034,18 @@ fun MainAppScreen(
                 loadFavoriteIds()
                 val v = ++queryVersion
                 executeQuery(1, null, append = false, v)
+                val mvV = ++mvQueryVersion
+                executeMvQuery(1, null, append = false, mvV)
             },
             onLogout = {
                 // 1. 取消在途列表请求并递增版本，防止旧响应在退出后回填
                 activeFetchJob?.cancel()
                 activeFetchJob = null
                 queryVersion++
+
+                activeMvFetchJob?.cancel()
+                activeMvFetchJob = null
+                mvQueryVersion++
 
                 // 2. 取消所有在途下载任务，阻断旧会话网络与写入
                 OfflineDownloadManager.cancelAllDownloads()
@@ -1733,6 +2063,16 @@ fun MainAppScreen(
                 searchQuery = ""
                 confirmedQuery = ""
                 isDebouncingSearch = false
+
+                mvList.clear()
+                currentMvPage = 1
+                totalMvs = 0
+                mvSearchQuery = ""
+                confirmedMvQuery = ""
+                isDebouncingMvSearch = false
+                activeVideoSong = null
+                activeVideoLocalPath = null
+
                 offlineRefreshTrigger++
                 favoriteSongIds = emptySet()
                 favoriteList.clear()
@@ -1748,6 +2088,20 @@ fun MainAppScreen(
                 // 关闭设置弹窗，避免两层 Dialog 叠加
                 showLoginDialog = false
                 updateController.checkManually()
+            }
+        )
+    }
+
+    // 全屏 MV 视频播放器
+    if (activeVideoSong != null) {
+        VideoPlayerDialog(
+            song = activeVideoSong!!,
+            serverUrl = tokenManager.serverUrl,
+            token = tokenManager.token,
+            localFilePath = activeVideoLocalPath,
+            onDismiss = {
+                activeVideoSong = null
+                activeVideoLocalPath = null
             }
         )
     }

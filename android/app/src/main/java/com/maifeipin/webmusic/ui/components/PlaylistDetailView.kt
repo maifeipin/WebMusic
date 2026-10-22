@@ -176,9 +176,9 @@ fun PlaylistDetailView(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = if (isCurrent && isPlaying) Icons.Default.VolumeUp else Icons.Default.MusicNote,
+                                    imageVector = if (song.isVideo()) Icons.Default.PlayCircleOutline else if (isCurrent && isPlaying) Icons.Default.VolumeUp else Icons.Default.MusicNote,
                                     contentDescription = null,
-                                    tint = if (isCurrent) Color.Black else Color.Gray,
+                                    tint = if (isCurrent) Color.Black else if (song.isVideo()) GreenPrimary else Color.Gray,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }

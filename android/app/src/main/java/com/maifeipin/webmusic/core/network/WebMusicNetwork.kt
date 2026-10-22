@@ -30,8 +30,17 @@ data class MediaFileDto(
     val fileHash: String?,
     val contentVersion: String? = null,
     /** 服务端以秒（含小数）返回的曲目时长，网易云歌词匹配按它就近排序 */
-    val totalSeconds: Double? = null
-)
+    val totalSeconds: Double? = null,
+    val mediaType: String? = null
+) {
+    fun isVideo(): Boolean {
+        if (mediaType.equals("video", ignoreCase = true) || mediaType.equals("mv", ignoreCase = true)) return true
+        val path = filePath?.lowercase() ?: ""
+        return path.endsWith(".mp4") || path.endsWith(".mkv") || path.endsWith(".webm") ||
+               path.endsWith(".avi") || path.endsWith(".mov") || path.endsWith(".flv") ||
+               path.endsWith(".ts") || path.endsWith(".m4v")
+    }
+}
 
 data class PagedResult<T>(
     val total: Int,
@@ -49,7 +58,8 @@ data class UserMediaItem(
     val duration: Any? = null,
     val totalSeconds: Double? = null,
     val filePath: String? = null,
-    val coverArt: String? = null
+    val coverArt: String? = null,
+    val mediaType: String? = null
 ) {
     fun toMediaFileDto(): MediaFileDto {
         val seconds = totalSeconds ?: when (val raw = duration) {
@@ -69,7 +79,8 @@ data class UserMediaItem(
             sizeBytes = null,
             fileHash = null,
             contentVersion = null,
-            totalSeconds = seconds
+            totalSeconds = seconds,
+            mediaType = mediaType
         )
     }
 }
@@ -153,7 +164,8 @@ interface WebMusicApi {
     suspend fun getMediaFiles(
         @Query("page") page: Int = 1,
         @Query("pageSize") pageSize: Int = 50,
-        @Query("search") search: String? = null
+        @Query("search") search: String? = null,
+        @Query("mediaType") mediaType: String? = null
     ): PagedResult<MediaFileDto>
 
     @GET("api/lyrics/{mediaId}")

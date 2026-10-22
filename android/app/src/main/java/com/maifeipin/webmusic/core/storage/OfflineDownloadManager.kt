@@ -302,8 +302,11 @@ object OfflineDownloadManager {
                 throw CancellationException("下载任务已在提交前取消")
             }
 
-            // 原子提交新文件：重命名到独立的版本文件，绝不先删旧文件
-            val targetVersionFile = File(userDir, "wm_${song.id}_${System.currentTimeMillis()}.audio")
+            // 原子提交新文件：重命名到独立的版本文件，保留媒体原后缀（便于播放器识别视频容器）
+            val ext = song.filePath?.substringAfterLast('.', "")?.let {
+                if (it.isNotBlank()) ".$it" else ".audio"
+            } ?: ".audio"
+            val targetVersionFile = File(userDir, "wm_${song.id}_${System.currentTimeMillis()}$ext")
             val renameSuccess = tempFile.renameTo(targetVersionFile)
             if (!renameSuccess || !targetVersionFile.exists() || targetVersionFile.length() != totalRead) {
                 if (targetVersionFile.exists()) targetVersionFile.delete()
@@ -541,6 +544,7 @@ fun DownloadedSong.toMediaFileDto(): MediaFileDto {
         duration = duration,
         sizeBytes = sizeBytes,
         fileHash = "offline_${serverHash}_${userHash}_$id",
-        contentVersion = "offline"
+        contentVersion = "offline",
+        mediaType = if (isVideo()) "video" else "audio"
     )
 }

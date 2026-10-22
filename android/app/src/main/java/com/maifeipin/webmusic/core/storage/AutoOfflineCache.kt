@@ -59,7 +59,7 @@ object AutoOfflineCache {
         val appContext = context.applicationContext
         val settings = AppSettings.getInstance(appContext)
         if (!settings.autoCacheEnabled) return
-        if (song.id <= 0) return
+        if (song.id <= 0 || song.isVideo()) return
         if (inFlight.contains(song.id)) return
 
         // 快照凭据，避免下载过程中切换账号导致串号
