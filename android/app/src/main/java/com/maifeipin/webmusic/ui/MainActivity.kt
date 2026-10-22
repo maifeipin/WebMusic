@@ -302,6 +302,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        OfflineDownloadManager.cancelAllDownloads()
         controllerFuture?.let { MediaController.releaseFuture(it) }
         super.onDestroy()
     }

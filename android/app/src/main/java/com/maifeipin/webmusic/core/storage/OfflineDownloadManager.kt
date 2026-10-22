@@ -6,15 +6,18 @@ import android.util.Log
 import com.maifeipin.webmusic.core.network.MediaFileDto
 import com.maifeipin.webmusic.core.network.TokenManager
 import com.maifeipin.webmusic.core.network.WebMusicNetwork
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.ResponseBody
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -102,13 +105,16 @@ object OfflineDownloadManager {
             var expectedBytes = song.sizeBytes ?: -1L
 
             // 采用 suspendCancellableCoroutine + enqueue，直接将协程取消绑定到 Call
+            // 并使用 resume(response) { cause -> response.close() } 处理取消竞态下未交付 Response 的资源释放
             val response = suspendCancellableCoroutine<Response> { continuation ->
                 continuation.invokeOnCancellation {
                     call.cancel()
                 }
                 call.enqueue(object : Callback {
                     override fun onResponse(call: Call, response: Response) {
-                        continuation.resume(response)
+                        continuation.resume(response) { cause ->
+                            response.close()
+                        }
                     }
 
                     override fun onFailure(call: Call, e: IOException) {
@@ -132,27 +138,16 @@ object OfflineDownloadManager {
                     expectedBytes = contentLength
                 }
 
-                body.byteStream().use { input ->
-                    FileOutputStream(tempFile).use { output ->
-                        val buffer = ByteArray(32 * 1024)
-                        var read: Int
-
-                        while (input.read(buffer).also { read = it } != -1) {
-                            if (!coroutineContext.isActive) {
-                                throw CancellationException("下载任务已被取消")
-                            }
-                            output.write(buffer, 0, read)
-                            totalRead += read
-
-                            if (expectedBytes > 0) {
-                                val progress = (totalRead.toFloat() / expectedBytes.toFloat()).coerceIn(0f, 1f)
-                                activeDownloads[taskKey] = progress
-                                onProgress(progress)
-                            }
-                        }
-                        output.flush()
-                    }
-                }
+                // 取消绑定覆盖整个响应体复制过程：使用 suspendCancellableCoroutine 确保在 input.read() 阻塞期间，
+                // 一旦协程取消（如 Activity 销毁）能立即通过 continuation.invokeOnCancellation 触发 call.cancel() 关闭底层 Socket
+                totalRead = copyStreamWithCancellation(
+                    call = call,
+                    body = body,
+                    targetFile = tempFile,
+                    expectedBytes = expectedBytes,
+                    taskKey = taskKey,
+                    onProgress = onProgress
+                )
             }
 
             // 完整性校验：必须有读取数据，且若服务端提供了 ContentLength 则必须全量匹配
@@ -249,6 +244,63 @@ object OfflineDownloadManager {
             activeCalls.remove(taskKey)
             activeJobs.remove(taskKey)
             activeDownloads.remove(taskKey)
+        }
+    }
+
+    /**
+     * 将网络响应体流式复制到目标临时文件
+     * 使用 suspendCancellableCoroutine 确保协程取消（如 Activity 销毁）能立即触发 call.cancel() 关闭底层 Socket，
+     * 避免因阻塞在 native recv/input.read 上导致取消延迟。
+     */
+    private suspend fun copyStreamWithCancellation(
+        call: Call,
+        body: ResponseBody,
+        targetFile: File,
+        expectedBytes: Long,
+        taskKey: String,
+        onProgress: (Float) -> Unit
+    ): Long = suspendCancellableCoroutine { continuation ->
+        continuation.invokeOnCancellation {
+            call.cancel()
+        }
+
+        val job = CoroutineScope(Dispatchers.IO).launch {
+            try {
+                body.byteStream().use { input ->
+                    FileOutputStream(targetFile).use { output ->
+                        val buffer = ByteArray(32 * 1024)
+                        var total = 0L
+                        var read: Int
+
+                        while (input.read(buffer).also { read = it } != -1) {
+                            if (continuation.isCancelled) {
+                                throw CancellationException("下载任务已在传输中取消")
+                            }
+                            output.write(buffer, 0, read)
+                            total += read
+
+                            if (expectedBytes > 0) {
+                                val progress = (total.toFloat() / expectedBytes.toFloat()).coerceIn(0f, 1f)
+                                activeDownloads[taskKey] = progress
+                                onProgress(progress)
+                            }
+                        }
+                        output.flush()
+                        if (continuation.isActive) {
+                            continuation.resume(total)
+                        }
+                    }
+                }
+            } catch (e: Throwable) {
+                if (continuation.isActive) {
+                    continuation.resumeWithException(e)
+                }
+            }
+        }
+
+        continuation.invokeOnCancellation {
+            job.cancel()
+            call.cancel()
         }
     }
 

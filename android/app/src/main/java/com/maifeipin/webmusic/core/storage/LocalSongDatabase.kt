@@ -118,9 +118,10 @@ class LocalSongDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_N
 
         if (oldVersion == 2) {
             // v2 -> v3: 迁移增加 user_hash 列并重构复合主键 (server_hash, user_hash, song_id)
+            db.beginTransaction()
+            val tempTable = "${TABLE_NAME}_v3"
             try {
-                db.beginTransaction()
-                val tempTable = "${TABLE_NAME}_v3"
+                db.execSQL("DROP TABLE IF EXISTS $tempTable")
                 val createSql = """
                     CREATE TABLE $tempTable (
                         $COL_SERVER_HASH TEXT NOT NULL,
@@ -143,7 +144,10 @@ class LocalSongDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_N
                 db.execSQL(createSql)
 
                 val cursor = db.rawQuery("SELECT * FROM $TABLE_NAME", null)
+                val expectedRows: Int
+                var migratedRows = 0
                 cursor.use {
+                    expectedRows = it.count
                     while (it.moveToNext()) {
                         val sHash = it.getString(it.getColumnIndexOrThrow(COL_SERVER_HASH))
                         val uName = it.getString(it.getColumnIndexOrThrow(COL_USERNAME))
@@ -176,18 +180,25 @@ class LocalSongDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_N
                             put(COL_COVER_URL, coverUrl)
                             put(COL_DOWNLOADED_AT, downloadedAt)
                         }
-                        db.insert(tempTable, null, cv)
+                        val rowId = db.insertOrThrow(tempTable, null, cv)
+                        if (rowId == -1L) {
+                            throw android.database.SQLException("写入迁移临时表失败 (rowId == -1, songId=$sId)")
+                        }
+                        migratedRows++
                     }
+                }
+
+                if (migratedRows != expectedRows) {
+                    throw android.database.SQLException("数据迁移行数不一致: 预期 $expectedRows 行，实际完成 $migratedRows 行")
                 }
 
                 db.execSQL("DROP TABLE $TABLE_NAME")
                 db.execSQL("ALTER TABLE $tempTable RENAME TO $TABLE_NAME")
                 db.setTransactionSuccessful()
-            } catch (e: Exception) {
-                db.execSQL("DROP TABLE IF EXISTS $TABLE_NAME")
-                onCreate(db)
             } finally {
-                if (db.inTransaction()) db.endTransaction()
+                if (db.inTransaction()) {
+                    db.endTransaction()
+                }
             }
         }
     }
