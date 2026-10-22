@@ -137,6 +137,7 @@ builder.Services.AddSingleton<WebMusic.Backend.Services.BackgroundTaskQueue>();
 builder.Services.AddSingleton<WebMusic.Backend.Services.ScanStateService>();
 builder.Services.AddScoped<WebMusic.Backend.Services.TagService>();
 builder.Services.AddSingleton<WebMusic.Backend.Services.PathResolver>(); // Centralized path resolution
+builder.Services.AddSingleton<WebMusic.Backend.Services.AppReleaseStore>(); // In-app update APK manifest
 builder.Services.AddScoped<WebMusic.Backend.Services.DataManagementService>();
 builder.Services.AddScoped<WebMusic.Backend.Services.LyricsService>();
 builder.Services.AddScoped<WebMusic.Backend.Services.IIdentityImportService, WebMusic.Backend.Services.IdentityImportService>();

@@ -11,8 +11,8 @@ android {
         applicationId = "com.maifeipin.webmusic"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0-spike"
+        versionCode = providers.gradleProperty("appVersionCode").orElse("3").get().toInt()
+        versionName = providers.gradleProperty("appVersionName").orElse("1.1.1").get()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -58,6 +58,8 @@ android {
 
     buildFeatures {
         compose = true
+        // 应用内更新需要读取 BuildConfig.VERSION_CODE / VERSION_NAME 与 DEBUG 标记
+        buildConfig = true
     }
 
     composeOptions {

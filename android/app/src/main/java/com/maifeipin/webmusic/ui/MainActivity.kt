@@ -55,6 +55,9 @@ import androidx.compose.ui.text.style.TextAlign
 import com.maifeipin.webmusic.core.storage.DownloadedSong
 import com.maifeipin.webmusic.core.storage.OfflineDownloadManager
 import com.maifeipin.webmusic.core.storage.toMediaFileDto
+import com.maifeipin.webmusic.core.update.AppUpdateManager
+import com.maifeipin.webmusic.core.update.UpdateController
+import com.maifeipin.webmusic.ui.components.UpdateDialogHost
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -65,6 +68,7 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
 
     private lateinit var tokenManager: TokenManager
+    private lateinit var updateController: UpdateController
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var mediaController: MediaController? = null
 
@@ -83,6 +87,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         tokenManager = TokenManager(this)
+        updateController = UpdateController(this, tokenManager, lifecycleScope) {
+            PlaybackService.saveForUpdate()
+        }
 
         initMediaController()
 
@@ -90,6 +97,7 @@ class MainActivity : ComponentActivity() {
             WebMusicTheme {
                 MainAppScreen(
                     tokenManager = tokenManager,
+                    updateController = updateController,
                     isPlaying = isPlayingState.value,
                     currentMediaItem = currentMediaItemState.value,
                     progress = progressState.value,
@@ -111,6 +119,15 @@ class MainActivity : ComponentActivity() {
         }
 
         startProgressTracker()
+
+        // 启动即静默检查一次更新（失败不打扰用户，登录前也能工作）
+        updateController.autoCheckOnce()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 从"安装未知应用"授权页返回后自动续接安装
+        updateController.onResumed()
     }
 
     private fun initMediaController() {
@@ -290,6 +307,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun clearPlaybackSession() {
+        getSharedPreferences("upgrade_playback", MODE_PRIVATE).edit().clear().commit()
         lyricsJob?.cancel()
         mediaController?.let { controller ->
             controller.stop()
@@ -314,6 +332,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainAppScreen(
     tokenManager: TokenManager,
+    updateController: UpdateController,
     isPlaying: Boolean,
     currentMediaItem: MediaItem?,
     progress: Float,
@@ -1560,9 +1579,17 @@ fun MainAppScreen(
             },
             onStopPlaybackForCacheClear = {
                 onClearSession()
+            },
+            onCheckUpdate = {
+                // 关闭设置弹窗，避免两层 Dialog 叠加
+                showLoginDialog = false
+                updateController.checkManually()
             }
         )
     }
+
+    // 应用内更新流程（检查 / 下载 / 安装 状态机驱动）
+    UpdateDialogHost(controller = updateController)
 }
 
 @Composable
@@ -1571,7 +1598,8 @@ fun LoginSettingDialog(
     onDismiss: () -> Unit,
     onLoginSuccess: () -> Unit,
     onLogout: () -> Unit,
-    onStopPlaybackForCacheClear: () -> Unit
+    onStopPlaybackForCacheClear: () -> Unit,
+    onCheckUpdate: () -> Unit
 ) {
     var serverUrl by remember { mutableStateOf(tokenManager.serverUrl) }
     var username by remember { mutableStateOf(tokenManager.username ?: "") }
@@ -1623,6 +1651,22 @@ fun LoginSettingDialog(
                 }
 
                 HorizontalDivider(color = Color.DarkGray, modifier = Modifier.padding(vertical = 4.dp))
+
+                // 版本信息与应用内更新入口
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "当前版本 v${AppUpdateManager.currentVersionName} (${AppUpdateManager.currentVersionCode})",
+                        color = Color.Gray,
+                        fontSize = 13.sp
+                    )
+                    TextButton(onClick = onCheckUpdate) {
+                        Text("检查更新", color = GreenPrimary, fontSize = 13.sp)
+                    }
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),

@@ -10,6 +10,13 @@ on:
       - 'android/**'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Build Android Debug APK
@@ -38,9 +45,13 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
+      - name: Set cloud version
+        run: |
+          echo "APP_CODE=$((100000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+
       - name: Build Debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: ./gradlew assembleDebug --no-daemon --stacktrace -PappVersionCode="$APP_CODE" -PappVersionName="1.1.$APP_CODE"
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
@@ -48,3 +59,14 @@ jobs:
           name: webmusic-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
+
+      - name: Publish persistent debug update
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/create_android_update_manifest.py --apk android/app/build/outputs/apk/debug/app-debug.apk --code "$APP_CODE" --repo "$GITHUB_REPOSITORY"
+          tag="android-debug-$APP_CODE"
+          gh release create "$tag" "build_apk/webmusic-debug-$APP_CODE.apk" --title "Android debug $APP_CODE" --notes "Internal debug build. Source: $GITHUB_SHA" --prerelease
+          gh release view android-debug-latest >/dev/null 2>&1 || gh release create android-debug-latest --title "Android debug update feed" --notes "Internal testing channel" --prerelease
+          gh release upload android-debug-latest build_apk/update.json --clobber

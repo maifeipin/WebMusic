@@ -17,6 +17,9 @@
     <!-- 音频音效与均衡器控制权限 -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
+    <!-- 应用内更新：调起系统安装器需要"安装未知应用"能力 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <application
         android:name=".WebMusicApplication"
         android:allowBackup="true"
@@ -59,6 +62,17 @@
                 <action android:name="android.media.AUDIO_BECOMING_NOISY" />
             </intent-filter>
         </receiver>
+
+        <!-- 应用内更新：向外部分发应用授权读取更新目录下的 APK（不暴露其他目录） -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 

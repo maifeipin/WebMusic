@@ -24,6 +24,8 @@ class PlaybackService : MediaSessionService() {
         val tokenManager = TokenManager(this)
         val okHttpClient = WebMusicNetwork.createClient(tokenManager)
         playerAdapter = Media3PlayerAdapter(this, okHttpClient)
+        activeService = this
+        com.maifeipin.webmusic.core.update.PlaybackSnapshot.restore(this, playerAdapter.getPlayer())
 
         val sessionActivityIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
@@ -66,6 +68,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        if (activeService === this) activeService = null
         // 统一所有权释放，避免重复 release
         mediaSession?.run {
             release()
@@ -77,6 +80,11 @@ class PlaybackService : MediaSessionService() {
     }
 
     companion object {
+        private var activeService: PlaybackService? = null
+        fun saveForUpdate() {
+            val service = activeService ?: error("播放服务尚未连接，请稍后重试")
+            com.maifeipin.webmusic.core.update.PlaybackSnapshot.save(service, service.playerAdapter.getPlayer())
+        }
         const val NOTIFICATION_ID = 1001
     }
 }
