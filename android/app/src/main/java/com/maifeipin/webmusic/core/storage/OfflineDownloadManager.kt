@@ -9,6 +9,7 @@ import com.maifeipin.webmusic.core.network.WebMusicNetwork
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -249,8 +250,10 @@ object OfflineDownloadManager {
 
     /**
      * 将网络响应体流式复制到目标临时文件
-     * 使用 suspendCancellableCoroutine 确保协程取消（如 Activity 销毁）能立即触发 call.cancel() 关闭底层 Socket，
-     * 避免因阻塞在 native recv/input.read 上导致取消延迟。
+     * 纳入结构化并发 (coroutineScope)：
+     * 1. 启动取消监听子协程，单一注册 continuation.invokeOnCancellation 绑定底层 call.cancel()；
+     * 2. 在当前协程中直接执行阻塞流式复制，一旦取消立即中断底层 Socket 并经由 .use 关闭输入输出流；
+     * 3. 严格保证输入输出流关闭后才退出作用域，彻底避免清理临时文件时的文件占用竞态。
      */
     private suspend fun copyStreamWithCancellation(
         call: Call,
@@ -259,48 +262,45 @@ object OfflineDownloadManager {
         expectedBytes: Long,
         taskKey: String,
         onProgress: (Float) -> Unit
-    ): Long = suspendCancellableCoroutine { continuation ->
-        continuation.invokeOnCancellation {
-            call.cancel()
-        }
-
-        val job = CoroutineScope(Dispatchers.IO).launch {
-            try {
-                body.byteStream().use { input ->
-                    FileOutputStream(targetFile).use { output ->
-                        val buffer = ByteArray(32 * 1024)
-                        var total = 0L
-                        var read: Int
-
-                        while (input.read(buffer).also { read = it } != -1) {
-                            if (continuation.isCancelled) {
-                                throw CancellationException("下载任务已在传输中取消")
-                            }
-                            output.write(buffer, 0, read)
-                            total += read
-
-                            if (expectedBytes > 0) {
-                                val progress = (total.toFloat() / expectedBytes.toFloat()).coerceIn(0f, 1f)
-                                activeDownloads[taskKey] = progress
-                                onProgress(progress)
-                            }
-                        }
-                        output.flush()
-                        if (continuation.isActive) {
-                            continuation.resume(total)
-                        }
+    ): Long = coroutineScope {
+        var isFinished = false
+        val cancelWatcher = launch {
+            suspendCancellableCoroutine<Unit> { continuation ->
+                continuation.invokeOnCancellation {
+                    if (!isFinished) {
+                        call.cancel()
                     }
-                }
-            } catch (e: Throwable) {
-                if (continuation.isActive) {
-                    continuation.resumeWithException(e)
                 }
             }
         }
 
-        continuation.invokeOnCancellation {
-            job.cancel()
-            call.cancel()
+        try {
+            var total = 0L
+            body.byteStream().use { input ->
+                FileOutputStream(targetFile).use { output ->
+                    val buffer = ByteArray(32 * 1024)
+                    var read: Int
+
+                    while (input.read(buffer).also { read = it } != -1) {
+                        if (!isActive) {
+                            throw CancellationException("下载任务已在传输中取消")
+                        }
+                        output.write(buffer, 0, read)
+                        total += read
+
+                        if (expectedBytes > 0) {
+                            val progress = (total.toFloat() / expectedBytes.toFloat()).coerceIn(0f, 1f)
+                            activeDownloads[taskKey] = progress
+                            onProgress(progress)
+                        }
+                    }
+                    output.flush()
+                }
+            }
+            isFinished = true
+            total
+        } finally {
+            cancelWatcher.cancel()
         }
     }
 
