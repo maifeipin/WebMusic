@@ -163,7 +163,7 @@ curl -sI 'http://localhost:5080/api/app/download/debug'
 ## 本轮加固与云端发布
 
 - 云端 Debug versionCode = 100000 + GITHUB_RUN_NUMBER，版本名称为 1.1.<code>；本地默认 3。保持此工作流的 run number 连续递增，不可删除重建后沿用更低编号。
-- main 构建成功后发布永久版本 Release：android-debug-<code>。固定检查入口为 https://github.com/maifeipin/WebMusic/releases/download/android-debug-latest/update.json；版本 APK 地址固定到独立 Release，不用短期 Artifact 分发。后端尚未部署版本端点（404）时 Debug 客户端读取该入口。私有仓库必须使用后端公开分发，不能嵌入 GitHub Token。
+- main 构建成功后发布永久版本 Release：android-debug-<code>。固定检查入口为 https://github.com/maifeipin/WebMusic/releases/download/android-debug-latest/update.json；版本 APK 地址固定到独立 Release，不用短期 Artifact 分发。Debug 客户端优先读取该入口，失败时再读取配置的后端，不依赖后端部署进度。私有仓库必须使用后端公开分发，不能嵌入 GitHub Token。
 - 强制大小、SHA-256、包名、版本、渠道、最低 SDK 和当前安装签名完全一致校验；当前实现拒绝签名轮换，正式签名迁移另行设计。公开 debug 密钥仅用于内部测试。
 - 安装按钮点击后再次校验 APK，保存服务器/账号绑定的队列、位置、循环与随机模式。服务重建后恢复暂停状态，不自动播放；安装取消时不影响当前播放。
 - 安装需系统未知来源授权与用户确认。使用完整 APK，不做差分更新。

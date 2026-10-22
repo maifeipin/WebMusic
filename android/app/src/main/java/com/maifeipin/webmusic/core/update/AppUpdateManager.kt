@@ -102,6 +102,19 @@ object AppUpdateManager {
         serverUrl: String,
         token: String?
     ): AppVersionDto = withContext(Dispatchers.IO) {
+        // Internal debug builds use the cloud release feed independently of backend deployment.
+        if (channel == "debug") {
+            try {
+                val feed = Request.Builder().url("https://github.com/maifeipin/WebMusic/releases/download/android-debug-latest/update.json")
+                    .header("Cache-Control", "no-cache").build()
+                val info = withResponse(feed) { result ->
+                    if (!result.isSuccessful) throw IOException("更新源尚未发布：HTTP ${result.code}")
+                    gson.fromJson(result.body?.string() ?: throw IOException("更新清单为空"), AppVersionDto::class.java)
+                }
+                if (info.packageName == context.packageName && info.channel == channel) return@withContext info
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (_: Exception) { /* Fall back to the configured server. */ }
+        }
         val url = buildString {
             append(serverUrl.trimEnd('/'))
             append("/api/app/version?currentCode=").append(currentVersionCode)
