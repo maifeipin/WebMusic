@@ -115,22 +115,67 @@ public class MediaController : ControllerBase
             .AsQueryable();
 
         // Media type filtering & default isolation:
-        // By default, legacy callers without mediaType receive ONLY audio files.
-        // Callers can explicitly pass mediaType=video (or criteria mediatype:is:video) for MV,
-        // or mediaType=all (or criteria mediatype:is:all) for all media.
+        // By default, callers with omitted/blank mediaType receive ONLY audio files.
+        // Callers can explicitly pass mediaType=video (or criteria type:is:video) for MV,
+        // or mediaType=all (or criteria type:is:all) for all media.
+        // Invalid mediaType values or malformed criteria will return 400 BadRequest.
         string targetMediaType = "audio";
-        if (!string.IsNullOrEmpty(mediaType))
+        if (!string.IsNullOrWhiteSpace(mediaType))
         {
-            targetMediaType = mediaType.Trim().ToLowerInvariant();
+            var trimmed = mediaType.Trim().ToLowerInvariant();
+            if (trimmed == "video" || trimmed == "mv")
+            {
+                targetMediaType = "video";
+            }
+            else if (trimmed == "audio")
+            {
+                targetMediaType = "audio";
+            }
+            else if (trimmed == "all")
+            {
+                targetMediaType = "all";
+            }
+            else
+            {
+                return BadRequest($"Invalid mediaType '{mediaType}'. Supported values are 'audio', 'video', 'mv', or 'all'.");
+            }
         }
-        else if (criteria != null && criteria.Count > 0)
+
+        if (criteria != null && criteria.Count > 0)
         {
             foreach (var c in criteria)
             {
                 var parts = c.Split(':', 3);
-                if (parts.Length >= 2 && (parts[0].Equals("mediatype", StringComparison.OrdinalIgnoreCase) || parts[0].Equals("type", StringComparison.OrdinalIgnoreCase)))
+                if (parts.Length > 0 && (parts[0].Equals("mediatype", StringComparison.OrdinalIgnoreCase) || parts[0].Equals("type", StringComparison.OrdinalIgnoreCase)))
                 {
-                    targetMediaType = (parts.Length > 2 ? parts[2] : parts[1]).Trim().ToLowerInvariant();
+                    if (parts.Length != 3 || !parts[1].Equals("is", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return BadRequest($"Invalid criteria '{c}'. MediaType criteria must be formatted as 'type:is:<audio|video|mv|all>'.");
+                    }
+
+                    var val = parts[2].Trim().ToLowerInvariant();
+                    string criteriaType;
+                    if (val == "video" || val == "mv")
+                    {
+                        criteriaType = "video";
+                    }
+                    else if (val == "audio")
+                    {
+                        criteriaType = "audio";
+                    }
+                    else if (val == "all")
+                    {
+                        criteriaType = "all";
+                    }
+                    else
+                    {
+                        return BadRequest($"Invalid criteria mediaType value '{parts[2]}'. Supported values are 'audio', 'video', 'mv', or 'all'.");
+                    }
+
+                    if (string.IsNullOrWhiteSpace(mediaType))
+                    {
+                        targetMediaType = criteriaType;
+                    }
                     break;
                 }
             }

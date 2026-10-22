@@ -201,8 +201,13 @@ public class ScannerService
             
             return BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant() + "_" + stream.Length;
         }
-        catch {
-             return "nohash_" + stream.Length;
+        catch (Exception ex)
+        {
+            if (IsTransientIoException(ex))
+            {
+                throw;
+            }
+            return "nohash_" + stream.Length;
         }
     }
 

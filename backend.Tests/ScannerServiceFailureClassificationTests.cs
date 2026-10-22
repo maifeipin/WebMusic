@@ -92,7 +92,53 @@ public class ScannerServiceFailureClassificationTests
         // Attempt scanning a video file that encounters SMB timeout during read
         await Assert.ThrowsAsync<IOException>(() => service.ScanFileAsync(source, "movies/clip.mp4"));
 
-        // Crucial guarantee: database must NOT contain any hollow placeholder records!
+        // Crucial guarantees: neither committed nor tracked in memory as Added!
         Assert.Equal(0, await db.MediaFiles.CountAsync());
+        Assert.Empty(db.ChangeTracker.Entries<MediaFile>());
+    }
+
+    [Fact]
+    public async Task ScanFileAsync_WhenOnlyHashReadFailsWithIoException_ThrowsAndDoesNotIngestPlaceholder()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlite($"Data Source=file:{Guid.NewGuid():N}?mode=memory&cache=shared")
+            .Options;
+        await using var db = new AppDbContext(options);
+        db.Database.OpenConnection();
+        db.Database.EnsureCreated();
+
+        var source = new ScanSource { Id = 1, Name = "SMB Share", Path = "smb://nas/share" };
+        db.ScanSources.Add(source);
+        await db.SaveChangesAsync();
+
+        var mockSmb = new Mock<ISmbService>();
+        var streamWithFailingHash = new Mock<Stream>();
+        streamWithFailingHash.Setup(s => s.CanRead).Returns(true);
+        streamWithFailingHash.Setup(s => s.CanSeek).Returns(true);
+        streamWithFailingHash.Setup(s => s.Length).Returns(1024 * 1024);
+        streamWithFailingHash.Setup(s => s.Position).Returns(0);
+
+        // Fail specifically on ReadAsync (used by ComputePartialHash)
+        streamWithFailingHash.Setup(s => s.ReadAsync(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("SMB Read failed: STATUS_IO_TIMEOUT"));
+        // Synchronous Read would return 0 (simulating network recovered afterwards)
+        streamWithFailingHash.Setup(s => s.Read(It.IsAny<byte[]>(), It.IsAny<int>(), It.IsAny<int>()))
+            .Returns(0);
+
+        mockSmb.Setup(s => s.OpenFile(It.IsAny<ScanSource>(), It.IsAny<string>()))
+            .Returns(streamWithFailingHash.Object);
+
+        var service = new ScannerService(
+            db,
+            mockSmb.Object,
+            NullLogger<ScannerService>.Instance,
+            new Mock<IServiceScopeFactory>().Object,
+            new ScanStateService());
+
+        // Even if only the hash read encounters an IO timeout, must throw and NOT save placeholder
+        await Assert.ThrowsAsync<IOException>(() => service.ScanFileAsync(source, "movies/clip.mp4"));
+
+        Assert.Equal(0, await db.MediaFiles.CountAsync());
+        Assert.Empty(db.ChangeTracker.Entries<MediaFile>());
     }
 }

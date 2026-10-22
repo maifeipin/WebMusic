@@ -225,4 +225,90 @@ public class MediaControllerMediaTypeIsolationTests
             Assert.Equal("video", files[0].GetProperty("mediaType").GetString());
         }
     }
+
+    [Theory]
+    [InlineData("   ")]
+    [InlineData("")]
+    public async Task GetFiles_WhitespaceOrEmptyMediaType_DefaultsToAudioOnly(string blankMediaType)
+    {
+        var (db, controller) = await CreateSetupAsync();
+        await using (db)
+        {
+            var actionResult = await controller.GetFiles(page: 1, pageSize: 50, mediaType: blankMediaType);
+            var (total, files) = ParseResponse(actionResult.Result!);
+
+            Assert.Equal(3, total);
+            Assert.Equal(3, files.Count);
+            Assert.All(files, f => Assert.Equal("audio", f.GetProperty("mediaType").GetString()));
+        }
+    }
+
+    [Theory]
+    [InlineData("foo")]
+    [InlineData("invalid")]
+    [InlineData("audio123")]
+    public async Task GetFiles_InvalidMediaType_ReturnsBadRequest(string invalidMediaType)
+    {
+        var (db, controller) = await CreateSetupAsync();
+        await using (db)
+        {
+            var actionResult = await controller.GetFiles(page: 1, pageSize: 50, mediaType: invalidMediaType);
+            Assert.IsType<BadRequestObjectResult>(actionResult.Result);
+        }
+    }
+
+    [Theory]
+    [InlineData("type:contains:video")]
+    [InlineData("type:is:unknown")]
+    [InlineData("type:")]
+    [InlineData("type")]
+    [InlineData("mediatype:")]
+    [InlineData("mediatype:startswith:audio")]
+    public async Task GetFiles_MalformedOrInvalidCriteria_ReturnsBadRequest(string malformedCriteria)
+    {
+        var (db, controller) = await CreateSetupAsync();
+        await using (db)
+        {
+            var actionResult = await controller.GetFiles(
+                page: 1,
+                pageSize: 50,
+                criteria: new List<string> { malformedCriteria });
+            Assert.IsType<BadRequestObjectResult>(actionResult.Result);
+        }
+    }
+
+    [Fact]
+    public async Task GetFiles_CriteriaTypeAll_ReturnsAllFiles()
+    {
+        var (db, controller) = await CreateSetupAsync();
+        await using (db)
+        {
+            var actionResult = await controller.GetFiles(
+                page: 1,
+                pageSize: 50,
+                criteria: new List<string> { "type:is:all" });
+            var (total, files) = ParseResponse(actionResult.Result!);
+
+            Assert.Equal(5, total);
+            Assert.Equal(5, files.Count);
+        }
+    }
+
+    [Fact]
+    public async Task GetFiles_CriteriaMediaTypeAudio_ReturnsOnlyAudioFiles()
+    {
+        var (db, controller) = await CreateSetupAsync();
+        await using (db)
+        {
+            var actionResult = await controller.GetFiles(
+                page: 1,
+                pageSize: 50,
+                criteria: new List<string> { "mediatype:is:audio" });
+            var (total, files) = ParseResponse(actionResult.Result!);
+
+            Assert.Equal(3, total);
+            Assert.All(files, f => Assert.Equal("audio", f.GetProperty("mediaType").GetString()));
+        }
+    }
 }
+
