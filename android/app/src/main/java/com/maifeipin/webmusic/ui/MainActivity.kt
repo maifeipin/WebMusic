@@ -77,6 +77,7 @@ class MainActivity : ComponentActivity() {
     private val currentMediaItemState = mutableStateOf<MediaItem?>(null)
     private val progressState = mutableStateOf(0f)
     private val durationMsState = mutableStateOf(0L)
+    private val seekEnabledState = mutableStateOf(false)
     private val currentPositionMsState = mutableStateOf(0L)
     private val playbackModeState = mutableStateOf(PlaybackMode.SEQUENCE)
     private val lyricsState = mutableStateOf<List<LyricLine>>(emptyList())
@@ -103,6 +104,7 @@ class MainActivity : ComponentActivity() {
                     progress = progressState.value,
                     durationMs = durationMsState.value,
                     currentPosMs = currentPositionMsState.value,
+                    seekEnabled = seekEnabledState.value,
                     playbackMode = playbackModeState.value,
                     lyrics = lyricsState.value,
                     onPlayPauseClick = { togglePlayPause() },
@@ -143,6 +145,9 @@ class MainActivity : ComponentActivity() {
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     currentMediaItemState.value = mediaItem
+                    // 切歌瞬间即时清零：新曲在 prepare 完成前拿不到时长，
+                    // 若沿用上一曲的时长/位置，进度条与 seek 计算都会基于错误基准。
+                    resetProgressState()
                     val songId = mediaItem?.mediaId?.toIntOrNull()
                     if (songId != null) {
                         fetchLyricsSafely(songId)
@@ -293,17 +298,33 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             while (true) {
                 mediaController?.let { controller ->
-                    if (controller.isPlaying) {
-                        val dur = controller.duration.coerceAtLeast(1L)
-                        val pos = controller.currentPosition.coerceAtLeast(0L)
+                    // 暂停态也要同步一次：升级后恢复的队列默认暂停，
+                    // 若只在 isPlaying 时刷新，界面会一直停在 00:00 / 00:00，
+                    // 而播放器实际已定位到恢复的进度（如 01:54）。
+                    val dur = controller.duration
+                    if (dur > 0L) {
+                        val pos = controller.currentPosition.coerceIn(0L, dur)
                         durationMsState.value = dur
                         currentPositionMsState.value = pos
                         progressState.value = (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
+                        seekEnabledState.value = controller.isCurrentMediaItemSeekable
+                    } else {
+                        // 时长未知（新曲未 prepare 完 / 不可 seek 的流）：
+                        // 清零并禁用拖动，绝不沿用上一曲的时长与位置。
+                        resetProgressState()
                     }
                 }
                 delay(300)
             }
         }
+    }
+
+    /** 进度三态统一清零：切歌、清空会话、时长未知时共用，避免各处漏改导致残留旧值。 */
+    private fun resetProgressState() {
+        progressState.value = 0f
+        durationMsState.value = 0L
+        currentPositionMsState.value = 0L
+        seekEnabledState.value = false
     }
 
     private fun clearPlaybackSession() {
@@ -315,9 +336,7 @@ class MainActivity : ComponentActivity() {
         }
         isPlayingState.value = false
         currentMediaItemState.value = null
-        progressState.value = 0f
-        durationMsState.value = 0L
-        currentPositionMsState.value = 0L
+        resetProgressState()
         lyricsState.value = emptyList()
     }
 
@@ -338,6 +357,7 @@ fun MainAppScreen(
     progress: Float,
     durationMs: Long,
     currentPosMs: Long,
+    seekEnabled: Boolean,
     playbackMode: PlaybackMode,
     lyrics: List<LyricLine>,
     onPlayPauseClick: () -> Unit,
@@ -1514,6 +1534,7 @@ fun MainAppScreen(
             progress = progress,
             durationMs = durationMs,
             currentPosMs = currentPosMs,
+            seekEnabled = seekEnabled,
             playbackMode = playbackMode,
             lyrics = lyrics,
             isFavorite = currentSongDto.id != 0 && favoriteSongIds.contains(currentSongDto.id),

@@ -36,6 +36,7 @@ fun FullPlayerSheet(
     progress: Float,
     durationMs: Long,
     currentPosMs: Long,
+    seekEnabled: Boolean = true,
     playbackMode: PlaybackMode,
     lyrics: List<LyricLine>,
     isFavorite: Boolean = false,
@@ -209,7 +210,7 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // 进度条与时间
+            // 进度条与时间（时长未知或当前曲目不可 seek 时禁用拖动）
             Slider(
                 value = progress,
                 onValueChange = { newProg ->
@@ -217,6 +218,7 @@ fun FullPlayerSheet(
                     onSeekTo(target)
                 },
                 modifier = Modifier.fillMaxWidth(),
+                enabled = seekEnabled && durationMs > 0L,
                 colors = SliderDefaults.colors(
                     thumbColor = GreenPrimary,
                     activeTrackColor = GreenPrimary,
