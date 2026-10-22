@@ -114,33 +114,51 @@ public class MediaController : ControllerBase
             .Where(m => allowedSourceIds.Contains(m.ScanSourceId))
             .AsQueryable();
 
-        // Media type filtering (video / audio)
+        // Media type filtering & default isolation:
+        // By default, legacy callers without mediaType receive ONLY audio files.
+        // Callers can explicitly pass mediaType=video (or criteria mediatype:is:video) for MV,
+        // or mediaType=all (or criteria mediatype:is:all) for all media.
+        string targetMediaType = "audio";
         if (!string.IsNullOrEmpty(mediaType))
         {
-            var normType = mediaType.Trim().ToLowerInvariant();
-            if (normType == "video" || normType == "mv")
+            targetMediaType = mediaType.Trim().ToLowerInvariant();
+        }
+        else if (criteria != null && criteria.Count > 0)
+        {
+            foreach (var c in criteria)
             {
-                query = query.Where(m => 
-                    m.FilePath.ToLower().EndsWith(".mp4") || 
-                    m.FilePath.ToLower().EndsWith(".mkv") || 
-                    m.FilePath.ToLower().EndsWith(".webm") || 
-                    m.FilePath.ToLower().EndsWith(".avi") || 
-                    m.FilePath.ToLower().EndsWith(".mov") || 
-                    m.FilePath.ToLower().EndsWith(".flv") || 
-                    m.FilePath.ToLower().EndsWith(".ts") || 
-                    m.FilePath.ToLower().EndsWith(".m4v"));
-            }
-            else if (normType == "audio")
-            {
-                query = query.Where(m => 
-                    m.FilePath.ToLower().EndsWith(".mp3") || 
-                    m.FilePath.ToLower().EndsWith(".flac") || 
-                    m.FilePath.ToLower().EndsWith(".m4a") || 
-                    m.FilePath.ToLower().EndsWith(".wav") || 
-                    m.FilePath.ToLower().EndsWith(".ogg") || 
-                    m.FilePath.ToLower().EndsWith(".opus"));
+                var parts = c.Split(':', 3);
+                if (parts.Length >= 2 && (parts[0].Equals("mediatype", StringComparison.OrdinalIgnoreCase) || parts[0].Equals("type", StringComparison.OrdinalIgnoreCase)))
+                {
+                    targetMediaType = (parts.Length > 2 ? parts[2] : parts[1]).Trim().ToLowerInvariant();
+                    break;
+                }
             }
         }
+
+        if (targetMediaType == "video" || targetMediaType == "mv")
+        {
+            query = query.Where(m => 
+                m.FilePath.ToLower().EndsWith(".mp4") || 
+                m.FilePath.ToLower().EndsWith(".mkv") || 
+                m.FilePath.ToLower().EndsWith(".webm") || 
+                m.FilePath.ToLower().EndsWith(".avi") || 
+                m.FilePath.ToLower().EndsWith(".mov") || 
+                m.FilePath.ToLower().EndsWith(".flv") || 
+                m.FilePath.ToLower().EndsWith(".ts") || 
+                m.FilePath.ToLower().EndsWith(".m4v"));
+        }
+        else if (targetMediaType == "audio")
+        {
+            query = query.Where(m => 
+                m.FilePath.ToLower().EndsWith(".mp3") || 
+                m.FilePath.ToLower().EndsWith(".flac") || 
+                m.FilePath.ToLower().EndsWith(".m4a") || 
+                m.FilePath.ToLower().EndsWith(".wav") || 
+                m.FilePath.ToLower().EndsWith(".ogg") || 
+                m.FilePath.ToLower().EndsWith(".opus"));
+        }
+        // If targetMediaType == "all", no filter applied (returns both audio and video)
 
         // Soft-delete filter: normal library views never show soft-deleted files.
         // Only Admin can view onlyDeleted or includeDeleted.
@@ -254,28 +272,7 @@ public class MediaController : ControllerBase
                         break;
                     case "mediatype":
                     case "type":
-                        if (val == "video" || val == "mv")
-                        {
-                            query = query.Where(m => 
-                                m.FilePath.ToLower().EndsWith(".mp4") || 
-                                m.FilePath.ToLower().EndsWith(".mkv") || 
-                                m.FilePath.ToLower().EndsWith(".webm") || 
-                                m.FilePath.ToLower().EndsWith(".avi") || 
-                                m.FilePath.ToLower().EndsWith(".mov") || 
-                                m.FilePath.ToLower().EndsWith(".flv") || 
-                                m.FilePath.ToLower().EndsWith(".ts") || 
-                                m.FilePath.ToLower().EndsWith(".m4v"));
-                        }
-                        else if (val == "audio")
-                        {
-                            query = query.Where(m => 
-                                m.FilePath.ToLower().EndsWith(".mp3") || 
-                                m.FilePath.ToLower().EndsWith(".flac") || 
-                                m.FilePath.ToLower().EndsWith(".m4a") || 
-                                m.FilePath.ToLower().EndsWith(".wav") || 
-                                m.FilePath.ToLower().EndsWith(".ogg") || 
-                                m.FilePath.ToLower().EndsWith(".opus"));
-                        }
+                        // Handled up-front in targetMediaType resolution
                         break;
                 }
             }

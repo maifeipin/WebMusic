@@ -131,7 +131,19 @@ public class ScannerService
          }
          catch (Exception ex)
          {
-             _logger.LogDebug(ex, "TagLib metadata parsing skipped/failed for {Path}, using filename-based metadata", path);
+             if (IsTransientIoException(ex))
+             {
+                 _logger.LogWarning(ex, "Transient IO/network failure while reading metadata for {Path}. Leaving unindexed for retry.", path);
+                 throw;
+             }
+
+             if (!MediaFileFilter.IsSupportedVideoFile(path))
+             {
+                 _logger.LogWarning(ex, "TagLib parsing failed for audio file {Path}. File skipped.", path);
+                 throw;
+             }
+
+             _logger.LogInformation("TagLib did not parse video container metadata for {Path} ({Error}), using filename fallback.", path, ex.GetType().Name);
          }
 
          var media = new MediaFile
@@ -192,5 +204,30 @@ public class ScannerService
         catch {
              return "nohash_" + stream.Length;
         }
+    }
+
+    public static bool IsTransientIoException(Exception ex)
+    {
+        for (var current = ex; current != null; current = current.InnerException!)
+        {
+            if (current is IOException ||
+                current is TimeoutException ||
+                current is System.Net.Sockets.SocketException ||
+                current is OperationCanceledException)
+            {
+                return true;
+            }
+
+            var message = current.Message ?? string.Empty;
+            if (message.Contains("STATUS_IO_TIMEOUT", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("timed out", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("connection reset", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("STATUS_NETWORK_NAME_DELETED", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("STATUS_USER_SESSION_DELETED", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 }
