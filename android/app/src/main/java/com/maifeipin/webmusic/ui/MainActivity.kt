@@ -861,10 +861,7 @@ fun MainAppScreen(
                     }
                 }
                 1 -> {
-                    // 我的收藏
-                    val favSongDtos = remember(favoriteList) {
-                        favoriteList.mapNotNull { it.mediaFile?.toMediaFileDto() }
-                    }
+                    val favSongDtos = favoriteList.mapNotNull { it.mediaFile?.toMediaFileDto() }
 
                     Row(
                         modifier = Modifier
@@ -1164,10 +1161,7 @@ fun MainAppScreen(
                     }
                 }
                 3 -> {
-                    // 播放历史
-                    val historySongDtos = remember(historyList) {
-                        historyList.mapNotNull { it.mediaFile?.toMediaFileDto() }
-                    }
+                    val historySongDtos = historyList.mapNotNull { it.mediaFile?.toMediaFileDto() }
 
                     Row(
                         modifier = Modifier
