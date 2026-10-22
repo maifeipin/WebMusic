@@ -1169,12 +1169,14 @@ fun MainAppScreen(
                             favoriteSongIds = favoriteSongIds,
                             currentSongId = currentSongDto?.id,
                             isPlaying = isPlaying,
+                            offlineRefreshTrigger = offlineRefreshTrigger,
                             onBack = {
                                 activePlaylistId = null
                                 loadPlaylists()
                             },
                             onPlaySongFromList = onPlaySongFromList,
-                            onToggleFavorite = { toggleFavorite(it) }
+                            onToggleFavorite = { toggleFavorite(it) },
+                            onStartDownload = { startDownload(it) }
                         )
                     } else {
                         Row(

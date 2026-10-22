@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -23,6 +24,7 @@ import com.maifeipin.webmusic.core.network.MediaFileDto
 import com.maifeipin.webmusic.core.network.PlaylistDetailDto
 import com.maifeipin.webmusic.core.network.TokenManager
 import com.maifeipin.webmusic.core.network.WebMusicNetwork
+import com.maifeipin.webmusic.core.storage.OfflineDownloadManager
 import com.maifeipin.webmusic.ui.theme.DarkBackground
 import com.maifeipin.webmusic.ui.theme.DarkSurface
 import com.maifeipin.webmusic.ui.theme.GreenPrimary
@@ -37,11 +39,16 @@ fun PlaylistDetailView(
     favoriteSongIds: Set<Int>,
     currentSongId: Int?,
     isPlaying: Boolean,
+    offlineRefreshTrigger: Int,
     onBack: () -> Unit,
     onPlaySongFromList: (List<MediaFileDto>, Int) -> Unit,
-    onToggleFavorite: (Int) -> Unit
+    onToggleFavorite: (Int) -> Unit,
+    onStartDownload: (MediaFileDto) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    // 下载进度来自单例 StateFlow，进度变化能可靠触发重组（与曲库/收藏/历史三处列表一致）
+    val downloadStates by OfflineDownloadManager.downloadStates.collectAsState()
     var detail by remember { mutableStateOf<PlaylistDetailDto?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var statusText by remember { mutableStateOf("") }
@@ -125,6 +132,22 @@ fun PlaylistDetailView(
                 itemsIndexed(songs) { index, song ->
                     val isCurrent = currentSongId == song.id
                     val isFav = favoriteSongIds.contains(song.id)
+                    val isDownloaded = remember(song.id, offlineRefreshTrigger, tokenManager.token) {
+                        OfflineDownloadManager.isDownloaded(
+                            context,
+                            tokenManager.serverUrl,
+                            tokenManager.username,
+                            song.id
+                        )
+                    }
+                    val downloadTaskKey = remember(song.id, tokenManager.serverUrl, tokenManager.username) {
+                        OfflineDownloadManager.taskKeyFor(
+                            tokenManager.serverUrl,
+                            tokenManager.username,
+                            song.id
+                        )
+                    }
+                    val downloadProgress = downloadStates[downloadTaskKey]
 
                     ListItem(
                         headlineContent = {
@@ -163,7 +186,10 @@ fun PlaylistDetailView(
                         trailingContent = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 // 收藏红心按钮
-                                IconButton(onClick = { onToggleFavorite(song.id) }) {
+                                IconButton(
+                                    onClick = { onToggleFavorite(song.id) },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
                                     Icon(
                                         imageVector = if (isFav) Icons.Filled.Favorite else Icons.Default.FavoriteBorder,
                                         contentDescription = if (isFav) "取消收藏" else "收藏",
@@ -171,20 +197,29 @@ fun PlaylistDetailView(
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
+                                // 下载到本地（与曲库 / 收藏 / 历史三处一致）
+                                SongDownloadAction(
+                                    isDownloaded = isDownloaded,
+                                    progress = downloadProgress,
+                                    onStartDownload = { onStartDownload(song) }
+                                )
                                 // 从歌单移除按钮
-                                IconButton(onClick = {
-                                    scope.launch {
-                                        try {
-                                            val api = WebMusicNetwork.createApi(tokenManager)
-                                            withContext(Dispatchers.IO) {
-                                                api.removeSongsFromPlaylist(playlistId, song.id.toString())
+                                IconButton(
+                                    onClick = {
+                                        scope.launch {
+                                            try {
+                                                val api = WebMusicNetwork.createApi(tokenManager)
+                                                withContext(Dispatchers.IO) {
+                                                    api.removeSongsFromPlaylist(playlistId, song.id.toString())
+                                                }
+                                                loadDetail()
+                                            } catch (e: Exception) {
+                                                statusText = "移除失败: ${e.message}"
                                             }
-                                            loadDetail()
-                                        } catch (e: Exception) {
-                                            statusText = "移除失败: ${e.message}"
                                         }
-                                    }
-                                }) {
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
                                     Icon(
                                         imageVector = Icons.Default.Close,
                                         contentDescription = "从歌单移除",
