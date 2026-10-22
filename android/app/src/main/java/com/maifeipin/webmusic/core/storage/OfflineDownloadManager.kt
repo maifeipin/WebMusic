@@ -6,116 +6,248 @@ import android.util.Log
 import com.maifeipin.webmusic.core.network.MediaFileDto
 import com.maifeipin.webmusic.core.network.TokenManager
 import com.maifeipin.webmusic.core.network.WebMusicNetwork
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
-import okhttp3.Call
-import okhttp3.Callback
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.ResponseBody
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.concurrent.CancellationException
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.coroutineContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.Request
+import okhttp3.Response
+import okhttp3.ResponseBody
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 object OfflineDownloadManager {
     private const val TAG = "OfflineDownloadManager"
 
+    /** 网络抖动（服务端 SMB 读超时返回 500、连接被重置）时的最大尝试次数 */
+    private const val MAX_ATTEMPTS = 3
+
+    /** 每次重试前的等待，指数退避 */
+    private val RETRY_BACKOFF_MS = longArrayOf(1_000L, 2_000L)
+
+    /**
+     * 传输归属：任务跑在管理器自己的 scope 里，而不是调用方（Compose `rememberCoroutineScope`）里。
+     * 这样「自动缓存」先起的传输不会因为界面重组/退出页面而中断；
+     * 真正需要停的时候由 [cancelAllDownloads] / [cancelDownload] 显式撤销。
+     */
+    private val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** 同一 taskKey 全局只允许一次传输，手动下载与自动缓存共用这一道闸门 */
+    private val taskGate = DownloadTaskGate<Result<DownloadedSong>>(managerScope) { key ->
+        // 自动缓存与手动下载撞车时会走到这里：不重复传输，只等同一份结果
+        Log.i(TAG, "Reuse in-flight download task: $key")
+    }
+
     // 内存中的下载任务进度字典 (taskKey -> Float 0..1)
     val activeDownloads = ConcurrentHashMap<String, Float>()
     private val activeCalls = ConcurrentHashMap<String, Call>()
     private val activeJobs = ConcurrentHashMap<String, Job>()
 
+    // Compose 侧可观察的进度快照：0% 的进度环在深色背景上等于空白，
+    // 必须让 UI 能确定「任务已经开始了」，否则看起来像点了没反应。
+    private val _downloadStates = MutableStateFlow<Map<String, Float>>(emptyMap())
+    val downloadStates: StateFlow<Map<String, Float>> = _downloadStates.asStateFlow()
+
     fun makeTaskKey(serverHash: String, userHash: String, songId: Int): String {
         return "${serverHash}_${userHash}_$songId"
     }
 
+    /** 供 UI 直接取当前曲目的任务键，避免各处重复哈希计算 */
+    fun taskKeyFor(serverUrl: String, username: String?, songId: Int): String {
+        return makeTaskKey(
+            LocalSongDatabase.computeServerHash(serverUrl),
+            LocalSongDatabase.computeUserHash(username),
+            songId
+        )
+    }
+
+    private fun publishProgress(taskKey: String, progress: Float?) {
+        _downloadStates.update { current ->
+            if (progress == null) current - taskKey else current + (taskKey to progress)
+        }
+    }
+
+    private class HttpStatusException(val code: Int, message: String) : IOException(message)
+
+    private fun isRetryable(e: Throwable): Boolean = when (e) {
+        is HttpStatusException -> e.code >= 500 || e.code == 408 || e.code == 429
+        // SocketTimeout / 连接重置 / 传输中断都属于瞬时故障
+        is IOException -> true
+        else -> false
+    }
+
+    /** 一次下载会话的不变凭据快照，彻底解耦可变的 TokenManager */
+    private data class DownloadSession(
+        val serverUrl: String,
+        val username: String,
+        val token: String,
+        val serverHash: String,
+        val userHash: String
+    )
+
+    /**
+     * 下载单曲到本地离线库。
+     *
+     * 幂等：同一（服务器 + 账号 + 曲目）重复调用不会发起第二次传输，后来的调用方直接复用
+     * 在途任务的结果。服务端读 SMB 偶发 `STATUS_IO_TIMEOUT`（500）属于瞬时故障，最多
+     * [MAX_ATTEMPTS] 次尝试（1s、2s 退避），每次都用全新的临时文件。协程取消永远原样抛出，不参与重试。
+     */
     suspend fun downloadSong(
         context: Context,
         tokenManager: TokenManager,
         song: MediaFileDto,
         onProgress: (Float) -> Unit = {}
-    ): Result<DownloadedSong> = withContext(Dispatchers.IO) {
-        // 1. 拍摄当前会话的不变凭据快照，彻底解耦可变的 TokenManager
-        val snapshotServerUrl = tokenManager.serverUrl.trimEnd('/')
-        val snapshotUsername = tokenManager.username?.ifEmpty { "anon" } ?: "anon"
-        val snapshotToken = tokenManager.token
+    ): Result<DownloadedSong> {
+        val session = snapshotSession(tokenManager)
+            ?: return Result.failure(IllegalStateException("未登录，无法下载"))
 
-        if (snapshotToken.isNullOrEmpty()) {
-            return@withContext Result.failure(IllegalStateException("未登录，无法下载"))
+        val taskKey = makeTaskKey(session.serverHash, session.userHash, song.id)
+        val appContext = context.applicationContext
+
+        return try {
+            taskGate.run(taskKey) {
+                performDownload(appContext, session, song, taskKey, onProgress)
+            }
+        } catch (e: CancellationException) {
+            // 调用方自己被取消（退出登录 / 页面销毁），保持原语义
+            throw e
+        } catch (e: Throwable) {
+            Result.failure(e as? Exception ?: Exception(e))
         }
+    }
 
-        val serverHash = LocalSongDatabase.computeServerHash(snapshotServerUrl)
-        val userHash = LocalSongDatabase.computeUserHash(snapshotUsername)
-        val taskKey = makeTaskKey(serverHash, userHash, song.id)
+    private fun snapshotSession(tokenManager: TokenManager): DownloadSession? {
+        val serverUrl = tokenManager.serverUrl.trimEnd('/')
+        val token = tokenManager.token
+        if (token.isNullOrEmpty() || serverUrl.isBlank()) return null
+        val username = tokenManager.username?.ifEmpty { "anon" } ?: "anon"
+        return DownloadSession(
+            serverUrl = serverUrl,
+            username = username,
+            token = token,
+            serverHash = LocalSongDatabase.computeServerHash(serverUrl),
+            userHash = LocalSongDatabase.computeUserHash(username)
+        )
+    }
 
-        // 2. 强隔离安全路径校验：使用用户名哈希构造子目录，并校验规范化路径在根目录内
-        val musicDir = context.getExternalFilesDir(Environment.DIRECTORY_MUSIC)
-            ?: context.filesDir
+    /**
+     * 任务级框架：路径校验只做一次，随后交给 [retryOfflineDownload] 跑尝试/退避。
+     * `onFinished` 挂在最外层 finally，保证「退避等待中被取消」也会清空进度与在途登记。
+     */
+    private suspend fun performDownload(
+        context: Context,
+        session: DownloadSession,
+        song: MediaFileDto,
+        taskKey: String,
+        onProgress: (Float) -> Unit
+    ): Result<DownloadedSong> {
+        // 强隔离安全路径校验：使用用户名哈希构造子目录，并校验规范化路径在根目录内
+        val musicDir = context.getExternalFilesDir(Environment.DIRECTORY_MUSIC) ?: context.filesDir
         val baseDownloadsDir = File(musicDir, "downloads").canonicalFile
-        val serverDir = File(baseDownloadsDir, serverHash).canonicalFile
-        val userDir = File(serverDir, userHash).canonicalFile
+        val serverDir = File(baseDownloadsDir, session.serverHash).canonicalFile
+        val userDir = File(serverDir, session.userHash).canonicalFile
 
         if (!userDir.canonicalPath.startsWith(baseDownloadsDir.canonicalPath)) {
-            return@withContext Result.failure(SecurityException("非法存储路径，已阻止跨目录访问"))
+            return Result.failure(SecurityException("非法存储路径，已阻止跨目录访问"))
         }
         if (!userDir.exists()) userDir.mkdirs()
 
-        // 3. 独立版本临时文件与提交目标文件
-        val tempFile = File(userDir, "wm_${song.id}_${System.currentTimeMillis()}.tmp")
+        val currentJob = coroutineContext[Job]
+        if (currentJob != null) activeJobs[taskKey] = currentJob
+
+        val downloaded = try {
+            retryOfflineDownload(
+                maxAttempts = MAX_ATTEMPTS,
+                backoffs = RETRY_BACKOFF_MS,
+                isRetryable = ::isRetryable,
+                onFinished = {
+                    // 只摘自己这一笔登记，避免误删后来者（闸门原则上不允许并存，这里仍做值比较）
+                    if (currentJob != null) activeJobs.remove(taskKey, currentJob)
+                    activeDownloads.remove(taskKey)
+                    publishProgress(taskKey, null)
+                }
+            ) { attempt ->
+                performAttempt(context, session, song, taskKey, userDir, attempt, onProgress)
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            return Result.failure(e as? Exception ?: Exception(e))
+        }
+
+        onProgress(1f)
+        return Result.success(downloaded)
+    }
+
+    /**
+     * 单次尝试。成功返回已入库的条目，失败直接抛异常交给外层决定是否重试。
+     * 本次尝试产生的临时文件 / 目标文件 / 连接登记，全部在本方法的 finally 里就地收尾。
+     */
+    private suspend fun performAttempt(
+        context: Context,
+        session: DownloadSession,
+        song: MediaFileDto,
+        taskKey: String,
+        userDir: File,
+        attempt: Int,
+        onProgress: (Float) -> Unit
+    ): DownloadedSong {
+        // 每次尝试都用独立的版本临时文件与提交目标文件
+        val tempFile = File(userDir, "wm_${song.id}_${System.currentTimeMillis()}_$attempt.tmp")
         var committedFile: File? = null
         var isCommittedToDatabase = false
-
-        val currentJob = coroutineContext[Job]
+        var call: Call? = null
         var cancellationHandle: kotlinx.coroutines.DisposableHandle? = null
 
         try {
             activeDownloads[taskKey] = 0f
+            publishProgress(taskKey, 0f)
             onProgress(0f)
 
-            val streamUrl = "$snapshotServerUrl/api/media/stream/${song.id}"
+            val streamUrl = "${session.serverUrl}/api/media/stream/${song.id}"
             // 使用凭据快照创建独立的网络客户端，防止后续切账号时混用
-            val client = WebMusicNetwork.createClientWithToken(snapshotToken)
+            val client = WebMusicNetwork.createClientWithToken(session.token)
             val request = Request.Builder()
                 .url(streamUrl)
-                .addHeader("Authorization", "Bearer $snapshotToken")
+                .addHeader("Authorization", "Bearer ${session.token}")
                 .build()
 
-            val call = client.newCall(request)
-            activeCalls[taskKey] = call
+            val newCall = client.newCall(request)
+            call = newCall
+            activeCalls[taskKey] = newCall
+            val currentJob = coroutineContext[Job]
             if (currentJob != null) {
-                activeJobs[taskKey] = currentJob
                 cancellationHandle = currentJob.invokeOnCompletion { cause ->
                     if (cause is CancellationException) {
-                        call.cancel()
+                        newCall.cancel()
                     }
                 }
             }
 
-            var totalRead = 0L
             var expectedBytes = song.sizeBytes ?: -1L
 
             // 采用 suspendCancellableCoroutine + enqueue，直接将协程取消绑定到 Call
-            // 并使用 resume(response) { cause -> response.close() } 处理取消竞态下未交付 Response 的资源释放
             val response = suspendCancellableCoroutine<Response> { continuation ->
-                continuation.invokeOnCancellation {
-                    call.cancel()
-                }
-                call.enqueue(object : Callback {
+                continuation.invokeOnCancellation { newCall.cancel() }
+                newCall.enqueue(object : Callback {
                     override fun onResponse(call: Call, response: Response) {
-                        continuation.resume(response) { cause ->
-                            response.close()
-                        }
+                        continuation.resume(response) { _ -> response.close() }
                     }
 
                     override fun onFailure(call: Call, e: IOException) {
@@ -126,23 +258,23 @@ object OfflineDownloadManager {
                 })
             }
 
-            response.use { resp ->
+            val readBytes = response.use { resp ->
                 if (!resp.isSuccessful) {
-                    return@withContext Result.failure(IllegalStateException("下载失败: HTTP ${resp.code}"))
+                    // 5xx / 408 / 429 交给外层重试，4xx 直接失败
+                    throw HttpStatusException(
+                        resp.code,
+                        if (resp.code >= 500) "服务端读取源文件失败（HTTP ${resp.code}）" else "下载失败：HTTP ${resp.code}"
+                    )
                 }
 
-                val body = resp.body
-                    ?: return@withContext Result.failure(IllegalStateException("响应体为空"))
-
+                val body = resp.body ?: throw IOException("响应体为空")
                 val contentLength = body.contentLength()
                 if (contentLength > 0) {
                     expectedBytes = contentLength
                 }
 
-                // 取消绑定覆盖整个响应体复制过程：使用 suspendCancellableCoroutine 确保在 input.read() 阻塞期间，
-                // 一旦协程取消（如 Activity 销毁）能立即通过 continuation.invokeOnCancellation 触发 call.cancel() 关闭底层 Socket
-                totalRead = copyStreamWithCancellation(
-                    call = call,
+                copyStreamWithCancellation(
+                    call = newCall,
                     body = body,
                     targetFile = tempFile,
                     expectedBytes = expectedBytes,
@@ -150,13 +282,14 @@ object OfflineDownloadManager {
                     onProgress = onProgress
                 )
             }
+            val totalRead = readBytes
 
             // 完整性校验：必须有读取数据，且若服务端提供了 ContentLength 则必须全量匹配
             if (totalRead <= 0L) {
-                return@withContext Result.failure(IllegalStateException("下载内容为空"))
+                throw IOException("下载内容为空")
             }
             if (expectedBytes > 0 && totalRead != expectedBytes) {
-                return@withContext Result.failure(IllegalStateException("文件校验失败: 预期 $expectedBytes 字节，实际下载 $totalRead 字节"))
+                throw IOException("文件校验失败: 预期 $expectedBytes 字节，实际下载 $totalRead 字节")
             }
 
             // 提交文件前严格校验协程取消状态
@@ -164,19 +297,19 @@ object OfflineDownloadManager {
                 throw CancellationException("下载任务已在提交前取消")
             }
 
-            // 4. 原子提交新文件：重命名到独立的版本文件，绝不先删旧文件
+            // 原子提交新文件：重命名到独立的版本文件，绝不先删旧文件
             val targetVersionFile = File(userDir, "wm_${song.id}_${System.currentTimeMillis()}.audio")
             val renameSuccess = tempFile.renameTo(targetVersionFile)
             if (!renameSuccess || !targetVersionFile.exists() || targetVersionFile.length() != totalRead) {
                 if (targetVersionFile.exists()) targetVersionFile.delete()
-                return@withContext Result.failure(IllegalStateException("提交离线目标文件失败"))
+                throw IOException("提交离线目标文件失败")
             }
             committedFile = targetVersionFile
 
-            // 5. 使用快照拉取 LRC 歌词（若失败不阻断音频保存，遇到取消则重抛）
+            // 使用快照拉取 LRC 歌词（若失败不阻断音频保存，遇到取消则重抛）
             var lyricsContent: String? = null
             try {
-                val api = WebMusicNetwork.createApi(snapshotServerUrl, snapshotToken)
+                val api = WebMusicNetwork.createApi(session.serverUrl, session.token)
                 val lyricsResp = api.getLyrics(song.id)
                 lyricsContent = lyricsResp.content
             } catch (e: Exception) {
@@ -189,14 +322,15 @@ object OfflineDownloadManager {
                 throw CancellationException("下载任务在入库前已被取消")
             }
 
-            // 6. 查找旧记录（以备数据库更新成功后清理旧文件）
-            val oldRecord = LocalSongDatabase.getInstance(context).getById(serverHash, userHash, song.id)
+            // 查找旧记录（以备数据库更新成功后清理旧文件）
+            val oldRecord = LocalSongDatabase.getInstance(context)
+                .getById(session.serverHash, session.userHash, song.id)
             val oldFilePath = oldRecord?.localFilePath
 
             val downloadedSong = DownloadedSong(
-                serverHash = serverHash,
-                userHash = userHash,
-                username = snapshotUsername,
+                serverHash = session.serverHash,
+                userHash = session.userHash,
+                username = session.username,
                 id = song.id,
                 title = song.title ?: "未知歌曲",
                 artist = song.artist ?: "未知歌手",
@@ -206,15 +340,15 @@ object OfflineDownloadManager {
                 sizeBytes = targetVersionFile.length(),
                 localFilePath = targetVersionFile.absolutePath,
                 lyrics = lyricsContent,
-                coverUrl = WebMusicNetwork.buildCoverUrl(snapshotServerUrl, song.filePath),
+                coverUrl = WebMusicNetwork.buildCoverUrl(session.serverUrl, song.filePath),
                 downloadedAt = System.currentTimeMillis()
             )
 
-            // 7. 持久化写入本地离线数据库，若写入失败则抛出异常并触发安全清理
+            // 持久化写入本地离线数据库，若写入失败则抛出异常并触发安全清理
             LocalSongDatabase.getInstance(context).insertOrUpdate(downloadedSong)
             isCommittedToDatabase = true
 
-            // 8. 仅在数据库更新完全成功后，安全清理历史版本旧文件
+            // 仅在数据库更新完全成功后，安全清理历史版本旧文件
             if (oldFilePath != null && oldFilePath != targetVersionFile.absolutePath) {
                 try {
                     val oldFile = File(oldFilePath)
@@ -224,27 +358,18 @@ object OfflineDownloadManager {
                 }
             }
 
-            onProgress(1f)
-            Result.success(downloadedSong)
-        } catch (e: Throwable) {
-            if (e is CancellationException) {
-                // 必须重新抛出 CancellationException，绝不吞掉协程取消
-                throw e
-            }
-            Log.e(TAG, "Download song ${song.id} failed", e)
-            Result.failure(e as? Exception ?: Exception(e))
+            return downloadedSong
         } finally {
-            // 9. 统一收尾：若未成功提交入库，坚决清理新创建的中间文件，彻底防止孤儿文件泄露
-            if (!isCommittedToDatabase && committedFile != null && committedFile.exists()) {
-                committedFile.delete()
+            // 只收尾「本次尝试」的东西，任务级状态归 [performDownload] 的外层 finally 管
+            val cleanupTarget = committedFile
+            if (!isCommittedToDatabase && cleanupTarget != null && cleanupTarget.exists()) {
+                cleanupTarget.delete()
             }
             if (tempFile.exists()) {
                 tempFile.delete()
             }
             cancellationHandle?.dispose()
-            activeCalls.remove(taskKey)
-            activeJobs.remove(taskKey)
-            activeDownloads.remove(taskKey)
+            call?.let { activeCalls.remove(taskKey, it) }
         }
     }
 
@@ -276,6 +401,7 @@ object OfflineDownloadManager {
 
         try {
             var total = 0L
+            var lastPublished = -1f
             body.byteStream().use { input ->
                 FileOutputStream(targetFile).use { output ->
                     val buffer = ByteArray(32 * 1024)
@@ -291,6 +417,12 @@ object OfflineDownloadManager {
                         if (expectedBytes > 0) {
                             val progress = (total.toFloat() / expectedBytes.toFloat()).coerceIn(0f, 1f)
                             activeDownloads[taskKey] = progress
+                            // 进度环以 1% 为粒度发布，避免每个 32KB 分片都触发一次重组
+                            val rounded = kotlin.math.floor(progress * 100f) / 100f
+                            if (rounded > lastPublished) {
+                                lastPublished = rounded
+                                publishProgress(taskKey, rounded)
+                            }
                             onProgress(progress)
                         }
                     }
@@ -345,17 +477,50 @@ object OfflineDownloadManager {
         val serverHash = LocalSongDatabase.computeServerHash(serverUrl)
         val userHash = LocalSongDatabase.computeUserHash(username)
         val key = makeTaskKey(serverHash, userHash, songId)
+        taskGate.cancel(key)
         activeCalls.remove(key)?.cancel()
         activeJobs.remove(key)?.cancel()
         activeDownloads.remove(key)
+        publishProgress(key, null)
     }
 
     fun cancelAllDownloads() {
+        taskGate.cancelAll()
         activeCalls.values.forEach { it.cancel() }
         activeCalls.clear()
         activeJobs.values.forEach { it.cancel() }
         activeJobs.clear()
         activeDownloads.clear()
+        _downloadStates.value = emptyMap()
+    }
+
+    /** 供测试与排障：当前真正在跑的传输任务数 */
+    fun activeTaskKeys(): Set<String> = taskGate.activeKeys()
+}
+
+/**
+ * 把下载异常翻成用户能看懂的短句。
+ *
+ * 直接把 `Unable to resolve host "music.xxx"` 之类的系统消息甩到 Toast 上既不好读，
+ * 也会被系统截断；这里只保留「发生了什么」这一层信息，纯函数便于单测。
+ */
+fun friendlyDownloadError(e: Throwable): String {
+    val raw = e.message.orEmpty()
+    return when {
+        e is DownloadCancelledException -> "下载已取消"
+        raw.contains("Unable to resolve host", true) || raw.contains("No address associated", true) ->
+            "网络不可用，无法解析服务器地址"
+        raw.contains("timeout", true) || raw.contains("timed out", true) ->
+            "服务端读取超时"
+        raw.contains("stream was reset", true) || raw.contains("Connection reset", true) ||
+            raw.contains("Broken pipe", true) || raw.contains("unexpected end of stream", true) ->
+            "连接被重置，请重试"
+        raw.contains("HTTP 500") || raw.contains("HTTP 502") || raw.contains("HTTP 503") || raw.contains("HTTP 504") ->
+            "服务端读取源文件失败"
+        raw.contains("HTTP 401") || raw.contains("HTTP 403") ->
+            "登录状态失效，请重新登录"
+        raw.isBlank() -> "未知错误"
+        else -> raw
     }
 }
 

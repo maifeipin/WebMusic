@@ -28,7 +28,9 @@ data class MediaFileDto(
     val duration: String?,
     val sizeBytes: Long?,
     val fileHash: String?,
-    val contentVersion: String? = null
+    val contentVersion: String? = null,
+    /** 服务端以秒（含小数）返回的曲目时长，网易云歌词匹配按它就近排序 */
+    val totalSeconds: Double? = null
 )
 
 data class PagedResult<T>(
@@ -45,10 +47,16 @@ data class UserMediaItem(
     val album: String?,
     val genre: String? = null,
     val duration: Any? = null,
+    val totalSeconds: Double? = null,
     val filePath: String? = null,
     val coverArt: String? = null
 ) {
     fun toMediaFileDto(): MediaFileDto {
+        val seconds = totalSeconds ?: when (val raw = duration) {
+            is Number -> raw.toDouble()
+            is String -> raw.toDoubleOrNull()
+            else -> null
+        }
         return MediaFileDto(
             id = id,
             filePath = filePath,
@@ -60,7 +68,8 @@ data class UserMediaItem(
             duration = duration?.toString(),
             sizeBytes = null,
             fileHash = null,
-            contentVersion = null
+            contentVersion = null,
+            totalSeconds = seconds
         )
     }
 }
@@ -119,6 +128,23 @@ data class PlaylistDetailDto(
     val songs: List<PlaylistSongItem>
 )
 
+/** 服务端已安装的插件（如网易云音乐代理），用于代理搜索与歌词拉取 */
+data class PluginDto(
+    val id: Int,
+    val name: String? = null,
+    val baseUrl: String? = null,
+    val isEnabled: Boolean = false
+)
+
+/** 歌词的直写请求体（后端 /api/lyrics/{id}/save 契约） */
+data class SaveLyricsBody(
+    val content: String,
+    val source: String? = null,
+    val version: String? = null
+)
+
+data class AiStatusDto(val available: Boolean = false)
+
 interface WebMusicApi {
     @POST("api/auth/login")
     suspend fun login(@Body req: LoginRequest): LoginResponse
@@ -134,6 +160,42 @@ interface WebMusicApi {
     suspend fun getLyrics(
         @Path("mediaId") mediaId: Int
     ): com.maifeipin.webmusic.core.lyrics.LyricsResponse
+
+    // --- 歌词管理（网易云匹配 / AI 生成） ---
+    @GET("api/plugins")
+    suspend fun getPlugins(): List<PluginDto>
+
+    /** 通过服务端插件代理搜索网易云歌曲；返回原始 JSON，字段随上游变化，调用方自行解析 */
+    @GET("api/plugins/{pluginId}/proxy/search")
+    suspend fun searchNeteaseSongs(
+        @Path("pluginId") pluginId: Int,
+        @Query("keywords") keywords: String
+    ): com.google.gson.JsonObject
+
+    /** 通过服务端插件代理拉取指定网易云歌曲的 LRC 歌词 */
+    @GET("api/plugins/{pluginId}/proxy/lyric")
+    suspend fun getNeteaseLyric(
+        @Path("pluginId") pluginId: Int,
+        @Query("id") neteaseSongId: Long
+    ): com.google.gson.JsonObject
+
+    /** 直写歌词库（需管理员），失败时返回非 2xx 供上层提示 */
+    @POST("api/lyrics/{mediaId}/save")
+    suspend fun saveLyrics(
+        @Path("mediaId") mediaId: Int,
+        @Body body: SaveLyricsBody
+    ): retrofit2.Response<com.google.gson.JsonObject>
+
+    /** 触发服务端 AI 生成歌词（同步返回，耗时较长，需长超时客户端） */
+    @POST("api/lyrics/{mediaId}/generate")
+    suspend fun generateLyrics(
+        @Path("mediaId") mediaId: Int,
+        @Query("lang") lang: String? = null,
+        @Query("prompt") prompt: String? = null
+    ): com.maifeipin.webmusic.core.lyrics.LyricsResponse
+
+    @GET("api/lyrics/status")
+    suspend fun getAiStatus(): AiStatusDto
 
     // --- 收藏夹 Favorites ---
     @GET("api/user/favorites/ids")
@@ -221,7 +283,7 @@ object WebMusicNetwork {
         }
     }
 
-    fun createClientWithToken(token: String?): OkHttpClient {
+    fun createClientWithToken(token: String?, readTimeoutSeconds: Long = 30): OkHttpClient {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.HEADERS
             redactHeader("Authorization")
@@ -231,7 +293,7 @@ object WebMusicNetwork {
             .addInterceptor(StaticAuthInterceptor(token))
             .addInterceptor(logging)
             .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(readTimeoutSeconds, TimeUnit.SECONDS)
             .build()
     }
 
@@ -250,9 +312,9 @@ object WebMusicNetwork {
             .build()
     }
 
-    fun createApi(serverUrl: String, token: String?): WebMusicApi {
+    fun createApi(serverUrl: String, token: String?, readTimeoutSeconds: Long = 30): WebMusicApi {
         val baseUrl = if (serverUrl.endsWith("/")) serverUrl else "$serverUrl/"
-        val client = createClientWithToken(token)
+        val client = createClientWithToken(token, readTimeoutSeconds)
         return Retrofit.Builder()
             .baseUrl(baseUrl)
             .client(client)
@@ -263,6 +325,11 @@ object WebMusicNetwork {
 
     fun createApi(tokenManager: TokenManager): WebMusicApi {
         return createApi(tokenManager.serverUrl, tokenManager.token)
+    }
+
+    /** AI 生成歌词是同步长任务，单独给足读超时（默认 30s 不够） */
+    fun createLongTimeoutApi(tokenManager: TokenManager): WebMusicApi {
+        return createApi(tokenManager.serverUrl, tokenManager.token, readTimeoutSeconds = 180)
     }
 
     /**

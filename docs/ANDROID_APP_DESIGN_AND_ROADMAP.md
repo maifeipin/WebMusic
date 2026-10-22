@@ -308,6 +308,13 @@ WebMusic 现已具备较为完善的 Web 桌面端与基础移动端 PWA 体验�
   - **原子提交与 0 孤儿文件防漏**：下载至版本化临时文件，完整性核验（Content-Length / 非空）后原子重命名；全程记录数据库提交状态，若在歌词请求阶段取消或写入数据库失败，统一在 `finally` 中坚决物理删除新文件并回滚；数据库持久化成功后才清理旧版本物理文件；
   - **取消与阻塞读取即时中断**：使用 `suspendCancellableCoroutine` + `enqueue` 将任务直接绑定到底层 `Call.cancel()`，配合 `currentJob.invokeOnCompletion(onCancelling = true)`，在协程取消时立即关闭底层 socket 中断阻塞读取；取消异常一律向上重抛；退出登录统一取消所有在途列表请求与下载任务；
   - 首页顶栏提供“全部曲库”与“离线音乐”双 Tab 无缝切换；单曲条目支持一键下载、实时进度环、已离线标记及本地文件删除；离线音乐列表支持本地秒级即时检索与 `file://` 无网播放；
+  - **手动下载的三态反馈与自动重试**：点击后立即 Toast「开始下载」并进入下载态；`0%` 时用不确定进度转圈（确定进度的空环在深色背景上等于空白，用户会误判成「点了没反应」），进度通过 `StateFlow` 快照驱动重组；成功 Toast「已离线」，失败明确提示原因（DNS 失败 / 读取超时 / 连接被重置 / 服务端 5xx 统一翻成中文）；
+  - **瞬时故障自动重试**：服务端读 SMB 偶发 `STATUS_IO_TIMEOUT`（HTTP 500）时最多尝试 3 次、退避 1s/2s，每次都用全新的临时文件，半截文件一律删除；协程取消（退出登录 / 切账号）永不重试；
+  - **任务级收尾与原子去重**（`core/storage/DownloadTaskSupport.kt`）：
+    - 退避等待放在「单次尝试」的 `finally` 之外、任务级 `onFinished` 挂在最外层，因此「退避中被取消」也会正常清空进度与在途登记，不会留下永久转圈；
+    - `DownloadTaskGate` 按 `服务器 + 账号 + 曲目` 原子去重，手动下载与「播放即缓存」撞车时只跑一次传输，后到者 `await` 同一份结果（日志 `Reuse in-flight download task`），避免覆盖 `activeCalls`/`activeJobs` 与重复落盘；
+    - 传输归属管理器自己的 `CoroutineScope`：界面重组/退出页面不会打断在途下载，真正的停止由 `cancelDownload()` / `cancelAllDownloads()` 显式触发；
+  - **播放启动耗时锚点**（`core/player/PlaybackTimeline.kt`）：以 `PlaybackTiming` tag 输出 `click → queue-built → prepare-issued → transition → first-audio` 五段耗时，用于区分「队列构建慢」与「首包缓冲慢」；实测 100 首「播放全部」队列构建 30ms、出声 170ms，40 首列表冷曲目队列构建 11ms 而 `first-audio` 达 13.7s，证实瓶颈在服务端 SMB 冷读（单次 `STATUS_IO_TIMEOUT` 约 5.9s）而非客户端准备；
   - **边界说明**：当前阶段为前台单曲下载原型（由界面协程调度）；后台全局多任务调度、网络中断恢复与 HTTP Range 断点续传将在后续进一步以 WorkManager / DownloadService 强化演进。
 - [x] **设备自适应多频段音频均衡器 (EQ) 调节面板**：
   - 接入 `android.media.audiofx.Equalizer`，声明 `MODIFY_AUDIO_SETTINGS` 权限；
@@ -315,6 +322,11 @@ WebMusic 现已具备较为完善的 Web 桌面端与基础移动端 PWA 体验�
   - 自适应读取设备实际支持的频段数（根据 SoC / HAL 动态呈现 5~10 段）与中心频率，提供调音台面板：支持总开关、系统音效预设切换与实时增益滑块调节；
   - `SharedPreferences` 持久化用户 EQ 开关、预设及自定义各频段增益；
   - 沉浸全屏播放页 `FullPlayerSheet` 顶栏增加快捷调音台入口 (`Icons.Default.GraphicEq`)。
+- [x] **应用内歌词管理（网易云匹配 + AI 生成）**：
+  - 把网页版 `LyricsPanel` 的网易云搜索、候选预览与写库能力搬到 App，`FullPlayerSheet` 顶栏直达；管理员账号可直接 `POST /api/lyrics/{id}/save`，AI 生成走长超时接口；
+  - **候选按时长就近排序**：每条候选固定展示时长（未知显示 `--:--`），并按 `|候选时长 - 本曲时长|` 升序排列，最接近的一条置顶、绿字标注「时长一致 / 差 Ns」，进入面板自动预览该条；
+  - 本曲时长解析顺序：接口 `totalSeconds` → `duration` 字符串（纯秒数或 `m:ss` / `h:mm:ss`）→ 播放器实测 `durationMs`；面板标题常显「本曲 mm:ss」，避免候选之间无法区分版本；
+  - 面板默认全展开（`skipPartiallyExpanded`），候选列表固定 4 行高度，预览与「保存到歌词库」按钮无需额外滚动即可见。
 - [ ] APE / DSD 音频样本专项测试与兼容性摸底。
 - [ ] CI 接入 NDK 交叉编译 FFmpeg 动态库与 16 KB 页大小验证。
 

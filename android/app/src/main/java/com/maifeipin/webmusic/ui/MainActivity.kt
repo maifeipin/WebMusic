@@ -1,6 +1,8 @@
 package com.maifeipin.webmusic.ui
 
 import android.content.ComponentName
+import android.net.Uri
+import android.widget.Toast
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -40,11 +42,14 @@ import com.maifeipin.webmusic.core.lyrics.LyricLine
 import com.maifeipin.webmusic.core.lyrics.LyricsParser
 import com.maifeipin.webmusic.core.network.*
 import com.maifeipin.webmusic.core.player.PlaybackMode
+import com.maifeipin.webmusic.core.player.PlaybackTimeline
 import com.maifeipin.webmusic.service.PlaybackService
 import com.maifeipin.webmusic.ui.components.AddToPlaylistDialog
 import com.maifeipin.webmusic.ui.components.FullPlayerSheet
+import com.maifeipin.webmusic.ui.components.LyricsManagerSheet
 import com.maifeipin.webmusic.ui.components.MiniPlayerBar
 import com.maifeipin.webmusic.ui.components.PlaylistDetailView
+import com.maifeipin.webmusic.ui.components.SongDownloadAction
 import java.util.concurrent.CancellationException
 import com.maifeipin.webmusic.ui.theme.DarkBackground
 import com.maifeipin.webmusic.ui.theme.DarkSurface
@@ -53,8 +58,13 @@ import com.maifeipin.webmusic.ui.theme.WebMusicTheme
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import com.maifeipin.webmusic.core.storage.DownloadedSong
+import com.maifeipin.webmusic.core.storage.AppSettings
+import com.maifeipin.webmusic.core.storage.AutoOfflineCache
+import com.maifeipin.webmusic.core.storage.LocalSongDatabase
 import com.maifeipin.webmusic.core.storage.OfflineDownloadManager
+import com.maifeipin.webmusic.core.storage.friendlyDownloadError
 import com.maifeipin.webmusic.core.storage.toMediaFileDto
+import java.io.File
 import com.maifeipin.webmusic.core.update.AppUpdateManager
 import com.maifeipin.webmusic.core.update.UpdateController
 import com.maifeipin.webmusic.ui.components.UpdateDialogHost
@@ -84,6 +94,9 @@ class MainActivity : ComponentActivity() {
 
     // 歌词防竞态异步 Job
     private var lyricsJob: Job? = null
+
+    // 播放队列注入任务（快速连续点击时只保留最后一次）
+    private var playQueueJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -115,6 +128,22 @@ class MainActivity : ComponentActivity() {
                     onClearSession = { clearPlaybackSession() },
                     onPlaySongFromList = { songList, index ->
                         playQueue(songList, index)
+                    },
+                    onLyricsUpdated = { mediaId, content ->
+                        // 歌词在管理面板里被改写后：立刻刷新当前播放器展示，并同步离线库副本
+                        if (currentMediaItemState.value?.mediaId?.toIntOrNull() == mediaId) {
+                            lyricsState.value = LyricsParser.parse(content)
+                        }
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            runCatching {
+                                LocalSongDatabase.getInstance(this@MainActivity).updateLyrics(
+                                    LocalSongDatabase.computeServerHash(tokenManager.serverUrl),
+                                    LocalSongDatabase.computeUserHash(tokenManager.username),
+                                    mediaId,
+                                    content
+                                )
+                            }
+                        }
                     }
                 )
             }
@@ -141,16 +170,19 @@ class MainActivity : ComponentActivity() {
             controller?.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     isPlayingState.value = isPlaying
+                    if (isPlaying) PlaybackTimeline.onFirstAudio()
                 }
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     currentMediaItemState.value = mediaItem
+                    PlaybackTimeline.onTransition(mediaItem?.mediaId)
                     // 切歌瞬间即时清零：新曲在 prepare 完成前拿不到时长，
                     // 若沿用上一曲的时长/位置，进度条与 seek 计算都会基于错误基准。
                     resetProgressState()
                     val songId = mediaItem?.mediaId?.toIntOrNull()
                     if (songId != null) {
                         fetchLyricsSafely(songId)
+                        maybeAutoCache(mediaItem, songId)
                     } else {
                         lyricsState.value = emptyList()
                     }
@@ -227,39 +259,110 @@ class MainActivity : ComponentActivity() {
      * 将整个播放队列交付底层 ExoPlayer 统一管理
      * 解决 Activity 销毁断连、锁屏切歌无感知问题
      * 注入无碰撞 SHA-256 隔离缓存键 (ServerUrl + Username + MediaId + FileHash/SizeBytes)
+     *
+     * 本地优先：播放队列在入队前先批量查本地离线库，命中且文件仍存在时直接用 file:// 播放，
+     * 绕开服务端首包偶发的 SMB 冷读超时（实测单次 5~6 秒，叠加播放器退避会放大到十几秒）。
      */
     private fun playQueue(songList: List<MediaFileDto>, startIndex: Int) {
         val controller = mediaController ?: return
+        if (songList.isEmpty()) return
+        PlaybackTimeline.onClick(songList.size)
         val serverUrl = tokenManager.serverUrl
         val username = tokenManager.username
+        val safeStartIndex = startIndex.coerceIn(0, songList.lastIndex)
 
-        val mediaItems = songList.map { song ->
-            val streamUrl = WebMusicNetwork.buildStreamUrl(serverUrl, song.id)
-            val metadata = MediaMetadata.Builder()
-                .setTitle(song.title ?: "未知曲目 #${song.id}")
-                .setArtist(song.artist ?: "未知艺术家")
-                .setAlbumTitle(song.album ?: "未知专辑")
-                .build()
+        // 快速连续点不同歌单时，只保留最后一次队列注入
+        playQueueJob?.cancel()
+        playQueueJob = lifecycleScope.launch {
+            val localPaths = withContext(Dispatchers.IO) {
+                runCatching {
+                    LocalSongDatabase.getInstance(this@MainActivity).getLocalPaths(
+                        LocalSongDatabase.computeServerHash(serverUrl),
+                        LocalSongDatabase.computeUserHash(username),
+                        songList.map { it.id }
+                    )
+                }.getOrDefault(emptyMap())
+            }
+            // 库里有记录但文件已被清理（用户删除 / 系统清缓存）时回退网络流
+            val verifiedLocalPaths = withContext(Dispatchers.IO) {
+                if (localPaths.isEmpty()) {
+                    emptyMap<Int, String>()
+                } else {
+                    localPaths.filterValues { path -> runCatching { File(path).exists() }.getOrDefault(false) }
+                }
+            }
 
-            val safeCacheKey = WebMusicNetwork.generateSafeCacheKey(serverUrl, username, song)
+            val mediaItems = songList.map { song ->
+                buildQueueMediaItem(serverUrl, username, song, verifiedLocalPaths[song.id])
+            }
+            PlaybackTimeline.onQueueBuilt()
 
-            MediaItem.Builder()
-                .setUri(streamUrl)
-                .setMediaId(song.id.toString())
-                .setCustomCacheKey(safeCacheKey)
-                .setMediaMetadata(metadata)
-                .build()
+            // 注入默认模式：保证首次播放默认享受列表循环
+            if (controller.repeatMode == Player.REPEAT_MODE_OFF && !controller.shuffleModeEnabled) {
+                controller.repeatMode = Player.REPEAT_MODE_ALL
+            }
+
+            controller.setMediaItems(mediaItems, safeStartIndex, 0L)
+            controller.prepare()
+            controller.play()
+            PlaybackTimeline.onPrepared()
         }
-
-        // 注入默认模式：保证首次播放默认享受列表循环
-        if (controller.repeatMode == Player.REPEAT_MODE_OFF && !controller.shuffleModeEnabled) {
-            controller.repeatMode = Player.REPEAT_MODE_ALL
-        }
-
-        controller.setMediaItems(mediaItems, startIndex, 0L)
-        controller.prepare()
-        controller.play()
     }
+
+    private fun buildQueueMediaItem(
+        serverUrl: String,
+        username: String?,
+        song: MediaFileDto,
+        localPath: String?
+    ): MediaItem {
+        val metadata = MediaMetadata.Builder()
+            .setTitle(song.title ?: "未知曲目 #${song.id}")
+            .setArtist(song.artist ?: "未知艺术家")
+            .setAlbumTitle(song.album ?: "未知专辑")
+            .build()
+
+        val safeCacheKey = WebMusicNetwork.generateSafeCacheKey(serverUrl, username, song)
+        val uri = if (localPath != null) {
+            Uri.fromFile(File(localPath))
+        } else {
+            Uri.parse(WebMusicNetwork.buildStreamUrl(serverUrl, song.id))
+        }
+
+        return MediaItem.Builder()
+            .setUri(uri)
+            .setMediaId(song.id.toString())
+            .setCustomCacheKey(safeCacheKey)
+            .setMediaMetadata(metadata)
+            .build()
+    }
+
+    /**
+     * 切歌后把当前曲目追加进本地离线库（听过即离线）。
+     * 延迟与并发控制都在 [AutoOfflineCache] 内部，此处只负责提供当前曲目快照。
+     */
+    private fun maybeAutoCache(mediaItem: MediaItem, songId: Int) {
+        val uri = mediaItem.localConfiguration?.uri
+        if (uri != null && uri.scheme == "file") return // 已经在播本地文件，无需再缓存
+
+        val metadata = mediaItem.mediaMetadata
+        val song = MediaFileDto(
+            id = songId,
+            filePath = null,
+            title = metadata.title?.toString(),
+            artist = metadata.artist?.toString(),
+            album = metadata.albumTitle?.toString(),
+            genre = null,
+            year = null,
+            duration = null,
+            sizeBytes = null,
+            fileHash = null,
+            contentVersion = null
+        )
+        AutoOfflineCache.onTrackStarted(this, tokenManager, song) {
+            currentMediaItemState.value?.mediaId?.toIntOrNull() == songId
+        }
+    }
+
 
     /**
      * 安全获取歌词：取消旧请求，并严格校验响应 ID 是否匹配当前正在播放的曲目
@@ -366,9 +469,11 @@ fun MainAppScreen(
     onSeekTo: (Long) -> Unit,
     onToggleMode: () -> Unit,
     onClearSession: () -> Unit,
-    onPlaySongFromList: (List<MediaFileDto>, Int) -> Unit
+    onPlaySongFromList: (List<MediaFileDto>, Int) -> Unit,
+    onLyricsUpdated: (Int, String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val mediaList = remember { mutableStateListOf<MediaFileDto>() }
     var currentPage by remember { mutableIntStateOf(1) }
     var totalSongs by remember { mutableIntStateOf(0) }
@@ -380,11 +485,47 @@ fun MainAppScreen(
     var queryVersion by remember { mutableLongStateOf(0L) }
 
     var showFullPlayer by remember { mutableStateOf(false) }
+    // 歌词管理面板的目标曲目（网易云匹配 / AI 生成）
+    var lyricsManagerSong by remember { mutableStateOf<MediaFileDto?>(null) }
     var showLoginDialog by remember { mutableStateOf(tokenManager.token == null) }
 
     // 活跃请求 Job，保证单一请求链路
     var activeFetchJob by remember { mutableStateOf<Job?>(null) }
     var offlineRefreshTrigger by remember { mutableIntStateOf(0) }
+
+    // 下载进度快照：0% 的确定进度环在深色背景上等于空白，必须靠状态驱动重组才有反馈
+    val downloadStates by OfflineDownloadManager.downloadStates.collectAsState()
+
+    /**
+     * 手动下载单曲：显式给出开始 / 成功 / 失败的提示。
+     * 服务端读 SMB 偶发超时（5xx），[OfflineDownloadManager.downloadSong] 内部已做退避重试，
+     * 走到这里失败就是真的失败了，绝不能再静默吞掉。
+     */
+    fun startDownload(song: MediaFileDto) {
+        val label = song.title ?: "该曲目"
+        scope.launch {
+            Toast.makeText(context, "开始下载：$label", Toast.LENGTH_SHORT).show()
+            try {
+                val result = OfflineDownloadManager.downloadSong(context, tokenManager, song)
+                result.fold(
+                    onSuccess = {
+                        Toast.makeText(context, "已离线：$label", Toast.LENGTH_SHORT).show()
+                    },
+                    onFailure = { e ->
+                        Toast.makeText(
+                            context,
+                            "$label 下载失败：${friendlyDownloadError(e)}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                )
+            } catch (e: CancellationException) {
+                // 退出登录 / 切账号导致的取消，不打扰用户
+            } finally {
+                offlineRefreshTrigger++
+            }
+        }
+    }
 
     // 收藏状态 (乐观更新 + 异步持久化)
     var favoriteSongIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
@@ -592,9 +733,14 @@ fun MainAppScreen(
         },
         containerColor = DarkBackground
     ) { padding ->
-        val context = LocalContext.current
         var selectedTab by remember { mutableIntStateOf(0) } // 0: 全部曲库, 1: 我的收藏, 2: 自建歌单, 3: 播放历史, 4: 离线音乐
         var offlineSongs by remember { mutableStateOf<List<DownloadedSong>>(emptyList()) }
+
+        // 自动缓存有新曲目落盘后，刷新离线列表计数与内容
+        val autoCachedIds by AutoOfflineCache.cachedSongIds.collectAsState()
+        LaunchedEffect(autoCachedIds.size) {
+            if (autoCachedIds.isNotEmpty()) offlineRefreshTrigger++
+        }
 
         LaunchedEffect(selectedTab, offlineRefreshTrigger, tokenManager.token) {
             if (tokenManager.token != null) {
@@ -780,7 +926,11 @@ fun MainAppScreen(
                                 val isDownloaded = remember(song.id, offlineRefreshTrigger, tokenManager.token) {
                                     OfflineDownloadManager.isDownloaded(context, tokenManager.serverUrl, tokenManager.username, song.id)
                                 }
-                                val downloadProgress = OfflineDownloadManager.getDownloadProgress(tokenManager.serverUrl, tokenManager.username, song.id)
+                                // 任务键算一次即可；downloadStates 是 StateFlow，进度变化能可靠触发重组
+                                val downloadTaskKey = remember(song.id, tokenManager.serverUrl, tokenManager.username) {
+                                    OfflineDownloadManager.taskKeyFor(tokenManager.serverUrl, tokenManager.username, song.id)
+                                }
+                                val downloadProgress = downloadStates[downloadTaskKey]
 
                                 ListItem(
                                     headlineContent = {
@@ -840,42 +990,11 @@ fun MainAppScreen(
                                                     modifier = Modifier.size(22.dp)
                                                 )
                                             }
-                                            if (downloadProgress != null) {
-                                                CircularProgressIndicator(
-                                                    progress = { downloadProgress },
-                                                    modifier = Modifier.size(22.dp),
-                                                    color = GreenPrimary,
-                                                    strokeWidth = 2.dp
-                                                )
-                                            } else if (isDownloaded) {
-                                                Icon(
-                                                    imageVector = Icons.Default.DownloadDone,
-                                                    contentDescription = "已离线",
-                                                    tint = GreenPrimary,
-                                                    modifier = Modifier.size(22.dp)
-                                                )
-                                            } else {
-                                                IconButton(
-                                                    onClick = {
-                                                        scope.launch {
-                                                            try {
-                                                                OfflineDownloadManager.downloadSong(context, tokenManager, song)
-                                                            } catch (e: CancellationException) {
-                                                            } finally {
-                                                                offlineRefreshTrigger++
-                                                            }
-                                                        }
-                                                    },
-                                                    modifier = Modifier.size(36.dp)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Download,
-                                                        contentDescription = "下载到本地",
-                                                        tint = Color.Gray,
-                                                        modifier = Modifier.size(22.dp)
-                                                    )
-                                                }
-                                            }
+                                            SongDownloadAction(
+                                                isDownloaded = isDownloaded,
+                                                progress = downloadProgress,
+                                                onStartDownload = { startDownload(song) }
+                                            )
                                         }
                                     },
                                     modifier = Modifier
@@ -959,7 +1078,11 @@ fun MainAppScreen(
                                 val isDownloaded = remember(song.id, offlineRefreshTrigger, tokenManager.token) {
                                     OfflineDownloadManager.isDownloaded(context, tokenManager.serverUrl, tokenManager.username, song.id)
                                 }
-                                val downloadProgress = OfflineDownloadManager.getDownloadProgress(tokenManager.serverUrl, tokenManager.username, song.id)
+                                // 任务键算一次即可；downloadStates 是 StateFlow，进度变化能可靠触发重组
+                                val downloadTaskKey = remember(song.id, tokenManager.serverUrl, tokenManager.username) {
+                                    OfflineDownloadManager.taskKeyFor(tokenManager.serverUrl, tokenManager.username, song.id)
+                                }
+                                val downloadProgress = downloadStates[downloadTaskKey]
 
                                 ListItem(
                                     headlineContent = {
@@ -1022,42 +1145,11 @@ fun MainAppScreen(
                                                     modifier = Modifier.size(22.dp)
                                                 )
                                             }
-                                            if (downloadProgress != null) {
-                                                CircularProgressIndicator(
-                                                    progress = { downloadProgress },
-                                                    modifier = Modifier.size(22.dp),
-                                                    color = GreenPrimary,
-                                                    strokeWidth = 2.dp
-                                                )
-                                            } else if (isDownloaded) {
-                                                Icon(
-                                                    imageVector = Icons.Default.DownloadDone,
-                                                    contentDescription = "已离线",
-                                                    tint = GreenPrimary,
-                                                    modifier = Modifier.size(22.dp)
-                                                )
-                                            } else {
-                                                IconButton(
-                                                    onClick = {
-                                                        scope.launch {
-                                                            try {
-                                                                OfflineDownloadManager.downloadSong(context, tokenManager, song)
-                                                            } catch (e: CancellationException) {
-                                                            } finally {
-                                                                offlineRefreshTrigger++
-                                                            }
-                                                        }
-                                                    },
-                                                    modifier = Modifier.size(36.dp)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Download,
-                                                        contentDescription = "下载到本地",
-                                                        tint = Color.Gray,
-                                                        modifier = Modifier.size(22.dp)
-                                                    )
-                                                }
-                                            }
+                                            SongDownloadAction(
+                                                isDownloaded = isDownloaded,
+                                                progress = downloadProgress,
+                                                onStartDownload = { startDownload(song) }
+                                            )
                                         }
                                     },
                                     modifier = Modifier
@@ -1260,7 +1352,11 @@ fun MainAppScreen(
                                 val isDownloaded = remember(song.id, offlineRefreshTrigger, tokenManager.token) {
                                     OfflineDownloadManager.isDownloaded(context, tokenManager.serverUrl, tokenManager.username, song.id)
                                 }
-                                val downloadProgress = OfflineDownloadManager.getDownloadProgress(tokenManager.serverUrl, tokenManager.username, song.id)
+                                // 任务键算一次即可；downloadStates 是 StateFlow，进度变化能可靠触发重组
+                                val downloadTaskKey = remember(song.id, tokenManager.serverUrl, tokenManager.username) {
+                                    OfflineDownloadManager.taskKeyFor(tokenManager.serverUrl, tokenManager.username, song.id)
+                                }
+                                val downloadProgress = downloadStates[downloadTaskKey]
 
                                 ListItem(
                                     headlineContent = {
@@ -1320,42 +1416,11 @@ fun MainAppScreen(
                                                     modifier = Modifier.size(22.dp)
                                                 )
                                             }
-                                            if (downloadProgress != null) {
-                                                CircularProgressIndicator(
-                                                    progress = { downloadProgress },
-                                                    modifier = Modifier.size(22.dp),
-                                                    color = GreenPrimary,
-                                                    strokeWidth = 2.dp
-                                                )
-                                            } else if (isDownloaded) {
-                                                Icon(
-                                                    imageVector = Icons.Default.DownloadDone,
-                                                    contentDescription = "已离线",
-                                                    tint = GreenPrimary,
-                                                    modifier = Modifier.size(22.dp)
-                                                )
-                                            } else {
-                                                IconButton(
-                                                    onClick = {
-                                                        scope.launch {
-                                                            try {
-                                                                OfflineDownloadManager.downloadSong(context, tokenManager, song)
-                                                            } catch (e: CancellationException) {
-                                                            } finally {
-                                                                offlineRefreshTrigger++
-                                                            }
-                                                        }
-                                                    },
-                                                    modifier = Modifier.size(36.dp)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Download,
-                                                        contentDescription = "下载到本地",
-                                                        tint = Color.Gray,
-                                                        modifier = Modifier.size(22.dp)
-                                                    )
-                                                }
-                                            }
+                                            SongDownloadAction(
+                                                isDownloaded = isDownloaded,
+                                                progress = downloadProgress,
+                                                onStartDownload = { startDownload(song) }
+                                            )
                                         }
                                     },
                                     modifier = Modifier
@@ -1368,6 +1433,69 @@ fun MainAppScreen(
                 }
                 4 -> {
                     // 离线音乐列表展示
+                    val settings = remember { AppSettings.getInstance(context) }
+                    var autoCacheOn by remember { mutableStateOf(settings.autoCacheEnabled) }
+                    var autoCacheWifiOnly by remember { mutableStateOf(settings.autoCacheWifiOnly) }
+
+                    // 播放即自动离线（"听过就存本地"，规避服务端首包 SMB 冷读超时）
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "播放即自动离线",
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = if (autoCacheOn) {
+                                    "播放过的歌曲自动存到本地，下次直接本地播放" + if (autoCacheWifiOnly) "（仅 Wi-Fi）" else ""
+                                } else {
+                                    "已关闭：只有手动下载的歌曲能离线播放"
+                                },
+                                color = Color.Gray,
+                                fontSize = 11.sp
+                            )
+                        }
+                        Switch(
+                            checked = autoCacheOn,
+                            onCheckedChange = {
+                                autoCacheOn = it
+                                settings.autoCacheEnabled = it
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.Black,
+                                checkedTrackColor = GreenPrimary
+                            )
+                        )
+                    }
+                    if (autoCacheOn) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 16.dp, end = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("仅 Wi-Fi 下自动缓存", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            Switch(
+                                checked = autoCacheWifiOnly,
+                                onCheckedChange = {
+                                    autoCacheWifiOnly = it
+                                    settings.autoCacheWifiOnly = it
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.Black,
+                                    checkedTrackColor = GreenPrimary
+                                )
+                            )
+                        }
+                    }
+                    HorizontalDivider(color = Color.DarkGray)
+
                     val filteredOffline = remember(offlineSongs, searchQuery) {
                         if (searchQuery.isEmpty()) offlineSongs
                         else offlineSongs.filter {
@@ -1545,7 +1673,20 @@ fun MainAppScreen(
             onNextClick = onNextClick,
             onSeekTo = onSeekTo,
             onToggleMode = onToggleMode,
+            onManageLyrics = { lyricsManagerSong = currentSongDto },
             onDismiss = { showFullPlayer = false }
+        )
+    }
+
+    // 歌词管理：网易云搜索匹配 / AI 生成（对齐 Web 版 LyricsPanel 能力）
+    val lyricsManagerTarget = lyricsManagerSong
+    if (lyricsManagerTarget != null) {
+        LyricsManagerSheet(
+            song = lyricsManagerTarget,
+            tokenManager = tokenManager,
+            knownDurationMs = durationMs,
+            onDismiss = { lyricsManagerSong = null },
+            onSaved = { content -> onLyricsUpdated(lyricsManagerTarget.id, content) }
         )
     }
 

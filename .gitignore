@@ -60,3 +60,8 @@ artifacts/
 scripts/apply_approved_identities_pilot.py
 scripts/identity_importer_cli.py
 reports/
+
+# Local tools & build artifacts
+.local/
+.workbuddy/
+build_apk/

@@ -47,6 +47,7 @@ fun FullPlayerSheet(
     onNextClick: () -> Unit,
     onSeekTo: (Long) -> Unit,
     onToggleMode: () -> Unit,
+    onManageLyrics: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
     if (currentSong == null) return
@@ -95,6 +96,13 @@ fun FullPlayerSheet(
                     color = Color.Gray
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onManageLyrics) {
+                        Icon(
+                            imageVector = Icons.Default.Lyrics,
+                            contentDescription = "歌词管理（网易云匹配 / AI 生成）",
+                            tint = if (lyrics.isEmpty()) GreenPrimary else Color.White
+                        )
+                    }
                     IconButton(onClick = { showEqualizerDialog = true }) {
                         Icon(
                             imageVector = Icons.Default.GraphicEq,
@@ -125,7 +133,8 @@ fun FullPlayerSheet(
                     LyricsView(
                         lyrics = lyrics,
                         currentPositionMs = currentPosMs,
-                        onSeekTo = onSeekTo
+                        onSeekTo = onSeekTo,
+                        onRequestLyrics = onManageLyrics
                     )
                 } else {
                     // 黑胶大黑胶唱盘

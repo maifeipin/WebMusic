@@ -251,6 +251,51 @@ class LocalSongDatabase(context: Context) : SQLiteOpenHelper(context, DATABASE_N
         return exists
     }
 
+    /**
+     * 批量查询已离线的本地文件路径，供播放队列"本地优先"使用。
+     * SQLite 的 IN 参数上限为 999，这里按 500 分块，避免大歌单一次绑定几百上千个 id 时报错。
+     */
+    @Synchronized
+    fun getLocalPaths(serverHash: String, userHash: String, songIds: List<Int>): Map<Int, String> {
+        if (songIds.isEmpty()) return emptyMap()
+        val db = readableDatabase
+        val result = HashMap<Int, String>(songIds.size)
+        for (chunk in songIds.distinct().chunked(500)) {
+            val placeholders = chunk.joinToString(",") { "?" }
+            val args = ArrayList<String>(chunk.size + 2)
+            args.add(serverHash)
+            args.add(userHash)
+            chunk.forEach { args.add(it.toString()) }
+            val cursor = db.rawQuery(
+                "SELECT $COL_SONG_ID, $COL_FILE_PATH FROM $TABLE_NAME " +
+                    "WHERE $COL_SERVER_HASH = ? AND $COL_USER_HASH = ? AND $COL_SONG_ID IN ($placeholders)",
+                args.toTypedArray()
+            )
+            cursor.use {
+                val idIdx = it.getColumnIndexOrThrow(COL_SONG_ID)
+                val pathIdx = it.getColumnIndexOrThrow(COL_FILE_PATH)
+                while (it.moveToNext()) {
+                    result[it.getInt(idIdx)] = it.getString(pathIdx)
+                }
+            }
+        }
+        return result
+    }
+
+    /** 歌词在另外的界面被更新后，同步刷新已离线曲目的本地歌词副本 */
+    @Synchronized
+    fun updateLyrics(serverHash: String, userHash: String, songId: Int, lyrics: String?): Boolean {
+        val db = writableDatabase
+        val values = ContentValues().apply { put(COL_LYRICS, lyrics) }
+        val rows = db.update(
+            TABLE_NAME,
+            values,
+            "$COL_SERVER_HASH = ? AND $COL_USER_HASH = ? AND $COL_SONG_ID = ?",
+            arrayOf(serverHash, userHash, songId.toString())
+        )
+        return rows > 0
+    }
+
     @Synchronized
     fun getById(serverHash: String, userHash: String, songId: Int): DownloadedSong? {
         val db = readableDatabase
