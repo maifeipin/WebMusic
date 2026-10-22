@@ -93,6 +93,7 @@ public class MediaController : ControllerBase
         [FromQuery] string? search = null,
         [FromQuery] string? filterBy = null,
         [FromQuery] string? filterValue = null,
+        [FromQuery] string? mediaType = null,
         [FromQuery] string? path = null,
         [FromQuery] bool recursive = false,
         [FromQuery] List<string>? criteria = null,
@@ -112,6 +113,34 @@ public class MediaController : ControllerBase
         var query = _context.MediaFiles
             .Where(m => allowedSourceIds.Contains(m.ScanSourceId))
             .AsQueryable();
+
+        // Media type filtering (video / audio)
+        if (!string.IsNullOrEmpty(mediaType))
+        {
+            var normType = mediaType.Trim().ToLowerInvariant();
+            if (normType == "video" || normType == "mv")
+            {
+                query = query.Where(m => 
+                    m.FilePath.ToLower().EndsWith(".mp4") || 
+                    m.FilePath.ToLower().EndsWith(".mkv") || 
+                    m.FilePath.ToLower().EndsWith(".webm") || 
+                    m.FilePath.ToLower().EndsWith(".avi") || 
+                    m.FilePath.ToLower().EndsWith(".mov") || 
+                    m.FilePath.ToLower().EndsWith(".flv") || 
+                    m.FilePath.ToLower().EndsWith(".ts") || 
+                    m.FilePath.ToLower().EndsWith(".m4v"));
+            }
+            else if (normType == "audio")
+            {
+                query = query.Where(m => 
+                    m.FilePath.ToLower().EndsWith(".mp3") || 
+                    m.FilePath.ToLower().EndsWith(".flac") || 
+                    m.FilePath.ToLower().EndsWith(".m4a") || 
+                    m.FilePath.ToLower().EndsWith(".wav") || 
+                    m.FilePath.ToLower().EndsWith(".ogg") || 
+                    m.FilePath.ToLower().EndsWith(".opus"));
+            }
+        }
 
         // Soft-delete filter: normal library views never show soft-deleted files.
         // Only Admin can view onlyDeleted or includeDeleted.
@@ -223,6 +252,31 @@ public class MediaController : ControllerBase
                             );
                         }
                         break;
+                    case "mediatype":
+                    case "type":
+                        if (val == "video" || val == "mv")
+                        {
+                            query = query.Where(m => 
+                                m.FilePath.ToLower().EndsWith(".mp4") || 
+                                m.FilePath.ToLower().EndsWith(".mkv") || 
+                                m.FilePath.ToLower().EndsWith(".webm") || 
+                                m.FilePath.ToLower().EndsWith(".avi") || 
+                                m.FilePath.ToLower().EndsWith(".mov") || 
+                                m.FilePath.ToLower().EndsWith(".flv") || 
+                                m.FilePath.ToLower().EndsWith(".ts") || 
+                                m.FilePath.ToLower().EndsWith(".m4v"));
+                        }
+                        else if (val == "audio")
+                        {
+                            query = query.Where(m => 
+                                m.FilePath.ToLower().EndsWith(".mp3") || 
+                                m.FilePath.ToLower().EndsWith(".flac") || 
+                                m.FilePath.ToLower().EndsWith(".m4a") || 
+                                m.FilePath.ToLower().EndsWith(".wav") || 
+                                m.FilePath.ToLower().EndsWith(".ogg") || 
+                                m.FilePath.ToLower().EndsWith(".opus"));
+                        }
+                        break;
                 }
             }
         }
@@ -313,7 +367,22 @@ public class MediaController : ControllerBase
             })
             .ToListAsync();
 
-        return Ok(new { total, page, pageSize, files });
+        var resultFiles = files.Select(m => new { 
+            m.Id, m.Title, m.Artist, m.Album, m.Genre, duration = m.TotalSeconds, totalSeconds = m.TotalSeconds, m.Year, m.FilePath, m.CoverArt,
+            m.SizeBytes, m.FileHash,
+            m.IsDeleted, m.DeletedAt,
+            m.isFavorite,
+            m.playlists,
+            m.mbCommunityScore,
+            m.mbRating,
+            m.mbRatingCount,
+            lastFmPopularity = m.lastFmPopularity,
+            lastFmListeners = m.lastFmListeners,
+            lastFmPlaycount = m.lastFmPlaycount,
+            mediaType = MediaFileFilter.GetMediaType(m.FilePath)
+        }).ToList();
+
+        return Ok(new { total, page, pageSize, files = resultFiles });
     }
 
     [HttpPost("list/ids")]
@@ -339,6 +408,10 @@ public class MediaController : ControllerBase
         var orderedSongs = ids
             .Select(id => songs.FirstOrDefault(s => s.Id == id))
             .Where(s => s != null)
+            .Select(s => new {
+                s!.Id, s.Title, s.Artist, s.Album, s.Genre, s.duration, s.Year, s.FilePath, s.CoverArt,
+                mediaType = MediaFileFilter.GetMediaType(s.FilePath)
+            })
             .ToList();
 
         return Ok(orderedSongs);
@@ -530,10 +603,14 @@ public class MediaController : ControllerBase
                     Album = "", 
                     Duration = 0.0,
                     Count = kvp.Value,
-                    CoverArt = (string?)null
+                    CoverArt = (string?)null,
+                    mediaType = "folder"
                 });
             
-            return Ok( folderList.Concat(files.Select(f => new { f.Type, f.Id, f.Name, f.Path, f.Artist, f.Album, f.Duration, Count = 0, f.CoverArt })) );
+            return Ok( folderList.Concat(files.Select(f => new { 
+                f.Type, f.Id, f.Name, f.Path, f.Artist, f.Album, f.Duration, Count = 0, f.CoverArt,
+                mediaType = MediaFileFilter.GetMediaType(f.Path)
+            })) );
         }
     }
 
@@ -551,11 +628,7 @@ public class MediaController : ControllerBase
         var stream = _smbService.OpenFile(media.ScanSource, media.FilePath);
         if (stream == null) return NotFound("File not found on SMB share");
 
-        string contentType = "audio/mpeg"; 
-        if (media.FilePath.EndsWith(".flac", StringComparison.OrdinalIgnoreCase)) contentType = "audio/flac";
-        if (media.FilePath.EndsWith(".wav", StringComparison.OrdinalIgnoreCase)) contentType = "audio/wav";
-        if (media.FilePath.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase)) contentType = "audio/ogg";
-        if (media.FilePath.EndsWith(".m4a", StringComparison.OrdinalIgnoreCase)) contentType = "audio/mp4";
+        string contentType = MediaFileFilter.GetMimeType(media.FilePath);
 
         if (transcode)
         {
@@ -604,11 +677,7 @@ public class MediaController : ControllerBase
         if (stream == null)
             return NotFound("File not available");
 
-        string contentType = "audio/mpeg";
-        if (media.FilePath.EndsWith(".flac", StringComparison.OrdinalIgnoreCase)) contentType = "audio/flac";
-        if (media.FilePath.EndsWith(".wav", StringComparison.OrdinalIgnoreCase)) contentType = "audio/wav";
-        if (media.FilePath.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase)) contentType = "audio/ogg";
-        if (media.FilePath.EndsWith(".m4a", StringComparison.OrdinalIgnoreCase)) contentType = "audio/mp4";
+        string contentType = MediaFileFilter.GetMimeType(media.FilePath);
 
         if (transcode)
         {

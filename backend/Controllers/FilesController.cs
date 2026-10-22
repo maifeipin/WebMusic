@@ -18,7 +18,9 @@ public class FilesController : ControllerBase
     private const long MaxUploadBytes = 10L * 1024 * 1024 * 1024;
     private static readonly HashSet<string> AllowedUploadExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".mp3", ".flac", ".m4a", ".wav", ".ogg", ".opus", ".jpg", ".jpeg", ".png", ".webp", ".lrc", ".txt"
+        ".mp3", ".flac", ".m4a", ".wav", ".ogg", ".opus",
+        ".mp4", ".mkv", ".webm", ".avi", ".mov", ".flv", ".ts", ".m4v",
+        ".jpg", ".jpeg", ".png", ".webp", ".lrc", ".txt"
     };
     private readonly AppDbContext _context;
     private readonly ISmbService _smbService;
@@ -136,16 +138,15 @@ public class FilesController : ControllerBase
             if (stream == null) return NotFound("File not found or access denied");
 
             string fileName = Path.GetFileName(path);
-            string contentType = "application/octet-stream";
-            
-            // Simple Mime guess
-            string ext = Path.GetExtension(fileName).ToLower();
-            if (ext == ".mp3") contentType = "audio/mpeg";
-            else if (ext == ".m4a") contentType = "audio/mp4";
-            else if (ext == ".flac") contentType = "audio/flac";
-            else if (ext == ".jpg") contentType = "image/jpeg";
-            else if (ext == ".png") contentType = "image/png";
-            else if (ext == ".txt" || ext == ".lrc") contentType = "text/plain";
+            string contentType = MediaFileFilter.GetMimeType(fileName);
+            if (contentType == "application/octet-stream")
+            {
+                string ext = Path.GetExtension(fileName).ToLower();
+                if (ext == ".jpg" || ext == ".jpeg") contentType = "image/jpeg";
+                else if (ext == ".png") contentType = "image/png";
+                else if (ext == ".webp") contentType = "image/webp";
+                else if (ext == ".txt" || ext == ".lrc") contentType = "text/plain";
+            }
 
             return File(stream, contentType, fileName);
         }
@@ -256,7 +257,7 @@ public class FilesController : ControllerBase
         }
         
         // Smart Indexing
-        if (IsMusicFile(file.FileName))
+        if (IsMediaFile(file.FileName))
         {
             // Fire and forget indexing? Or await?
             // Await is prompt.
@@ -346,9 +347,9 @@ public class FilesController : ControllerBase
         return $"{baseDir}/{relativePath}";
     }
     
-    private bool IsMusicFile(string fileName)
+    private bool IsMediaFile(string fileName)
     {
-        return MediaFileFilter.IsSupportedAudioFile(fileName);
+        return MediaFileFilter.IsSupportedMediaFile(fileName);
     }
 }
 

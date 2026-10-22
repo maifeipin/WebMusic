@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json.Serialization;
+using WebMusic.Backend.Services;
 
 namespace WebMusic.Backend.Models;
 
@@ -66,6 +68,9 @@ public class MediaFile
     // Foreign Key to Source? Maybe not strictly needed if path contains it, but useful
     public int ScanSourceId { get; set; }
     public ScanSource? ScanSource { get; set; }
+
+    [NotMapped]
+    public string MediaType => MediaFileFilter.GetMediaType(FilePath);
 
     [JsonIgnore]
     public List<Favorite> Favorites { get; set; } = new();

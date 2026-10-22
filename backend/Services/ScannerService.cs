@@ -96,52 +96,68 @@ public class ScannerService
 
     public async Task<bool> ScanFileAsync(ScanSource source, string path, HashSet<string>? existingPaths = null)
     {
-         if (!MediaFileFilter.IsSupportedAudioFile(path)) return false;
+         if (!MediaFileFilter.IsSupportedMediaFile(path)) return false;
          if (existingPaths != null && existingPaths.Contains(path)) return false;
 
          // Optimization: Read metadata directly from SMB stream without downloading full file.
          using var stream = _smbService.OpenFile(source, path);
          if (stream == null) return false;
 
-         // custom StreamFileAbstraction
-         var fileAbstraction = new StreamFileAbstraction(path, stream);
-         using var tfile = TagLib.File.Create(fileAbstraction);
-         
-         var tag = tfile.Tag;
-
          string normalizedPath = path.Replace('\\', '/');
          string parentPath = Path.GetDirectoryName(normalizedPath) ?? "";
-         
          string fileHash = await ComputePartialHash(stream);
+
+         string title = Path.GetFileNameWithoutExtension(path);
+         string artist = "Unknown Artist";
+         string album = "Unknown Album";
+         string genre = MediaFileFilter.IsSupportedVideoFile(path) ? "MV" : "Unknown Genre";
+         int year = 0;
+         TimeSpan duration = TimeSpan.Zero;
+
+         try
+         {
+             var fileAbstraction = new StreamFileAbstraction(path, stream);
+             using var tfile = TagLib.File.Create(fileAbstraction);
+             var tag = tfile.Tag;
+             if (!string.IsNullOrWhiteSpace(tag.Title)) title = tag.Title;
+             if (!string.IsNullOrWhiteSpace(tag.FirstPerformer)) artist = tag.FirstPerformer;
+             if (!string.IsNullOrWhiteSpace(tag.Album)) album = tag.Album;
+             if (!string.IsNullOrWhiteSpace(tag.FirstGenre)) genre = tag.FirstGenre;
+             if (tag.Year > 0) year = (int)tag.Year;
+             if (tfile.Properties != null && tfile.Properties.Duration.TotalSeconds > 0)
+             {
+                 duration = tfile.Properties.Duration;
+             }
+         }
+         catch (Exception ex)
+         {
+             _logger.LogDebug(ex, "TagLib metadata parsing skipped/failed for {Path}, using filename-based metadata", path);
+         }
 
          var media = new MediaFile
          {
              FilePath = path,
              ParentPath = parentPath,
              FileHash = fileHash,
-             Title = tag.Title ?? Path.GetFileNameWithoutExtension(path),
-             Artist = tag.FirstPerformer ?? "Unknown Artist",
-             Album = tag.Album ?? "Unknown Album",
-             Genre = tag.FirstGenre ?? "Unknown Genre",
-             Year = (int)tag.Year,
-             Duration = tfile.Properties.Duration,
+             Title = title,
+             Artist = artist,
+             Album = album,
+             Genre = genre,
+             Year = year,
+             Duration = duration,
              SizeBytes = stream.Length, 
              ScanSourceId = source.Id,
              AddedAt = DateTime.UtcNow
          };
 
          _context.MediaFiles.Add(media);
-         // Note: SaveChanges is not called here for batch performance, 
-         // BUT for single file upload we might want it.
-         // If called from Upload Loop, caller handles save.
-         // If called individually... caller should save.
          return true;
     }
 
     // Overload for single file save (called by Controller)
     public async Task IndexSingleFileAsync(int sourceId, string path)
     {
-        if (!MediaFileFilter.IsSupportedAudioFile(path)) return;
+        if (!MediaFileFilter.IsSupportedMediaFile(path)) return;
         var source = await _context.ScanSources
             .Include(s => s.StorageCredential)
             .FirstOrDefaultAsync(s => s.Id == sourceId);

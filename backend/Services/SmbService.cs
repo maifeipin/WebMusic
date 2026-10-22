@@ -322,7 +322,7 @@ public class SmbService : ISmbService
 
     private bool GenericMediaFilter(string fileName)
     {
-        return MediaFileFilter.IsSupportedAudioFile(fileName);
+        return MediaFileFilter.IsSupportedMediaFile(fileName);
     }
 
     private void ParseSourcePath(ScanSource source, out string server, out string share, out string baseDir)
