@@ -30,7 +30,8 @@ internal class DownloadCancelledException(message: String = "下载已取消") :
  * 语义：
  * 1. 同一 key 只有一个真正的传输在跑，其余调用方 `await` 同一份结果；
  * 2. 共享任务跑在 [scope] 里，等待方单独取消不会带走传输（UI 重建不该打断下载）；
- * 3. 最后一个完成时（无论成功/失败/取消）自动从在途表摘除，不会留下永久占位。
+ * 3. 最后一个完成时（无论成功/失败/取消）自动从在途表摘除，不会留下永久占位；
+ * 4. 取消后占位保留到任务真正退出；此期间同 key 的新请求直接拿到「已取消」，不启动第二次传输。
  */
 internal class DownloadTaskGate<T>(
     private val scope: CoroutineScope,
@@ -43,6 +44,10 @@ internal class DownloadTaskGate<T>(
         while (true) {
             inFlight[key]?.let { existing ->
                 onJoin(key)
+                // 显式处理「取消中」：Deferred.cancel() 只是把 Job 置成 cancelling，旧任务可能
+                // 还卡在不可取消的收尾里。此时若直接 await()，会一直挂到它真正完成，调用方
+                // 看起来像点了没反应。这里立刻返回「已取消」，占位仍留给完成回调摘除。
+                if (existing.isCancelled) throw DownloadCancelledException()
                 return awaitShared(existing)
             }
 
@@ -59,14 +64,25 @@ internal class DownloadTaskGate<T>(
         }
     }
 
-    /** 主动撤销某条共享任务（取消下载 / 退出登录） */
+    /** 主动撤销某条共享任务（取消下载 / 退出登录）。占位由完成回调摘除，见 [cancelAll]。 */
     fun cancel(key: String) {
         inFlight[key]?.cancel()
     }
 
+    /**
+     * 撤销全部共享任务。
+     *
+     * 这里**只发取消信号，不清空在途表**：`cancel()` 只是把 Job 标成取消态，真正退出还要等
+     * 阻塞中的读操作（OkHttp `Call.cancel()`）返回。若在此处 `clear()`，占位会提前释放，
+     * 同 key 的新任务立刻进场，随后旧任务的 `onFinished` 收尾时按 key 清理，会把新任务的
+     * 进度 / 在途登记一起抹掉。
+     *
+     * 占位一律留给 `run()` 里注册的 `invokeOnCompletion { remove(key, deferred) }` 摘除。
+     * 因此在旧任务真正退出之前，同一曲目的新请求会立刻得到 [DownloadCancelledException]
+     * （不会挂起等待，也不会启动第二次传输），退出之后再请求才会重新开始。
+     */
     fun cancelAll() {
         inFlight.values.forEach { it.cancel() }
-        inFlight.clear()
     }
 
     /** 当前在途的 taskKey 快照，供测试与排障使用 */

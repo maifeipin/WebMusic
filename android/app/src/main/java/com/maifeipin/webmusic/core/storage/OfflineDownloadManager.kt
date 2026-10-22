@@ -177,10 +177,15 @@ object OfflineDownloadManager {
                 backoffs = RETRY_BACKOFF_MS,
                 isRetryable = ::isRetryable,
                 onFinished = {
-                    // 只摘自己这一笔登记，避免误删后来者（闸门原则上不允许并存，这里仍做值比较）
+                    // 只摘自己这一笔登记，避免误删后来者。闸门保证同一 key 不并存，
+                    // 但 cancelAllDownloads() 会先清空 activeJobs：若旧任务收尾前同 key 新任务已
+                    // 接管登记，这里不能再按 key 无条件清进度，否则旧任务会把新任务打成 0%。
+                    val ownsSlot = currentJob == null || activeJobs[taskKey] === currentJob
                     if (currentJob != null) activeJobs.remove(taskKey, currentJob)
-                    activeDownloads.remove(taskKey)
-                    publishProgress(taskKey, null)
+                    if (ownsSlot) {
+                        activeDownloads.remove(taskKey)
+                        publishProgress(taskKey, null)
+                    }
                 }
             ) { attempt ->
                 performAttempt(context, session, song, taskKey, userDir, attempt, onProgress)

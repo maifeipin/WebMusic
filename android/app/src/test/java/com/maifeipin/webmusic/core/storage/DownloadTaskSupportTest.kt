@@ -1,24 +1,30 @@
 package com.maifeipin.webmusic.core.storage
 
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
 /**
- * 覆盖离线下载的两个并发/生命周期约束：
+ * 覆盖离线下载的三个并发/生命周期约束：
  * 1. 退避等待期间被取消，任务级清理仍然执行（否则界面永久转圈）；
- * 2. 同一 taskKey 的手动下载与自动缓存并发时只跑一次传输。
+ * 2. 同一 taskKey 的手动下载与自动缓存并发时只跑一次传输；
+ * 3. 取消全部后占位保留到旧任务真正退出，避免旧任务收尾误伤同 key 的新任务。
  */
 class DownloadTaskSupportTest {
 
@@ -248,6 +254,100 @@ class DownloadTaskSupportTest {
         owner.join()
 
         assertEquals(1, transfers.get())
+        assertTrue(gate.activeKeys().isEmpty())
+    }
+
+    /**
+     * cancelAll() 的取消只是「请求」：旧任务可能还卡在阻塞读里，收尾也要一点时间。
+     * 占位必须留在原处，否则同 key 新任务会与尚未退出的旧任务并存，旧任务收尾时按 key 清理，
+     * 新任务的进度就被抹掉了。
+     *
+     * 同时锁定「取消中不挂起」：第二个调用必须在旧任务放行前就拿到 [DownloadCancelledException]，
+     * 而不是 await 到旧任务收尾结束。
+     */
+    @Test
+    fun cancelAllKeepsSlotUntilCancelledTaskActuallyExits() = runBlocking {
+        val key = "srv_user_11"
+        val gate = DownloadTaskGate<String>(this)
+        val transfers = AtomicInteger(0)
+        val progress = ConcurrentHashMap<String, String>()
+        val firstStarted = CompletableDeferred<Unit>()
+        val tailGate = CompletableDeferred<Unit>()
+        val staleExited = CompletableDeferred<Unit>()
+
+        val stale = launch {
+            try {
+                gate.run(key) {
+                    transfers.incrementAndGet()
+                    progress[key] = "stale"
+                    firstStarted.complete(Unit)
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        // 模拟真实收尾：Call.cancel() 之后仍有一段不可取消的清理
+                        withContext(NonCancellable) { tailGate.await() }
+                        progress.remove(key)
+                        staleExited.complete(Unit)
+                    }
+                }
+            } catch (_: DownloadCancelledException) {
+                // 旧任务最终以取消失败收场
+            }
+        }
+        firstStarted.await()
+        gate.cancelAll()
+
+        assertTrue(
+            "取消信号发出后必须保留占位，直到任务真正退出",
+            gate.activeKeys().contains(key)
+        )
+
+        // 取消全部后立刻重新请求同一曲目：旧任务仍在（不可取消的）收尾阶段
+        val secondOutcome = CompletableDeferred<Throwable?>()
+        val second = launch {
+            val error = try {
+                gate.run(key) { transfers.incrementAndGet(); "fresh" }
+                null
+            } catch (e: Throwable) {
+                e
+            }
+            secondOutcome.complete(error)
+        }
+
+        try {
+            // 限定 2s：若实现退回「await 到旧任务结束」，这里会超时并留下明确失败信息
+            val outcome = withTimeoutOrNull(2_000L) { secondOutcome.await() }
+
+            assertTrue(
+                "旧任务退出前第二个调用必须已有结论（当前仍挂起）",
+                secondOutcome.isCompleted
+            )
+            assertNotNull("第二个调用不应成功启动新传输", outcome)
+            assertTrue(
+                "第二个调用必须收到 DownloadCancelledException，实际：$outcome",
+                outcome is DownloadCancelledException
+            )
+            // 结论已拿到，join 只是等协程真正收尾（此时 tailGate 仍未放行）
+            second.join()
+            assertEquals("旧任务退出前不得启动第二次传输", 1, transfers.get())
+        } finally {
+            // 无论断言是否失败都放行旧任务，避免 runBlocking 等子协程挂死
+            tailGate.complete(Unit)
+        }
+
+        staleExited.await()
+        stale.join()
+        assertTrue("旧任务退出后占位必须被摘除", gate.activeKeys().isEmpty())
+
+        // 旧任务退出后重新下载：新进度不会被旧任务的清理影响
+        val value = gate.run(key) {
+            transfers.incrementAndGet()
+            progress[key] = "fresh"
+            "ok"
+        }
+        assertEquals("ok", value)
+        assertEquals(2, transfers.get())
+        assertEquals("旧任务清理不得影响新进度", "fresh", progress[key])
         assertTrue(gate.activeKeys().isEmpty())
     }
 }
