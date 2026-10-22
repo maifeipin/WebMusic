@@ -194,56 +194,62 @@ object AppUpdateManager {
             if (stale) leftover.delete()
         }
 
-        // 3. 断点续传
-        var existing = if (partial.exists()) partial.length() else 0L
-        val requestBuilder = Request.Builder()
-            .url(url)
-            .header("Accept-Encoding", "identity")
-            .apply {
-                if (!token.isNullOrEmpty() && Uri.parse(url).host == Uri.parse(serverUrl).host) header("Authorization", "Bearer $token")
-                if (existing > 0L) header("Range", "bytes=$existing-")
-            }
-
-        withResponse(requestBuilder.build()) { response ->
-            if (response.code == 416 && existing > 0L) {
-                // Range 越界：本地分片已覆盖整包，进入校验流程
-            } else if (!response.isSuccessful) {
-                throw IOException("下载失败：HTTP ${response.code}")
-            } else {
-                if (existing > 0L && response.code != 206) {
-                    // 服务端（或代理）不支持 Range，返回了整包，只能从头写
-                    partial.delete()
-                    existing = 0L
+        // Each retry re-reads the actual partial length and rebuilds the Range header.
+        retryUpdateTransfer {
+            // 3. 断点续传
+            var existing = if (partial.exists()) partial.length() else 0L
+            val requestBuilder = Request.Builder()
+                .url(url)
+                .header("Accept-Encoding", "identity")
+                .apply {
+                    if (!token.isNullOrEmpty() && Uri.parse(url).host == Uri.parse(serverUrl).host) header("Authorization", "Bearer $token")
+                    if (existing > 0L) header("Range", "bytes=$existing-")
                 }
 
-                if (response.code == 206) {
-                    val range = response.header("Content-Range").orEmpty()
-                    if (!range.startsWith("bytes $existing-")) {
-                        partial.delete()
-                        throw IOException("续传响应范围不匹配，请重试")
+            withResponse(requestBuilder.build()) { response ->
+                if (response.code == 416 && existing > 0L) {
+                    // Range 越界：本地分片已覆盖整包，进入校验流程
+                } else if (!response.isSuccessful) {
+                    if (response.code == 408 || response.code == 429 || response.code in 500..599) {
+                        throw IOException("更新服务器暂时不可用")
                     }
-                }
-                val body = response.body ?: throw IOException("下载响应为空")
-                val contentLength = body.contentLength()
-                val total = if (contentLength > 0L) existing + contentLength else info.sizeBytes
-                var received = existing
-                onProgress(UpdateDownloadProgress(received, total))
+                    throw UpdateTransferRejected("下载失败：服务器返回 HTTP ${response.code}，请重新检查更新")
+                } else {
+                    if (existing > 0L && response.code != 206) {
+                        // 服务端（或代理）不支持 Range，返回了整包，只能从头写
+                        partial.delete()
+                        existing = 0L
+                    }
 
-                body.byteStream().use { input ->
-                    FileOutputStream(partial, existing > 0L).use { output ->
-                        val buffer = ByteArray(BUFFER_SIZE)
-                        while (true) {
-                            // 协程取消时立即中断 IO，避免 Activity 销毁后仍在后台写盘
-                            currentCoroutineContext().ensureActive()
-                            val read = input.read(buffer)
-                            if (read == -1) break
-                            output.write(buffer, 0, read)
-                            received += read
-                            if (received > info.sizeBytes) throw IOException("安装包超过声明大小")
-                            onProgress(UpdateDownloadProgress(received, total))
+                    if (response.code == 206) {
+                        val range = response.header("Content-Range").orEmpty()
+                        if (!range.startsWith("bytes $existing-")) {
+                            partial.delete()
+                            throw UpdateTransferRejected("续传响应范围不匹配，请重试")
                         }
-                        output.flush()
-                        output.fd.sync()
+                    }
+                    val body = response.body ?: throw UpdateTransferRejected("下载响应为空")
+                    val contentLength = body.contentLength()
+                    val total = if (contentLength > 0L) existing + contentLength else info.sizeBytes
+                    var received = existing
+                    onProgress(UpdateDownloadProgress(received, total))
+
+                    body.byteStream().use { input ->
+                        FileOutputStream(partial, existing > 0L).use { output ->
+                            val buffer = ByteArray(BUFFER_SIZE)
+                            while (true) {
+                                // 协程取消时立即中断 IO，避免 Activity 销毁后仍在后台写盘
+                                currentCoroutineContext().ensureActive()
+                                val read = input.read(buffer)
+                                if (read == -1) break
+                                output.write(buffer, 0, read)
+                                received += read
+                                if (received > info.sizeBytes) throw UpdateTransferRejected("安装包超过声明大小")
+                                onProgress(UpdateDownloadProgress(received, total))
+                            }
+                            output.flush()
+                            output.fd.sync()
+                        }
                     }
                 }
             }
