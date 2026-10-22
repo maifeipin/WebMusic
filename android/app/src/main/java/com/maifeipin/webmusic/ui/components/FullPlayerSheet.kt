@@ -38,6 +38,9 @@ fun FullPlayerSheet(
     currentPosMs: Long,
     playbackMode: PlaybackMode,
     lyrics: List<LyricLine>,
+    isFavorite: Boolean = false,
+    onToggleFavorite: () -> Unit = {},
+    onAddToPlaylist: () -> Unit = {},
     onPlayPauseClick: () -> Unit,
     onPreviousClick: () -> Unit,
     onNextClick: () -> Unit,
@@ -160,24 +163,49 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 歌曲信息
-            Text(
-                text = currentSong.title ?: "未知曲目",
-                fontWeight = FontWeight.Bold,
-                fontSize = 22.sp,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "${currentSong.artist ?: "未知艺术家"} • ${currentSong.album ?: "未知专辑"}",
-                fontSize = 14.sp,
-                color = Color.LightGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            // 歌曲信息与操作栏 (收藏 & 加入歌单)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = currentSong.title ?: "未知曲目",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "${currentSong.artist ?: "未知艺术家"} • ${currentSong.album ?: "未知专辑"}",
+                        fontSize = 13.sp,
+                        color = Color.LightGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onToggleFavorite) {
+                        Icon(
+                            imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = if (isFavorite) "取消收藏" else "加入收藏",
+                            tint = if (isFavorite) Color(0xFFE91E63) else Color.LightGray,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                    IconButton(onClick = onAddToPlaylist) {
+                        Icon(
+                            imageVector = Icons.Default.PlaylistAdd,
+                            contentDescription = "添加到歌单",
+                            tint = Color.LightGray,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(20.dp))
 

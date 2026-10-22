@@ -7,8 +7,10 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Path
 import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
 
@@ -36,6 +38,87 @@ data class PagedResult<T>(
     val files: List<T>
 )
 
+data class UserMediaItem(
+    val id: Int,
+    val title: String?,
+    val artist: String?,
+    val album: String?,
+    val genre: String? = null,
+    val duration: Any? = null,
+    val filePath: String? = null,
+    val coverArt: String? = null
+) {
+    fun toMediaFileDto(): MediaFileDto {
+        return MediaFileDto(
+            id = id,
+            filePath = filePath,
+            title = title,
+            artist = artist,
+            album = album,
+            genre = genre,
+            year = null,
+            duration = duration?.toString(),
+            sizeBytes = null,
+            fileHash = null,
+            contentVersion = null
+        )
+    }
+}
+
+data class ToggleFavoriteResponse(val isFavorite: Boolean)
+
+data class FavoriteItem(
+    val mediaFileId: Int,
+    val createdAt: String?,
+    val mediaFile: UserMediaItem?
+)
+
+data class PagedFavoriteResult(
+    val total: Int,
+    val page: Int,
+    val pageSize: Int,
+    val items: List<FavoriteItem>
+)
+
+data class HistoryItem(
+    val mediaFileId: Int,
+    val playedAt: String?,
+    val mediaFile: UserMediaItem?
+)
+
+data class PagedHistoryResult(
+    val total: Int,
+    val page: Int,
+    val pageSize: Int,
+    val items: List<HistoryItem>
+)
+
+data class PlaylistSummaryDto(
+    val id: Int,
+    val name: String,
+    val coverArt: String?,
+    val createdAt: String?,
+    val type: String?,
+    val shareToken: String?,
+    val count: Int
+)
+
+data class CreatePlaylistRequest(val name: String, val coverArt: String? = null)
+
+data class PlaylistSongItem(
+    val id: Int,
+    val song: UserMediaItem?,
+    val addedAt: String?
+)
+
+data class PlaylistDetailDto(
+    val id: Int,
+    val name: String,
+    val coverArt: String?,
+    val createdAt: String?,
+    val songs: List<PlaylistSongItem>
+)
+
 interface WebMusicApi {
     @POST("api/auth/login")
     suspend fun login(@Body req: LoginRequest): LoginResponse
@@ -49,8 +132,68 @@ interface WebMusicApi {
 
     @GET("api/lyrics/{mediaId}")
     suspend fun getLyrics(
-        @retrofit2.http.Path("mediaId") mediaId: Int
+        @Path("mediaId") mediaId: Int
     ): com.maifeipin.webmusic.core.lyrics.LyricsResponse
+
+    // --- 收藏夹 Favorites ---
+    @GET("api/user/favorites/ids")
+    suspend fun getFavoriteIds(): List<Int>
+
+    @POST("api/user/favorite/{mediaId}")
+    suspend fun toggleFavorite(
+        @Path("mediaId") mediaId: Int
+    ): ToggleFavoriteResponse
+
+    @GET("api/user/favorites")
+    suspend fun getFavorites(
+        @Query("page") page: Int = 1,
+        @Query("pageSize") pageSize: Int = 50
+    ): PagedFavoriteResult
+
+    // --- 播放历史 History ---
+    @POST("api/user/history/{mediaId}")
+    suspend fun recordHistory(
+        @Path("mediaId") mediaId: Int
+    ): retrofit2.Response<Unit>
+
+    @GET("api/user/history")
+    suspend fun getHistory(
+        @Query("page") page: Int = 1,
+        @Query("pageSize") pageSize: Int = 50
+    ): PagedHistoryResult
+
+    // --- 自建歌单 Playlists ---
+    @GET("api/playlist")
+    suspend fun getPlaylists(
+        @Query("type") type: String = "normal"
+    ): List<PlaylistSummaryDto>
+
+    @POST("api/playlist")
+    suspend fun createPlaylist(
+        @Body req: CreatePlaylistRequest
+    ): PlaylistSummaryDto
+
+    @GET("api/playlist/{id}")
+    suspend fun getPlaylist(
+        @Path("id") id: Int
+    ): PlaylistDetailDto
+
+    @POST("api/playlist/{id}/songs")
+    suspend fun addSongsToPlaylist(
+        @Path("id") id: Int,
+        @Body mediaFileIds: List<Int>
+    ): retrofit2.Response<Unit>
+
+    @DELETE("api/playlist/{id}/songs")
+    suspend fun removeSongsFromPlaylist(
+        @Path("id") id: Int,
+        @Query("ids") ids: String
+    ): retrofit2.Response<Unit>
+
+    @DELETE("api/playlist/{id}")
+    suspend fun deletePlaylist(
+        @Path("id") id: Int
+    ): retrofit2.Response<Unit>
 }
 
 object WebMusicNetwork {
