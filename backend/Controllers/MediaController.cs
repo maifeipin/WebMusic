@@ -118,22 +118,22 @@ public class MediaController : ControllerBase
         // By default, callers with omitted/blank mediaType receive ONLY audio files.
         // Callers can explicitly pass mediaType=video (or criteria type:is:video) for MV,
         // or mediaType=all (or criteria type:is:all) for all media.
-        // Invalid mediaType values or malformed criteria will return 400 BadRequest.
-        string targetMediaType = "audio";
+        // Invalid mediaType values, malformed criteria, or conflicting media criteria will return 400 BadRequest.
+        string? resolvedFromParam = null;
         if (!string.IsNullOrWhiteSpace(mediaType))
         {
             var trimmed = mediaType.Trim().ToLowerInvariant();
             if (trimmed == "video" || trimmed == "mv")
             {
-                targetMediaType = "video";
+                resolvedFromParam = "video";
             }
             else if (trimmed == "audio")
             {
-                targetMediaType = "audio";
+                resolvedFromParam = "audio";
             }
             else if (trimmed == "all")
             {
-                targetMediaType = "all";
+                resolvedFromParam = "all";
             }
             else
             {
@@ -141,6 +141,7 @@ public class MediaController : ControllerBase
             }
         }
 
+        string? resolvedFromCriteria = null;
         if (criteria != null && criteria.Count > 0)
         {
             foreach (var c in criteria)
@@ -172,14 +173,24 @@ public class MediaController : ControllerBase
                         return BadRequest($"Invalid criteria mediaType value '{parts[2]}'. Supported values are 'audio', 'video', 'mv', or 'all'.");
                     }
 
-                    if (string.IsNullOrWhiteSpace(mediaType))
+                    if (resolvedFromCriteria == null)
                     {
-                        targetMediaType = criteriaType;
+                        resolvedFromCriteria = criteriaType;
                     }
-                    break;
+                    else if (resolvedFromCriteria != criteriaType)
+                    {
+                        return BadRequest($"Conflicting mediaType criteria specified: '{resolvedFromCriteria}' vs '{criteriaType}'.");
+                    }
                 }
             }
         }
+
+        if (resolvedFromParam != null && resolvedFromCriteria != null && resolvedFromParam != resolvedFromCriteria)
+        {
+            return BadRequest($"Conflicting mediaType specified between query parameter '{resolvedFromParam}' and criteria '{resolvedFromCriteria}'.");
+        }
+
+        string targetMediaType = resolvedFromParam ?? resolvedFromCriteria ?? "audio";
 
         if (targetMediaType == "video" || targetMediaType == "mv")
         {
