@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.provider.Settings
 import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -116,7 +117,7 @@ fun VideoPlayerDialog(
                     }
                     activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 } else {
-                    activity?.requestedOrientation = originalOrientation
+                    restoreOrientation(activity, originalOrientation)
                     ViewCompat.getWindowInsetsController(composeView)
                         ?.show(WindowInsetsCompat.Type.systemBars())
                     activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -136,7 +137,7 @@ fun VideoPlayerDialog(
     // 都恢复屏幕方向与系统栏，否则会残留在横屏 + 无状态栏的界面上
     DisposableEffect(Unit) {
         onDispose {
-            activity?.requestedOrientation = originalOrientation
+            restoreOrientation(activity, originalOrientation)
             ViewCompat.getWindowInsetsController(composeView)
                 ?.show(WindowInsetsCompat.Type.systemBars())
             // Dialog 的 window 这时可能已经销毁，同时对 Activity 的窗口恢复一次更保险
@@ -272,4 +273,30 @@ private fun Context.findHostActivity(): Activity? {
         current = current.baseContext
     }
     return null
+}
+
+/**
+ * 恢复进入播放器前的屏幕方向。
+ *
+ * 大多数设备直接写回 [original] 就够了；但当它是 `SCREEN_ORIENTATION_UNSPECIFIED` 时，
+ * 部分 ROM（实测一加 / ColorOS 14，Android 14）只更新了 ActivityRecord 上的值，
+ * 不会重新评估方向，屏幕会一直停在强制出来的横屏上。此时改用一个**语义等价但明确**的方向：
+ * 自动旋转开启时跟随传感器，关闭时跟随用户锁定的方向 —— 与 UNSPECIFIED 的行为一致，
+ * 却能真正触发系统重新计算。
+ */
+private fun restoreOrientation(activity: Activity?, original: Int) {
+    activity ?: return
+    if (original != ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED) {
+        activity.requestedOrientation = original
+        return
+    }
+    activity.requestedOrientation =
+        if (activity.isAutoRotateEnabled()) ActivityInfo.SCREEN_ORIENTATION_SENSOR
+        else ActivityInfo.SCREEN_ORIENTATION_USER
+}
+
+private fun Context.isAutoRotateEnabled(): Boolean = try {
+    Settings.System.getInt(contentResolver, Settings.System.ACCELEROMETER_ROTATION) == 1
+} catch (_: Exception) {
+    true
 }
