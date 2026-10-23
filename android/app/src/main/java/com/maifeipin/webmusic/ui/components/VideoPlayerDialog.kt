@@ -6,7 +6,9 @@ import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.net.Uri
+import android.util.Log
 import android.view.WindowManager
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -32,6 +34,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -70,7 +74,32 @@ fun VideoPlayerDialog(
     val wasPortrait = remember(activity) {
         activity?.resources?.configuration?.orientation != Configuration.ORIENTATION_LANDSCAPE
     }
-    var isFullscreen by remember { mutableStateOf(false) }
+
+    // 全屏状态挂在 Activity 作用域：旋转会重建 Dialog 内的 Compose 内容，remember 会丢，
+    // 表现为「刚进全屏就自己退出来」，以及「全屏时按返回把播放器一起关掉」。
+    val hostActivity = activity as? ComponentActivity
+    val fullscreenVm = remember(hostActivity) {
+        hostActivity?.let { ViewModelProvider(it).get(MvFullscreenState::class.java) }
+    }
+    val fallbackFullscreen = remember { mutableStateOf(false) }
+    val localApplied = remember { mutableStateOf(false) }
+    var isFullscreen by (fullscreenVm?.isFullscreen ?: fallbackFullscreen)
+
+    fun isApplied(): Boolean = fullscreenVm?.applied ?: localApplied.value
+    fun markApplied(applied: Boolean) {
+        val vm = fullscreenVm
+        if (vm != null) vm.applied = applied else localApplied.value = applied
+    }
+
+    LaunchedEffect(song.id) {
+        val vm = fullscreenVm
+        if (vm != null && vm.songId != song.id) {
+            vm.songId = song.id
+            vm.applied = false
+            vm.isFullscreen.value = false
+        }
+        Log.d(FULLSCREEN_TAG, "bound song=${song.id} fullscreen=$isFullscreen applied=${isApplied()}")
+    }
 
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
@@ -112,6 +141,7 @@ fun VideoPlayerDialog(
         val applySystemUi = {
             if (alive) {
                 if (isFullscreen) {
+                    markApplied(true)
                     activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                     ViewCompat.getWindowInsetsController(composeView)?.apply {
                         // 用户从边缘滑动可以临时唤出系统栏，转瞬后自动再隐藏
@@ -120,12 +150,15 @@ fun VideoPlayerDialog(
                         hide(WindowInsetsCompat.Type.systemBars())
                     }
                     activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                } else {
+                } else if (isApplied()) {
+                    // 只有真正应用过全屏才回退；首次组合不该动用户既有的屏幕方向
+                    markApplied(false)
                     restoreOrientation(activity, originalOrientation, wasPortrait)
                     ViewCompat.getWindowInsetsController(composeView)
                         ?.show(WindowInsetsCompat.Type.systemBars())
                     activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
+                Log.d(FULLSCREEN_TAG, "apply fullscreen=$isFullscreen applied=${isApplied()}")
             }
         }
         // 首次组合时 view 可能还没 attach，insets controller 会是 null，等一帧再试
@@ -137,11 +170,16 @@ fun VideoPlayerDialog(
         onDispose { alive = false }
     }
 
-    // 兜底：无论以什么方式离开播放器（返回键、点击关闭、Activity 销毁），
-    // 都恢复屏幕方向与系统栏，否则会残留在横屏 + 无状态栏的界面上
+    // 兜底：播放器真的被销毁时清掉系统栏与常亮。
+    // 方向只在「已经不是全屏」（也就是走完了正常退出流程）时补一次恢复；
+    // 若销毁时仍处于全屏，多半是旋转引起的 Compose 内容重建，此时新内容会重新应用全屏，
+    // 在这里回退方向反而会把画面掰回竖向。
     DisposableEffect(Unit) {
         onDispose {
-            restoreOrientation(activity, originalOrientation, wasPortrait)
+            if (!isFullscreen && isApplied()) {
+                markApplied(false)
+                restoreOrientation(activity, originalOrientation, wasPortrait)
+            }
             ViewCompat.getWindowInsetsController(composeView)
                 ?.show(WindowInsetsCompat.Type.systemBars())
             // Dialog 的 window 这时可能已经销毁，同时对 Activity 的窗口恢复一次更保险
@@ -150,6 +188,7 @@ fun VideoPlayerDialog(
                     ?.show(WindowInsetsCompat.Type.systemBars())
             }
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            Log.d(FULLSCREEN_TAG, "dispose song=${song.id} fullscreen=$isFullscreen applied=${isApplied()}")
         }
     }
 
@@ -267,6 +306,25 @@ fun VideoPlayerDialog(
             }
         }
     }
+}
+
+private const val FULLSCREEN_TAG = "MvFullscreen"
+
+/**
+ * MV 播放器的全屏状态，挂在 Activity 作用域上。
+ *
+ * 旋转会把 Dialog 内的 Compose 内容重建一次，`remember` 随之丢失 ——
+ * 那会让「刚进全屏就自己退出来」，也会让全屏状态下按返回键直接把播放器关掉。
+ * ViewModel 跟随 Activity，不受内容重建影响；换曲时才重置。
+ */
+class MvFullscreenState : ViewModel() {
+    val isFullscreen = mutableStateOf(false)
+
+    /** 是否已经把全屏效果应用到系统，用来区分「退出全屏」和「首次组合」 */
+    var applied: Boolean = false
+
+    /** 上一次绑定的曲目，换曲时才重置全屏 */
+    var songId: Int = Int.MIN_VALUE
 }
 
 /** 顺着 ContextWrapper 链向上找到宿主 Activity（Dialog 的 context 只是层包装）。 */
