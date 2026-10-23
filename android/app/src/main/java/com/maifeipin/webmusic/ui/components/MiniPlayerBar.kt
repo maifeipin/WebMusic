@@ -57,6 +57,7 @@ fun MiniPlayerBar(
             .fillMaxWidth()
             .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
             .background(DarkSurface)
+            .navigationBarsPadding()
             .clickable { onExpandFullPlayer() }
     ) {
         // 顶部精致进度细条

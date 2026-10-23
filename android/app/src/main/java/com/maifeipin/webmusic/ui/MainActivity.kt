@@ -4,9 +4,13 @@ import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import com.maifeipin.webmusic.core.storage.LocalMediaImporter
 import com.maifeipin.webmusic.core.storage.MediaImportFilter
@@ -137,7 +141,15 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+        )
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        }
         tokenManager = TokenManager(this)
         updateController = UpdateController(this, tokenManager, lifecycleScope) {
             PlaybackService.saveForUpdate()
@@ -407,8 +419,9 @@ class MainActivity : ComponentActivity() {
      * 延迟与并发控制都在 [AutoOfflineCache] 内部，此处只负责提供当前曲目快照。
      */
     private fun maybeAutoCache(mediaItem: MediaItem, songId: Int) {
+        if (songId <= 0) return // 本机导入曲目无需且不能自动离线
         val uri = mediaItem.localConfiguration?.uri
-        if (uri != null && uri.scheme == "file") return // 已经在播本地文件，无需再缓存
+        if (uri != null && (uri.scheme == "file" || uri.scheme == "content")) return // 已经在播本地文件，无需再缓存
 
         val metadata = mediaItem.mediaMetadata
         val song = MediaFileDto(
