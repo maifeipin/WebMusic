@@ -1,17 +1,26 @@
 package com.maifeipin.webmusic.ui.components
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -19,6 +28,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -30,10 +42,11 @@ import com.maifeipin.webmusic.ui.theme.GreenPrimary
 import java.io.File
 
 /**
- * 全屏沉浸式 MV 视频播放器对话框
+ * 沉浸式 MV 视频播放器对话框
  * - 支持流媒体与离线本地视频播放
  * - 结合 MediaCacheManager 实现边播边存分片与 HTTP 206 Range 高效拖拽
- * - 包含全屏控制器、顶部标题栏以及离线状态指示
+ * - 顶部标题栏提供「全屏」入口：切到横屏 + 隐藏状态栏/导航栏 + 收起标题栏，
+ *   退出全屏后恢复进入前的屏幕方向与系统栏
  */
 @Composable
 fun VideoPlayerDialog(
@@ -44,6 +57,16 @@ fun VideoPlayerDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    // Dialog 里的 LocalContext 是 ContextThemeWrapper，需要顺着 baseContext 找到宿主 Activity
+    val activity = remember(context) { context.findHostActivity() }
+    val composeView = LocalView.current
+
+    // 记住进入播放器前的方向，退出全屏时原样恢复，避免覆盖用户自己锁定的屏幕方向
+    val originalOrientation = remember(activity) {
+        activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    }
+    var isFullscreen by remember { mutableStateOf(false) }
+
     val exoPlayer = remember {
         ExoPlayer.Builder(context).build().apply {
             playWhenReady = true
@@ -77,8 +100,59 @@ fun VideoPlayerDialog(
         }
     }
 
+    // 全屏 = 横向 + 隐藏系统栏 + 屏幕常亮。
+    // 方向只对 Activity 生效，系统栏作用于当前窗口（这个 Dialog 自己的 window）。
+    DisposableEffect(isFullscreen) {
+        var alive = true
+        val applySystemUi = {
+            if (alive) {
+                if (isFullscreen) {
+                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                    ViewCompat.getWindowInsetsController(composeView)?.apply {
+                        // 用户从边缘滑动可以临时唤出系统栏，转瞬后自动再隐藏
+                        systemBarsBehavior =
+                            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                        hide(WindowInsetsCompat.Type.systemBars())
+                    }
+                    activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } else {
+                    activity?.requestedOrientation = originalOrientation
+                    ViewCompat.getWindowInsetsController(composeView)
+                        ?.show(WindowInsetsCompat.Type.systemBars())
+                    activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+            }
+        }
+        // 首次组合时 view 可能还没 attach，insets controller 会是 null，等一帧再试
+        if (composeView.isAttachedToWindow) {
+            applySystemUi()
+        } else {
+            composeView.post { applySystemUi() }
+        }
+        onDispose { alive = false }
+    }
+
+    // 兜底：无论以什么方式离开播放器（返回键、点击关闭、Activity 销毁），
+    // 都恢复屏幕方向与系统栏，否则会残留在横屏 + 无状态栏的界面上
+    DisposableEffect(Unit) {
+        onDispose {
+            activity?.requestedOrientation = originalOrientation
+            ViewCompat.getWindowInsetsController(composeView)
+                ?.show(WindowInsetsCompat.Type.systemBars())
+            // Dialog 的 window 这时可能已经销毁，同时对 Activity 的窗口恢复一次更保险
+            activity?.window?.decorView?.let {
+                ViewCompat.getWindowInsetsController(it)
+                    ?.show(WindowInsetsCompat.Type.systemBars())
+            }
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            // 全屏时返回键先退出全屏，而不是直接关掉播放器（再按一次才关闭）
+            if (isFullscreen) isFullscreen = false else onDismiss()
+        },
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             decorFitsSystemWindows = false
@@ -104,61 +178,98 @@ fun VideoPlayerDialog(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // 顶部导航与视频标题信息栏
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.TopCenter)
-                    .background(Color.Black.copy(alpha = 0.65f))
-                    .statusBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onDismiss) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowBack,
-                        contentDescription = "返回",
-                        tint = Color.White
-                    )
-                }
-                Column(
+            if (!isFullscreen) {
+                // 顶部导航与视频标题信息栏
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .padding(start = 8.dp)
+                        .fillMaxWidth()
+                        .align(Alignment.TopCenter)
+                        .background(Color.Black.copy(alpha = 0.65f))
+                        .statusBarsPadding()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = song.title ?: "未知 MV",
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = "${song.artist ?: "未知艺术家"}${if (!song.album.isNullOrEmpty()) " • ${song.album}" else ""}",
-                        color = Color.LightGray,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                if (!localFilePath.isNullOrEmpty() && File(localFilePath).exists()) {
-                    Surface(
-                        color = GreenPrimary.copy(alpha = 0.2f),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.padding(end = 8.dp)
-                    ) {
-                        Text(
-                            text = "已离线",
-                            color = GreenPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "返回",
+                            tint = Color.White
                         )
                     }
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 8.dp)
+                    ) {
+                        Text(
+                            text = song.title ?: "未知 MV",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "${song.artist ?: "未知艺术家"}${if (!song.album.isNullOrEmpty()) " • ${song.album}" else ""}",
+                            color = Color.LightGray,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    if (!localFilePath.isNullOrEmpty() && File(localFilePath).exists()) {
+                        Surface(
+                            color = GreenPrimary.copy(alpha = 0.2f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.padding(end = 4.dp)
+                        ) {
+                            Text(
+                                text = "已离线",
+                                color = GreenPrimary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    IconButton(onClick = { isFullscreen = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Fullscreen,
+                            contentDescription = "全屏",
+                            tint = Color.White
+                        )
+                    }
+                }
+            } else {
+                // 全屏时收起标题栏，只留一个常驻的退出入口：
+                // media3 控制器 3.5 秒后会自动隐藏，只靠它找出口很不顺手
+                IconButton(
+                    onClick = { isFullscreen = false },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .displayCutoutPadding()
+                        .padding(8.dp)
+                        .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FullscreenExit,
+                        contentDescription = "退出全屏",
+                        tint = Color.White
+                    )
                 }
             }
         }
     }
+}
+
+/** 顺着 ContextWrapper 链向上找到宿主 Activity（Dialog 的 context 只是层包装）。 */
+private fun Context.findHostActivity(): Activity? {
+    var current: Context? = this
+    while (current is ContextWrapper) {
+        if (current is Activity) return current
+        current = current.baseContext
+    }
+    return null
 }
