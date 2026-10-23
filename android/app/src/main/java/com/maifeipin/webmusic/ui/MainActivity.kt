@@ -14,15 +14,20 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import com.maifeipin.webmusic.core.storage.LocalMediaImporter
 import com.maifeipin.webmusic.core.storage.MediaImportFilter
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -1827,69 +1832,6 @@ fun MainAppScreen(
                 }
                 5 -> {
                     // 离线音乐列表展示
-                    val settings = remember { AppSettings.getInstance(context) }
-                    var autoCacheOn by remember { mutableStateOf(settings.autoCacheEnabled) }
-                    var autoCacheWifiOnly by remember { mutableStateOf(settings.autoCacheWifiOnly) }
-
-                    // 播放即自动离线（"听过就存本地"，规避服务端首包 SMB 冷读超时）
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "播放即自动离线",
-                                color = Color.White,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = if (autoCacheOn) {
-                                    "播放过的歌曲自动存到本地，下次直接本地播放" + if (autoCacheWifiOnly) "（仅 Wi-Fi）" else ""
-                                } else {
-                                    "已关闭：只有手动下载的歌曲能离线播放"
-                                },
-                                color = Color.Gray,
-                                fontSize = 11.sp
-                            )
-                        }
-                        Switch(
-                            checked = autoCacheOn,
-                            onCheckedChange = {
-                                autoCacheOn = it
-                                settings.autoCacheEnabled = it
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.Black,
-                                checkedTrackColor = GreenPrimary
-                            )
-                        )
-                    }
-                    if (autoCacheOn) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(start = 16.dp, end = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("仅 Wi-Fi 下自动缓存", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                            Switch(
-                                checked = autoCacheWifiOnly,
-                                onCheckedChange = {
-                                    autoCacheWifiOnly = it
-                                    settings.autoCacheWifiOnly = it
-                                },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.Black,
-                                    checkedTrackColor = GreenPrimary
-                                )
-                            )
-                        }
-                    }
-                    HorizontalDivider(color = Color.DarkGray)
-
                     val filteredOffline = remember(offlineSongs, searchQuery) {
                         if (searchQuery.isEmpty()) offlineSongs
                         else offlineSongs.filter {
@@ -2488,6 +2430,10 @@ fun LoginSettingDialog(
     onStopPlaybackForCacheClear: () -> Unit,
     onCheckUpdate: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    val settings = remember { AppSettings.getInstance(context) }
+
     var serverUrl by remember { mutableStateOf(tokenManager.serverUrl) }
     var username by remember { mutableStateOf(tokenManager.username ?: "") }
     var password by remember { mutableStateOf("") }
@@ -2495,159 +2441,534 @@ fun LoginSettingDialog(
     var statusText by remember { mutableStateOf("") }
     var isLoggingIn by remember { mutableStateOf(false) }
     var isClearingCache by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
 
-    AlertDialog(
+    var isLoggedIn by remember { mutableStateOf(tokenManager.token != null) }
+
+    var autoCacheEnabled by remember { mutableStateOf(settings.autoCacheEnabled) }
+    var autoCacheWifiOnly by remember { mutableStateOf(settings.autoCacheWifiOnly) }
+
+    var cacheSizeBytes by remember {
+        mutableLongStateOf(com.maifeipin.webmusic.core.cache.MediaCacheManager.getCacheSizeBytes(context))
+    }
+
+    Dialog(
         onDismissRequest = onDismiss,
-        title = { Text("WebMusic 账号登录", fontWeight = FontWeight.Bold) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = serverUrl,
-                    onValueChange = { serverUrl = it },
-                    label = { Text("服务器地址") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    label = { Text("账号") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-                // 密码掩码类型输入框 + 显隐切换
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it },
-                    label = { Text("密码") },
-                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    trailingIcon = {
-                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                            Icon(
-                                imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                contentDescription = if (passwordVisible) "隐藏密码" else "显示密码"
-                            )
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                val context = androidx.compose.ui.platform.LocalContext.current
-                var cacheSizeBytes by remember {
-                    mutableLongStateOf(com.maifeipin.webmusic.core.cache.MediaCacheManager.getCacheSizeBytes(context))
-                }
-
-                HorizontalDivider(color = Color.DarkGray, modifier = Modifier.padding(vertical = 4.dp))
-
-                // 版本信息与应用内更新入口
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "当前版本 v${AppUpdateManager.currentVersionName} (${AppUpdateManager.currentVersionCode})",
-                        color = Color.Gray,
-                        fontSize = 13.sp
-                    )
-                    TextButton(onClick = onCheckUpdate) {
-                        Text("检查更新", color = GreenPrimary, fontSize = 13.sp)
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "本地缓存快照: ${"%.1f".format(cacheSizeBytes / (1024f * 1024f))} MB",
-                        color = Color.Gray,
-                        fontSize = 13.sp
-                    )
-                    TextButton(
-                        enabled = !isClearingCache,
-                        onClick = {
-                            scope.launch {
-                                isClearingCache = true
-                                onStopPlaybackForCacheClear()
-                                withContext(Dispatchers.IO) {
-                                    com.maifeipin.webmusic.core.cache.MediaCacheManager.clearAllCache(context)
-                                }
-                                cacheSizeBytes = withContext(Dispatchers.IO) {
-                                    com.maifeipin.webmusic.core.cache.MediaCacheManager.getCacheSizeBytes(context)
-                                }
-                                statusText = "已停止播放并清空本地缓存！"
-                                isClearingCache = false
-                            }
-                        }
-                    ) {
-                        if (isClearingCache) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                color = Color(0xFFFF5252),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Text("清空缓存", color = Color(0xFFFF5252), fontSize = 13.sp)
-                        }
-                    }
-                }
-
-                if (tokenManager.token != null) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        TextButton(onClick = {
-                            onLogout()
-                            statusText = "已退出当前登录并清理播放会话"
-                        }) {
-                            Text("退出登录", color = Color.Gray, fontSize = 13.sp)
-                        }
-                    }
-                }
-
-                if (statusText.isNotEmpty()) {
-                    Text(statusText, color = GreenPrimary, fontSize = 13.sp)
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    scope.launch {
-                        isLoggingIn = true
-                        statusText = "正在登录..."
-                        try {
-                            tokenManager.serverUrl = serverUrl
-                            val api = WebMusicNetwork.createApi(tokenManager)
-                            val res = withContext(Dispatchers.IO) {
-                                api.login(LoginRequest(username, password))
-                            }
-                            tokenManager.token = res.token
-                            tokenManager.username = username
-                            statusText = "登录成功！"
-                            delay(500)
-                            onLoginSuccess()
-                        } catch (e: Exception) {
-                            statusText = "登录失败: ${e.message}"
-                        } finally {
-                            isLoggingIn = false
-                        }
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary),
-                enabled = !isLoggingIn && username.isNotEmpty() && password.isNotEmpty()
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 24.dp)
+                .wrapContentHeight(),
+            shape = RoundedCornerShape(20.dp),
+            color = DarkSurface,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text("登录", color = Color.Black)
+                // 1. 顶部 Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(GreenPrimary.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (isLoggedIn) Icons.Default.AccountCircle else Icons.Default.MusicNote,
+                                contentDescription = null,
+                                tint = GreenPrimary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = if (isLoggedIn) "账号与全局设置" else "WebMusic 账号登录",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 17.sp
+                            )
+                            Text(
+                                text = if (isLoggedIn) "管理连接与本地偏好" else "连接到私有流媒体服务",
+                                color = Color.Gray,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "关闭",
+                            tint = Color.Gray
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = Color(0xFF2E2E2E))
+
+                if (isLoggedIn) {
+                    // ========================= 已登录视图 =========================
+                    // 2.1 账号身份卡片
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        color = DarkBackground,
+                        border = BorderStroke(1.dp, Color(0xFF2E2E2E))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .background(GreenPrimary.copy(alpha = 0.2f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Person,
+                                        contentDescription = null,
+                                        tint = GreenPrimary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = tokenManager.username ?: "已登录用户",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(6.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF4CAF50))
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = tokenManager.serverUrl.removePrefix("https://").removePrefix("http://"),
+                                            color = Color.Gray,
+                                            fontSize = 11.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    onLogout()
+                                    isLoggedIn = false
+                                    statusText = "已退出当前登录"
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = Color(0xFFFF5252)
+                                ),
+                                border = BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.5f)),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text("退出", fontSize = 12.sp)
+                            }
+                        }
+                    }
+
+                    // 2.2 全局离线与缓存设置卡片
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        color = DarkBackground,
+                        border = BorderStroke(1.dp, Color(0xFF2E2E2E))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.CloudDownload,
+                                    contentDescription = null,
+                                    tint = GreenPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "全局自动离线",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "播放即自动离线",
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = if (autoCacheEnabled) "播过的音频自动存到本地，下次免流秒播"
+                                               else "已关闭：播放不向本地存储写入歌曲",
+                                        color = Color.Gray,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                Switch(
+                                    checked = autoCacheEnabled,
+                                    onCheckedChange = {
+                                        autoCacheEnabled = it
+                                        settings.autoCacheEnabled = it
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = Color.Black,
+                                        checkedTrackColor = GreenPrimary
+                                    )
+                                )
+                            }
+
+                            if (autoCacheEnabled) {
+                                HorizontalDivider(color = Color(0xFF262626))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "仅在 Wi-Fi 下自动离线",
+                                            color = Color.White,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        Text(
+                                            text = "移动蜂窝网络下不自动下载缓存音频",
+                                            color = Color.Gray,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                    Switch(
+                                        checked = autoCacheWifiOnly,
+                                        onCheckedChange = {
+                                            autoCacheWifiOnly = it
+                                            settings.autoCacheWifiOnly = it
+                                        },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = Color.Black,
+                                            checkedTrackColor = GreenPrimary
+                                        )
+                                    )
+                                }
+                            }
+
+                            Text(
+                                text = "💡 仅对音频生效；MV 视频绝不自动落盘，避免撑满手机存储空间。",
+                                color = Color(0xFF81C784),
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    // 2.3 存储分片与临时缓存
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        color = DarkBackground,
+                        border = BorderStroke(1.dp, Color(0xFF2E2E2E))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Storage,
+                                    contentDescription = null,
+                                    tint = Color.Gray,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = "播放器临时分片缓存",
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = "临时占用: ${"%.1f".format(cacheSizeBytes / (1024f * 1024f))} MB (LRU自动滚动)",
+                                        color = Color.Gray,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                            OutlinedButton(
+                                enabled = !isClearingCache,
+                                onClick = {
+                                    scope.launch {
+                                        isClearingCache = true
+                                        onStopPlaybackForCacheClear()
+                                        withContext(Dispatchers.IO) {
+                                            com.maifeipin.webmusic.core.cache.MediaCacheManager.clearAllCache(context)
+                                        }
+                                        cacheSizeBytes = withContext(Dispatchers.IO) {
+                                            com.maifeipin.webmusic.core.cache.MediaCacheManager.getCacheSizeBytes(context)
+                                        }
+                                        statusText = "已停止播放并清空临时缓存"
+                                        isClearingCache = false
+                                    }
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF5252)),
+                                border = BorderStroke(1.dp, Color(0xFFFF5252).copy(alpha = 0.5f)),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                if (isClearingCache) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        color = Color(0xFFFF5252),
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Text("清空缓存", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    // 2.4 版本信息与更新检查
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        color = DarkBackground,
+                        border = BorderStroke(1.dp, Color(0xFF2E2E2E))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = Color.Gray,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = "WebMusic for Android",
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = "版本 v${AppUpdateManager.currentVersionName} (${AppUpdateManager.currentVersionCode})",
+                                        color = Color.Gray,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                            Button(
+                                onClick = onCheckUpdate,
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = GreenPrimary.copy(alpha = 0.15f),
+                                    contentColor = GreenPrimary
+                                ),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text("检查更新", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    if (statusText.isNotEmpty()) {
+                        Text(
+                            text = statusText,
+                            color = GreenPrimary,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+                    }
+
+                    // 完成关闭按钮
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = GreenPrimary,
+                            contentColor = Color.Black
+                        )
+                    ) {
+                        Text("完成", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+
+                } else {
+                    // ========================= 未登录视图 =========================
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OutlinedTextField(
+                            value = serverUrl,
+                            onValueChange = { serverUrl = it },
+                            label = { Text("服务器地址") },
+                            leadingIcon = {
+                                Icon(Icons.Default.CloudQueue, contentDescription = null, tint = GreenPrimary)
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = username,
+                            onValueChange = { username = it },
+                            label = { Text("账号") },
+                            leadingIcon = {
+                                Icon(Icons.Default.Person, contentDescription = null, tint = GreenPrimary)
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        OutlinedTextField(
+                            value = password,
+                            onValueChange = { password = it },
+                            label = { Text("密码") },
+                            leadingIcon = {
+                                Icon(Icons.Default.Lock, contentDescription = null, tint = GreenPrimary)
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(10.dp),
+                            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            trailingIcon = {
+                                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                    Icon(
+                                        imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                        contentDescription = if (passwordVisible) "隐藏密码" else "显示密码"
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        if (statusText.isNotEmpty()) {
+                            Text(statusText, color = GreenPrimary, fontSize = 12.sp)
+                        }
+
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    isLoggingIn = true
+                                    statusText = "正在连接登录..."
+                                    try {
+                                        tokenManager.serverUrl = serverUrl
+                                        val api = WebMusicNetwork.createApi(tokenManager)
+                                        val res = withContext(Dispatchers.IO) {
+                                            api.login(LoginRequest(username, password))
+                                        }
+                                        tokenManager.token = res.token
+                                        tokenManager.username = username
+                                        isLoggedIn = true
+                                        statusText = "登录成功！"
+                                        delay(400)
+                                        onLoginSuccess()
+                                    } catch (e: Exception) {
+                                        statusText = "登录失败: ${e.message}"
+                                    } finally {
+                                        isLoggingIn = false
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = GreenPrimary,
+                                contentColor = Color.Black
+                            ),
+                            enabled = !isLoggingIn && username.isNotEmpty() && password.isNotEmpty()
+                        ) {
+                            if (isLoggingIn) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    color = Color.Black,
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Text("立即登录", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            }
+                        }
+
+                        // 版本与检查更新
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "v${AppUpdateManager.currentVersionName} (${AppUpdateManager.currentVersionCode})",
+                                color = Color.Gray,
+                                fontSize = 12.sp
+                            )
+                            TextButton(onClick = onCheckUpdate) {
+                                Text("检查更新", color = GreenPrimary, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("关闭")
-            }
-        },
-        containerColor = DarkSurface
-    )
+        }
+    }
 }
