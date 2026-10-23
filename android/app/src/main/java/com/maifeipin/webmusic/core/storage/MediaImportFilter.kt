@@ -27,6 +27,10 @@ object MediaImportFilter {
         if (sizeBytes <= 0 || sizeBytes > MAX_FILE_SIZE_BYTES) return false
 
         val ext = displayName.substringAfterLast('.', "").lowercase()
+        // 排除歌单与清单文件
+        if (ext in setOf("m3u", "m3u8", "pls", "wpl", "xspf")) {
+            return false
+        }
         if (ext.isNotEmpty() && (ext in AUDIO_EXTENSIONS || ext in VIDEO_EXTENSIONS)) {
             return true
         }
@@ -34,8 +38,8 @@ object MediaImportFilter {
         if (mimeType != null) {
             val lowerMime = mimeType.lowercase()
             if (lowerMime.startsWith("audio/") || lowerMime.startsWith("video/")) {
-                // 排除一些非媒体数据类
-                if (!lowerMime.contains("playlist") && !lowerMime.contains("m3u")) {
+                // 排除一些非媒体流数据类（如歌单、描述文件）
+                if (!lowerMime.contains("playlist") && !lowerMime.contains("m3u") && !lowerMime.contains("mpegurl")) {
                     return true
                 }
             }

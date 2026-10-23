@@ -75,6 +75,7 @@ class MediaImportFilterTest {
     @Test
     fun rejectsPlaylistsAndNonMediaMimeTypes() {
         assertFalse(MediaImportFilter.isSupportedMedia("list.m3u", "audio/x-mpegurl", 1024L))
+        assertFalse(MediaImportFilter.isSupportedMedia("stream.m3u8", null, 1024L))
         assertFalse(MediaImportFilter.isSupportedMedia("document.pdf", "application/pdf", 1024L))
         assertFalse(MediaImportFilter.isSupportedMedia("app.apk", "application/vnd.android.package-archive", 1024L))
     }
