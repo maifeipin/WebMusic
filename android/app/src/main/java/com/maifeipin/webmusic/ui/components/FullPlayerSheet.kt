@@ -173,139 +173,154 @@ fun FullPlayerSheet(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 歌曲信息与操作栏 (收藏 & 加入歌单)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = currentSong.title ?: "未知曲目",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = "${currentSong.artist ?: "未知艺术家"} • ${currentSong.album ?: "未知专辑"}",
-                        fontSize = 13.sp,
-                        color = Color.LightGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onToggleFavorite) {
-                        Icon(
-                            imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = if (isFavorite) "取消收藏" else "加入收藏",
-                            tint = if (isFavorite) Color(0xFFE91E63) else Color.LightGray,
-                            modifier = Modifier.size(26.dp)
-                        )
-                    }
-                    IconButton(onClick = onAddToPlaylist) {
-                        Icon(
-                            imageVector = Icons.Default.PlaylistAdd,
-                            contentDescription = "添加到歌单",
-                            tint = Color.LightGray,
-                            modifier = Modifier.size(26.dp)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // 进度条与时间（时长未知或当前曲目不可 seek 时禁用拖动）
-            Slider(
-                value = progress,
-                onValueChange = { newProg ->
-                    val target = (newProg * durationMs).toLong()
-                    onSeekTo(target)
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = seekEnabled && durationMs > 0L,
-                colors = SliderDefaults.colors(
-                    thumbColor = GreenPrimary,
-                    activeTrackColor = GreenPrimary,
-                    inactiveTrackColor = Color.DarkGray
+            if (showLyrics) {
+                // 歌词模式：底部收成一条迷你控制条，把纵向空间整块让给歌词。
+                // 之前歌词区和「歌曲信息 + 进度条 + 控制键」共存，当前歌词行会被挤到
+                // 底部并与控件重叠；点这条迷你条即可展开回完整播放器。
+                CompactPlayerBar(
+                    title = currentSong.title ?: "未知曲目",
+                    artist = currentSong.artist ?: "未知艺术家",
+                    isPlaying = isPlaying,
+                    progress = progress,
+                    onPlayPauseClick = onPlayPauseClick,
+                    onNextClick = onNextClick,
+                    onExpand = { showLyrics = false }
                 )
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(formatTime(currentPosMs), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                Text(formatTime(durationMs), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 控制按钮行 (循环模式 / 上一曲 / 播放暂停 / 下一曲 / 歌单)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // 循环模式切换
-                IconButton(onClick = onToggleMode) {
-                    Icon(
-                        imageVector = when (playbackMode) {
-                            PlaybackMode.SEQUENCE -> Icons.Default.Repeat
-                            PlaybackMode.REPEAT_ONE -> Icons.Default.RepeatOne
-                            PlaybackMode.SHUFFLE -> Icons.Default.Shuffle
-                        },
-                        contentDescription = "播放模式",
-                        tint = if (playbackMode != PlaybackMode.SEQUENCE) GreenPrimary else Color.White
-                    )
-                }
-
-                // 上一曲
-                IconButton(onClick = onPreviousClick) {
-                    Icon(
-                        imageVector = Icons.Default.SkipPrevious,
-                        contentDescription = "上一首",
-                        tint = Color.White,
-                        modifier = Modifier.size(36.dp)
-                    )
-                }
-
-                // 大号主播放暂停按钮
-                FloatingActionButton(
-                    onClick = onPlayPauseClick,
-                    containerColor = GreenPrimary,
-                    shape = CircleShape,
-                    modifier = Modifier.size(68.dp)
+            } else {
+                // 歌曲信息与操作栏 (收藏 & 加入歌单)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = "播放/暂停",
-                        tint = Color.Black,
-                        modifier = Modifier.size(36.dp)
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = currentSong.title ?: "未知曲目",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "${currentSong.artist ?: "未知艺术家"} • ${currentSong.album ?: "未知专辑"}",
+                            fontSize = 13.sp,
+                            color = Color.LightGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onToggleFavorite) {
+                            Icon(
+                                imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = if (isFavorite) "取消收藏" else "加入收藏",
+                                tint = if (isFavorite) Color(0xFFE91E63) else Color.LightGray,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                        IconButton(onClick = onAddToPlaylist) {
+                            Icon(
+                                imageVector = Icons.Default.PlaylistAdd,
+                                contentDescription = "添加到歌单",
+                                tint = Color.LightGray,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                    }
                 }
 
-                // 下一曲
-                IconButton(onClick = onNextClick) {
-                    Icon(
-                        imageVector = Icons.Default.SkipNext,
-                        contentDescription = "下一首",
-                        tint = Color.White,
-                        modifier = Modifier.size(36.dp)
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // 进度条与时间（时长未知或当前曲目不可 seek 时禁用拖动）
+                Slider(
+                    value = progress,
+                    onValueChange = { newProg ->
+                        val target = (newProg * durationMs).toLong()
+                        onSeekTo(target)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = seekEnabled && durationMs > 0L,
+                    colors = SliderDefaults.colors(
+                        thumbColor = GreenPrimary,
+                        activeTrackColor = GreenPrimary,
+                        inactiveTrackColor = Color.DarkGray
                     )
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(formatTime(currentPosMs), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    Text(formatTime(durationMs), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                 }
 
-                // 歌词快捷切入
-                IconButton(onClick = { showLyrics = !showLyrics }) {
-                    Icon(
-                        imageVector = Icons.Default.MenuBook,
-                        contentDescription = "歌词",
-                        tint = if (showLyrics) GreenPrimary else Color.White
-                    )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 控制按钮行 (循环模式 / 上一曲 / 播放暂停 / 下一曲 / 歌单)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 循环模式切换
+                    IconButton(onClick = onToggleMode) {
+                        Icon(
+                            imageVector = when (playbackMode) {
+                                PlaybackMode.SEQUENCE -> Icons.Default.Repeat
+                                PlaybackMode.REPEAT_ONE -> Icons.Default.RepeatOne
+                                PlaybackMode.SHUFFLE -> Icons.Default.Shuffle
+                            },
+                            contentDescription = "播放模式",
+                            tint = if (playbackMode != PlaybackMode.SEQUENCE) GreenPrimary else Color.White
+                        )
+                    }
+
+                    // 上一曲
+                    IconButton(onClick = onPreviousClick) {
+                        Icon(
+                            imageVector = Icons.Default.SkipPrevious,
+                            contentDescription = "上一首",
+                            tint = Color.White,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+
+                    // 大号主播放暂停按钮
+                    FloatingActionButton(
+                        onClick = onPlayPauseClick,
+                        containerColor = GreenPrimary,
+                        shape = CircleShape,
+                        modifier = Modifier.size(68.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = "播放/暂停",
+                            tint = Color.Black,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+
+                    // 下一曲
+                    IconButton(onClick = onNextClick) {
+                        Icon(
+                            imageVector = Icons.Default.SkipNext,
+                            contentDescription = "下一首",
+                            tint = Color.White,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+
+                    // 歌词快捷切入
+                    IconButton(onClick = { showLyrics = !showLyrics }) {
+                        Icon(
+                            imageVector = Icons.Default.MenuBook,
+                            contentDescription = "歌词",
+                            tint = if (showLyrics) GreenPrimary else Color.White
+                        )
+                    }
                 }
             }
         }
@@ -315,6 +330,96 @@ fun FullPlayerSheet(
         com.maifeipin.webmusic.ui.EqualizerDialog(
             onDismiss = { showEqualizerDialog = false }
         )
+    }
+}
+
+/**
+ * 歌词模式下的迷你控制条。
+ *
+ * 只保留「播放/暂停 + 歌名/歌手 + 下一首」和一条 2dp 的进度指示（不可拖动），
+ * 高度约 60dp；相比完整播放器（歌曲信息 + 可拖进度条 + 大号控制键 ≈ 310dp），
+ * 让出的空间全部给了歌词区。点条身或右侧向上箭头即可展开回完整播放器。
+ */
+@Composable
+private fun CompactPlayerBar(
+    title: String,
+    artist: String,
+    isPlaying: Boolean,
+    progress: Float,
+    onPlayPauseClick: () -> Unit,
+    onNextClick: () -> Unit,
+    onExpand: () -> Unit
+) {
+    // 进度异常值（NaN / 越界）会让 fillMaxWidth(fraction) 直接抛异常，这里先兜住
+    val safeProgress = if (progress.isNaN()) 0f else progress.coerceIn(0f, 1f)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF1A1A1A))
+            .clickable { onExpand() }
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+                .background(Color.DarkGray)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(safeProgress)
+                    .height(2.dp)
+                    .background(GreenPrimary)
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 4.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onPlayPauseClick) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = if (isPlaying) "暂停" else "播放",
+                    tint = GreenPrimary,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title.ifEmpty { "未知曲目" },
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = artist.ifEmpty { "未知艺术家" },
+                    color = Color.Gray,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            IconButton(onClick = onNextClick) {
+                Icon(
+                    imageVector = Icons.Default.SkipNext,
+                    contentDescription = "下一首",
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            IconButton(onClick = onExpand) {
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowUp,
+                    contentDescription = "展开播放器",
+                    tint = Color.White
+                )
+            }
+        }
     }
 }
 

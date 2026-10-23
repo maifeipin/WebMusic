@@ -28,6 +28,13 @@ import com.maifeipin.webmusic.core.lyrics.LyricLine
 import com.maifeipin.webmusic.core.lyrics.LyricsParser
 import com.maifeipin.webmusic.ui.theme.GreenPrimary
 
+/**
+ * 当前行上方保留几行歌词。
+ * 3 行 ≈ 150dp，配合 16dp 顶部留白，当前行落在歌词区上三分之一，
+ * 不会再被下方的播放器控件压住。
+ */
+private const val ANCHOR_LINES_ABOVE = 3
+
 @Composable
 fun LyricsView(
     lyrics: List<LyricLine>,
@@ -74,10 +81,13 @@ fun LyricsView(
     val currentIndex = LyricsParser.findCurrentIndex(lyrics, currentPositionMs)
     val listState = rememberLazyListState()
 
-    // 自动居中平滑滚动到当前歌词行
+    // 当前行锚定在视口上方的三分之一处。
+    // 之前是 contentPadding(vertical = 120.dp) + 回退 3 行，两者叠加把当前行推到了
+    // 歌词区最底部（约 320dp），正好压在下面的播放器控件上；这里把顶部留白收到 16dp，
+    // 只保留「当前行上方还有 3 行歌词」这一个偏移来源。
     LaunchedEffect(currentIndex) {
         if (currentIndex in lyrics.indices) {
-            val targetScroll = (currentIndex - 3).coerceAtLeast(0)
+            val targetScroll = (currentIndex - ANCHOR_LINES_ABOVE).coerceAtLeast(0)
             listState.animateScrollToItem(targetScroll)
         }
     }
@@ -87,7 +97,7 @@ fun LyricsView(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 24.dp),
-        contentPadding = PaddingValues(vertical = 120.dp),
+        contentPadding = PaddingValues(top = 16.dp, bottom = 120.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
