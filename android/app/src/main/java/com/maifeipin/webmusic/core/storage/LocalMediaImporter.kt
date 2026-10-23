@@ -112,7 +112,7 @@ class LocalMediaImporter(
         depth: Int,
         maxDepth: Int,
         files: MutableList<FileItem>
-    ) = withContext(Dispatchers.IO) {
+    ): Unit = withContext(Dispatchers.IO) {
         if (depth > maxDepth || !isActive) return@withContext
 
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId)
