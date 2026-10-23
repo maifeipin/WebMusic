@@ -4,8 +4,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.net.Uri
-import android.provider.Settings
 import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -66,6 +66,10 @@ fun VideoPlayerDialog(
     val originalOrientation = remember(activity) {
         activity?.requestedOrientation ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
     }
+    // 原值是 UNSPECIFIED 时，恢复要靠「进入前实际是横还是竖」，而不是那个值本身
+    val wasPortrait = remember(activity) {
+        activity?.resources?.configuration?.orientation != Configuration.ORIENTATION_LANDSCAPE
+    }
     var isFullscreen by remember { mutableStateOf(false) }
 
     val exoPlayer = remember {
@@ -117,7 +121,7 @@ fun VideoPlayerDialog(
                     }
                     activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 } else {
-                    restoreOrientation(activity, originalOrientation)
+                    restoreOrientation(activity, originalOrientation, wasPortrait)
                     ViewCompat.getWindowInsetsController(composeView)
                         ?.show(WindowInsetsCompat.Type.systemBars())
                     activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -137,7 +141,7 @@ fun VideoPlayerDialog(
     // 都恢复屏幕方向与系统栏，否则会残留在横屏 + 无状态栏的界面上
     DisposableEffect(Unit) {
         onDispose {
-            restoreOrientation(activity, originalOrientation)
+            restoreOrientation(activity, originalOrientation, wasPortrait)
             ViewCompat.getWindowInsetsController(composeView)
                 ?.show(WindowInsetsCompat.Type.systemBars())
             // Dialog 的 window 这时可能已经销毁，同时对 Activity 的窗口恢复一次更保险
@@ -278,25 +282,33 @@ private fun Context.findHostActivity(): Activity? {
 /**
  * 恢复进入播放器前的屏幕方向。
  *
- * 大多数设备直接写回 [original] 就够了；但当它是 `SCREEN_ORIENTATION_UNSPECIFIED` 时，
- * 部分 ROM（实测一加 / ColorOS 14，Android 14）只更新了 ActivityRecord 上的值，
- * 不会重新评估方向，屏幕会一直停在强制出来的横屏上。此时改用一个**语义等价但明确**的方向：
- * 自动旋转开启时跟随传感器，关闭时跟随用户锁定的方向 —— 与 UNSPECIFIED 的行为一致，
- * 却能真正触发系统重新计算。
+ * 若原值是一个明确方向，直接写回即可。麻烦的是 `SCREEN_ORIENTATION_UNSPECIFIED`：
+ * 实测一加 / ColorOS 14（Android 14）上，把请求值从强制横屏改回 UNSPECIFIED **不会**
+ * 触发方向重新评估 —— dumpsys 里 `requestedOrientation` 已经是 UNSPECIFIED，
+ * 屏幕却一直停在横屏。换成 `SENSOR` 也一样，因为传感器静止时系统不会给出新建议。
+ *
+ * 所以这里先写一个**明确**方向，让系统立刻转回 [wasPortrait] 对应的方向；
+ * 等布局稳定后再恢复 UNSPECIFIED，把自动旋转的选择权交还用户
+ * （此时方向已经对了，UNSPECIFIED 不会再把它掰回去）。
  */
-private fun restoreOrientation(activity: Activity?, original: Int) {
+private fun restoreOrientation(activity: Activity?, original: Int, wasPortrait: Boolean) {
     activity ?: return
     if (original != ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED) {
         activity.requestedOrientation = original
         return
     }
-    activity.requestedOrientation =
-        if (activity.isAutoRotateEnabled()) ActivityInfo.SCREEN_ORIENTATION_SENSOR
-        else ActivityInfo.SCREEN_ORIENTATION_USER
+    val forced = if (wasPortrait) {
+        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    } else {
+        ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+    }
+    activity.requestedOrientation = forced
+    activity.window?.decorView?.postDelayed({
+        // 期间用户可能又点了全屏，只有值仍是我们设的那个才交还控制权
+        if (activity.requestedOrientation == forced) {
+            activity.requestedOrientation = original
+        }
+    }, ORIENTATION_SETTLE_MS)
 }
 
-private fun Context.isAutoRotateEnabled(): Boolean = try {
-    Settings.System.getInt(contentResolver, Settings.System.ACCELEROMETER_ROTATION) == 1
-} catch (_: Exception) {
-    true
-}
+private const val ORIENTATION_SETTLE_MS = 400L
