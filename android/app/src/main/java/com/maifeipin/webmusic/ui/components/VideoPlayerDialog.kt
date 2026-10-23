@@ -51,8 +51,9 @@ fun VideoPlayerDialog(
     }
 
     LaunchedEffect(song.id, localFilePath) {
-        if (!localFilePath.isNullOrEmpty() && File(localFilePath).exists()) {
-            val mediaItem = MediaItem.fromUri(Uri.fromFile(File(localFilePath)))
+        if (!localFilePath.isNullOrEmpty()) {
+            val uri = com.maifeipin.webmusic.core.storage.MediaImportFilter.toPlayableUri(localFilePath)
+            val mediaItem = MediaItem.fromUri(uri)
             exoPlayer.setMediaItem(mediaItem)
         } else {
             val streamUrl = "${serverUrl.trimEnd('/')}/api/media/stream/${song.id}"

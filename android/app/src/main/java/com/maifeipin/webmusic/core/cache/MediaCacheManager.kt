@@ -3,6 +3,7 @@ package com.maifeipin.webmusic.core.cache
 import android.content.Context
 import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
@@ -47,6 +48,21 @@ object MediaCacheManager {
             .setCache(cache)
             .setUpstreamDataSourceFactory(upstreamFactory)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+    }
+
+    /**
+     * 最外层协议路由数据源工厂：
+     * - file:// 分发至 FileDataSource (零缓存开销，原生 seek)
+     * - content:// 分发至 ContentDataSource (原生支持 SAF / MediaStore 描述符)
+     * - asset:// 分发至 AssetDataSource
+     * - http(s):// 分发至 CacheDataSource (进入 SimpleCache 边播边存与 OkHttp)
+     */
+    fun createRoutedDataSourceFactory(
+        context: Context,
+        okHttpClient: OkHttpClient
+    ): DataSource.Factory {
+        val httpCacheFactory = createCacheDataSourceFactory(context, okHttpClient)
+        return DefaultDataSource.Factory(context.applicationContext, httpCacheFactory)
     }
 
     /**

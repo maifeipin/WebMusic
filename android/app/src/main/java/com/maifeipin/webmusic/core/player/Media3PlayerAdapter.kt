@@ -32,8 +32,8 @@ class Media3PlayerAdapter(
             setEnableAudioTrackPlaybackParams(true)
         }
 
-        // 使用支持 HTTP 206 Range 与透明边播边存的 LRU 缓存数据源
-        val dataSourceFactory = MediaCacheManager.createCacheDataSourceFactory(
+        // 使用支持本地协议路由（file://, content://）与 HTTP 透明边播边存的数据源
+        val dataSourceFactory = MediaCacheManager.createRoutedDataSourceFactory(
             context.applicationContext,
             okHttpClient
         )

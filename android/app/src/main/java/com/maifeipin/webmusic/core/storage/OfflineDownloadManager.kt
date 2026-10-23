@@ -456,9 +456,14 @@ object OfflineDownloadManager {
         val db = LocalSongDatabase.getInstance(context)
         val song = db.getById(serverHash, userHash, songId)
         if (song != null) {
-            val file = File(song.localFilePath)
-            if (file.exists()) file.delete()
-            return db.delete(serverHash, userHash, songId)
+            if (song.source == DownloadedSong.SOURCE_IMPORT) {
+                // 本机导入曲目严禁删除用户物理文件，只从数据库移除记录
+                return db.deleteExact(song.serverHash, song.userHash, song.id)
+            } else {
+                val file = File(song.localFilePath)
+                if (file.exists()) file.delete()
+                return db.deleteExact(song.serverHash, song.userHash, song.id)
+            }
         }
         return false
     }

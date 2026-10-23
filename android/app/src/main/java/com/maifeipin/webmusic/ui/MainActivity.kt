@@ -1,11 +1,15 @@
 package com.maifeipin.webmusic.ui
 
 import android.content.ComponentName
+import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import com.maifeipin.webmusic.core.storage.LocalMediaImporter
+import com.maifeipin.webmusic.core.storage.MediaImportFilter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -99,6 +103,39 @@ class MainActivity : ComponentActivity() {
     // 播放队列注入任务（快速连续点击时只保留最后一次）
     private var playQueueJob: Job? = null
 
+    private var onTreeUriSelected: ((Uri) -> Unit)? = null
+    private var onMultipleDocumentsSelected: ((List<Uri>) -> Unit)? = null
+
+    private val openDocumentTreeLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: Exception) {}
+            onTreeUriSelected?.invoke(uri)
+        }
+    }
+
+    private val openMultipleDocumentsLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (!uris.isNullOrEmpty()) {
+            for (uri in uris) {
+                try {
+                    contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                } catch (_: Exception) {}
+            }
+            onMultipleDocumentsSelected?.invoke(uris)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         tokenManager = TokenManager(this)
@@ -145,6 +182,14 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                         }
+                    },
+                    onSelectFolderToImport = { callback ->
+                        onTreeUriSelected = callback
+                        openDocumentTreeLauncher.launch(null)
+                    },
+                    onSelectFilesToImport = { callback ->
+                        onMultipleDocumentsSelected = callback
+                        openMultipleDocumentsLauncher.launch(arrayOf("audio/*", "video/*", "*/*"))
                     }
                 )
             }
@@ -285,19 +330,27 @@ class MainActivity : ComponentActivity() {
         playQueueJob = lifecycleScope.launch {
             val localPaths = withContext(Dispatchers.IO) {
                 runCatching {
-                    LocalSongDatabase.getInstance(this@MainActivity).getLocalPaths(
+                    LocalSongDatabase.getInstance(this@MainActivity).getLocalPathsWithImports(
                         LocalSongDatabase.computeServerHash(serverUrl),
                         LocalSongDatabase.computeUserHash(username),
                         audioList.map { it.id }
                     )
                 }.getOrDefault(emptyMap())
             }
-            // 库里有记录但文件已被清理（用户删除 / 系统清缓存）时回退网络流
+            // 库里有记录但文件已被清理或不可达时回退网络流
             val verifiedLocalPaths = withContext(Dispatchers.IO) {
                 if (localPaths.isEmpty()) {
                     emptyMap<Int, String>()
                 } else {
-                    localPaths.filterValues { path -> runCatching { File(path).exists() }.getOrDefault(false) }
+                    localPaths.filterValues { path ->
+                        if (path.startsWith("content://")) {
+                            runCatching {
+                                contentResolver.openInputStream(Uri.parse(path))?.use { true } ?: false
+                            }.getOrDefault(false)
+                        } else {
+                            runCatching { File(path).exists() }.getOrDefault(false)
+                        }
+                    }
                 }
             }
 
@@ -330,9 +383,8 @@ class MainActivity : ComponentActivity() {
             .setAlbumTitle(song.album ?: "未知专辑")
             .build()
 
-        val safeCacheKey = WebMusicNetwork.generateSafeCacheKey(serverUrl, username, song)
         val uri = if (localPath != null) {
-            Uri.fromFile(File(localPath))
+            MediaImportFilter.toPlayableUri(localPath)
         } else {
             Uri.parse(WebMusicNetwork.buildStreamUrl(serverUrl, song.id))
         }
@@ -340,7 +392,12 @@ class MainActivity : ComponentActivity() {
         return MediaItem.Builder()
             .setUri(uri)
             .setMediaId(song.id.toString())
-            .setCustomCacheKey(safeCacheKey)
+            .apply {
+                if (localPath == null) {
+                    val safeCacheKey = WebMusicNetwork.generateSafeCacheKey(serverUrl, username, song)
+                    setCustomCacheKey(safeCacheKey)
+                }
+            }
             .setMediaMetadata(metadata)
             .build()
     }
@@ -381,6 +438,11 @@ class MainActivity : ComponentActivity() {
         lyricsState.value = emptyList() // 切歌先清空，防止旧歌词闪烁
 
         lyricsJob = lifecycleScope.launch {
+            if (targetMediaId <= 0) {
+                // 本机导入曲目在服务器上不存在，短路网络请求，避免 404 噪音
+                lyricsState.value = emptyList()
+                return@launch
+            }
             // 优先检查本地离线数据库是否已固化该曲目的 LRC 歌词
             val offlineSong = withContext(Dispatchers.IO) {
                 OfflineDownloadManager.getDownloadedSong(this@MainActivity, tokenManager.serverUrl, tokenManager.username, targetMediaId)
@@ -479,7 +541,9 @@ fun MainAppScreen(
     onToggleMode: () -> Unit,
     onClearSession: () -> Unit,
     onPlaySongFromList: (List<MediaFileDto>, Int) -> Unit,
-    onLyricsUpdated: (Int, String) -> Unit
+    onLyricsUpdated: (Int, String) -> Unit,
+    onSelectFolderToImport: ((Uri) -> Unit) -> Unit = {},
+    onSelectFilesToImport: ((List<Uri>) -> Unit) -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -487,6 +551,13 @@ fun MainAppScreen(
     var currentPage by remember { mutableIntStateOf(1) }
     var totalSongs by remember { mutableIntStateOf(0) }
     var isLoading by remember { mutableStateOf(false) }
+
+    // 本机导入状态
+    var importJob by remember { mutableStateOf<Job?>(null) }
+    var importProgress by remember { mutableStateOf<LocalMediaImporter.ImportProgress?>(null) }
+    var isImporting by remember { mutableStateOf(false) }
+    var showImportMenu by remember { mutableStateOf(false) }
+    var songPendingDelete by remember { mutableStateOf<DownloadedSong?>(null) }
 
     var searchQuery by remember { mutableStateOf("") }
     var confirmedQuery by remember { mutableStateOf("") }
@@ -652,7 +723,7 @@ fun MainAppScreen(
     LaunchedEffect(currentMediaItem?.mediaId, isPlaying) {
         if (isPlaying && currentMediaItem != null && tokenManager.token != null) {
             val songId = currentMediaItem.mediaId.toIntOrNull()
-            if (songId != null) {
+            if (songId != null && songId > 0) {
                 delay(3000)
                 if (isActive && isPlaying && currentMediaItem.mediaId.toIntOrNull() == songId) {
                     try {
@@ -800,24 +871,22 @@ fun MainAppScreen(
         }
 
         LaunchedEffect(selectedTab, offlineRefreshTrigger, tokenManager.token) {
-            if (tokenManager.token != null) {
-                when (selectedTab) {
-                    0 -> {
-                        if (favoriteSongIds.isEmpty()) loadFavoriteIds()
+            when (selectedTab) {
+                0 -> {
+                    if (tokenManager.token != null && favoriteSongIds.isEmpty()) loadFavoriteIds()
+                }
+                1 -> {
+                    if (tokenManager.token != null && mvList.isEmpty()) {
+                        mvQueryVersion++
+                        executeMvQuery(1, null, append = false, mvQueryVersion)
                     }
-                    1 -> {
-                        if (mvList.isEmpty()) {
-                            mvQueryVersion++
-                            executeMvQuery(1, null, append = false, mvQueryVersion)
-                        }
-                    }
-                    2 -> loadFavoritesList()
-                    3 -> loadPlaylists()
-                    4 -> loadHistoryList()
-                    5 -> {
-                        withContext(Dispatchers.IO) {
-                            offlineSongs = OfflineDownloadManager.getAllDownloaded(context, tokenManager.serverUrl, tokenManager.username)
-                        }
+                }
+                2 -> if (tokenManager.token != null) loadFavoritesList()
+                3 -> if (tokenManager.token != null) loadPlaylists()
+                4 -> if (tokenManager.token != null) loadHistoryList()
+                5 -> {
+                    withContext(Dispatchers.IO) {
+                        offlineSongs = OfflineDownloadManager.getAllDownloaded(context, tokenManager.serverUrl, tokenManager.username)
                     }
                 }
             }
@@ -1817,13 +1886,122 @@ fun MainAppScreen(
                         }
                     }
 
+                    // 离线库操作栏：标题数量 + 导入本机音乐按钮
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "离线音乐库 (${filteredOffline.size})",
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        OutlinedButton(
+                            onClick = { showImportMenu = true },
+                            enabled = !isImporting,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = GreenPrimary
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, GreenPrimary.copy(alpha = 0.6f)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("导入本机音乐", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+
+                    // 导入进度卡片
+                    if (isImporting) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "正在导入本机媒体...",
+                                        color = GreenPrimary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    TextButton(
+                                        onClick = {
+                                            importJob?.cancel()
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Text("取消", color = Color(0xFFFF5252), fontSize = 12.sp)
+                                    }
+                                }
+                                val total = importProgress?.totalFound ?: 0
+                                val processed = importProgress?.processed ?: 0
+                                if (total > 0) {
+                                    LinearProgressIndicator(
+                                        progress = { processed.toFloat() / total.toFloat() },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 6.dp),
+                                        color = GreenPrimary,
+                                        trackColor = Color.DarkGray
+                                    )
+                                } else {
+                                    LinearProgressIndicator(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 6.dp),
+                                        color = GreenPrimary,
+                                        trackColor = Color.DarkGray
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = importProgress?.currentTitle ?: "正在扫描文件...",
+                                        color = Color.LightGray,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    if (total > 0) {
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "$processed / $total",
+                                            color = Color.Gray,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     if (filteredOffline.isEmpty()) {
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = if (searchQuery.isNotEmpty()) "未找到匹配的离线歌曲" else "暂无离线音乐\n在全库中点击下载按钮即可离线收听",
+                                text = if (searchQuery.isNotEmpty()) "未找到匹配的离线歌曲" else "暂无离线音乐\n可点击上方「导入本机音乐」或在全库中下载",
                                 color = Color.Gray,
                                 textAlign = TextAlign.Center,
                                 fontSize = 14.sp
@@ -1837,19 +2015,42 @@ fun MainAppScreen(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(bottom = 16.dp)
                         ) {
-                            itemsIndexed(filteredOffline) { index, song ->
+                            itemsIndexed(
+                                items = filteredOffline,
+                                key = { _, song -> "${song.serverHash}_${song.userHash}_${song.id}" }
+                            ) { index, song ->
                                 val isCurrent = currentSongDto?.id == song.id
                                 val sizeMb = song.sizeBytes / (1024f * 1024f)
+                                val isImported = song.source == DownloadedSong.SOURCE_IMPORT
 
                                 ListItem(
                                     headlineContent = {
-                                        Text(
-                                            text = song.title,
-                                            color = if (isCurrent) GreenPrimary else Color.White,
-                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = song.title,
+                                                color = if (isCurrent) GreenPrimary else Color.White,
+                                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                            if (isImported) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Surface(
+                                                    color = GreenPrimary.copy(alpha = 0.15f),
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    border = androidx.compose.foundation.BorderStroke(0.5.dp, GreenPrimary.copy(alpha = 0.5f))
+                                                ) {
+                                                    Text(
+                                                        text = "本机",
+                                                        color = GreenPrimary,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
                                     },
                                     supportingContent = {
                                         Text(
@@ -1877,12 +2078,11 @@ fun MainAppScreen(
                                     },
                                     trailingContent = {
                                         IconButton(onClick = {
-                                            OfflineDownloadManager.deleteDownload(context, tokenManager.serverUrl, tokenManager.username, song.id)
-                                            offlineRefreshTrigger++
+                                            songPendingDelete = song
                                         }) {
                                             Icon(
                                                 imageVector = Icons.Default.DeleteOutline,
-                                                contentDescription = "删除离线文件",
+                                                contentDescription = if (isImported) "移除本机音乐" else "删除离线文件",
                                                 tint = Color(0xFFFF5252),
                                                 modifier = Modifier.size(22.dp)
                                             )
@@ -1912,6 +2112,162 @@ fun MainAppScreen(
                 }
             }
         }
+    }
+
+    // 本机导入方式选择弹窗
+    if (showImportMenu) {
+        AlertDialog(
+            onDismissRequest = { showImportMenu = false },
+            title = { Text("导入本机媒体", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "从本地存储导入音乐或视频到离线音乐库（原地引用，不额外占用磁盘空间）：",
+                        fontSize = 13.sp,
+                        color = Color.LightGray
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedButton(
+                        onClick = {
+                            showImportMenu = false
+                            onSelectFolderToImport { treeUri ->
+                                isImporting = true
+                                importProgress = null
+                                importJob = scope.launch {
+                                    try {
+                                        val importer = LocalMediaImporter(context)
+                                        val result = importer.importDirectoryTree(treeUri) { p ->
+                                            importProgress = p
+                                        }
+                                        Toast.makeText(
+                                            context,
+                                            MediaImportFilter.formatImportSummary(
+                                                result.added,
+                                                result.skippedDuplicate,
+                                                result.unsupported,
+                                                result.failed
+                                            ),
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                        offlineRefreshTrigger++
+                                    } catch (e: Exception) {
+                                        if (e is CancellationException) {
+                                            Toast.makeText(context, "已取消导入", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "导入失败: ${e.message}", Toast.LENGTH_LONG).show()
+                                        }
+                                    } finally {
+                                        isImporting = false
+                                        importProgress = null
+                                        importJob = null
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("选择整个文件夹（推荐递归扫描）")
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            showImportMenu = false
+                            onSelectFilesToImport { uris ->
+                                isImporting = true
+                                importProgress = null
+                                importJob = scope.launch {
+                                    try {
+                                        val importer = LocalMediaImporter(context)
+                                        val result = importer.importDocumentUris(uris) { p ->
+                                            importProgress = p
+                                        }
+                                        Toast.makeText(
+                                            context,
+                                            MediaImportFilter.formatImportSummary(
+                                                result.added,
+                                                result.skippedDuplicate,
+                                                result.unsupported,
+                                                result.failed
+                                            ),
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                        offlineRefreshTrigger++
+                                    } catch (e: Exception) {
+                                        if (e is CancellationException) {
+                                            Toast.makeText(context, "已取消导入", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "导入失败: ${e.message}", Toast.LENGTH_LONG).show()
+                                        }
+                                    } finally {
+                                        isImporting = false
+                                        importProgress = null
+                                        importJob = null
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.FileOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("多选媒体文件")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showImportMenu = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    // 删除/移除离线曲目确认弹窗
+    if (songPendingDelete != null) {
+        val song = songPendingDelete!!
+        val isImported = song.source == DownloadedSong.SOURCE_IMPORT
+        AlertDialog(
+            onDismissRequest = { songPendingDelete = null },
+            title = {
+                Text(if (isImported) "移除本机音乐" else "删除离线文件")
+            },
+            text = {
+                Text(
+                    if (isImported) {
+                        "确定将《${song.title}》从离线音乐库中移除？\n\n提示：此操作仅删除应用内索引，绝不会删除您手机上的原始文件。"
+                    } else {
+                        "确定删除《${song.title}》的本地离线缓存吗？"
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch(Dispatchers.IO) {
+                            OfflineDownloadManager.deleteDownload(
+                                context,
+                                tokenManager.serverUrl,
+                                tokenManager.username,
+                                song.id
+                            )
+                            withContext(Dispatchers.Main) {
+                                offlineRefreshTrigger++
+                                songPendingDelete = null
+                            }
+                        }
+                    }
+                ) {
+                    Text(if (isImported) "移除" else "删除", color = Color(0xFFFF5252))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { songPendingDelete = null }) {
+                    Text("取消")
+                }
+            }
+        )
     }
 
     // 新建歌单对话框
