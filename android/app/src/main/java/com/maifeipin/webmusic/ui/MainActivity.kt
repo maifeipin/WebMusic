@@ -24,8 +24,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material.icons.Icons
@@ -2451,6 +2454,46 @@ fun LoginSettingDialog(
         mutableLongStateOf(com.maifeipin.webmusic.core.cache.MediaCacheManager.getCacheSizeBytes(context))
     }
 
+    val doLogin: () -> Unit = {
+        val trimmedUser = username.trim()
+        val trimmedPass = password.trim()
+        var finalServerUrl = serverUrl.trim()
+
+        if (trimmedUser.isEmpty() || trimmedPass.isEmpty()) {
+            statusText = "请输入账号和密码"
+        } else {
+            if (finalServerUrl.isEmpty()) {
+                finalServerUrl = "https://music.maifeipin.com"
+                serverUrl = finalServerUrl
+            } else if (!finalServerUrl.startsWith("http://") && !finalServerUrl.startsWith("https://")) {
+                finalServerUrl = "https://$finalServerUrl"
+                serverUrl = finalServerUrl
+            }
+
+            scope.launch {
+                isLoggingIn = true
+                statusText = "正在连接登录..."
+                try {
+                    tokenManager.serverUrl = finalServerUrl
+                    val api = WebMusicNetwork.createApi(tokenManager)
+                    val res = withContext(Dispatchers.IO) {
+                        api.login(LoginRequest(trimmedUser, trimmedPass))
+                    }
+                    tokenManager.token = res.token
+                    tokenManager.username = trimmedUser
+                    isLoggedIn = true
+                    statusText = "登录成功！"
+                    delay(350)
+                    onLoginSuccess()
+                } catch (e: Exception) {
+                    statusText = "登录失败: ${e.message ?: "网络异常"}"
+                } finally {
+                    isLoggingIn = false
+                }
+            }
+        }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -2460,7 +2503,7 @@ fun LoginSettingDialog(
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 24.dp)
                 .wrapContentHeight(),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(22.dp),
             color = DarkSurface,
             tonalElevation = 6.dp
         ) {
@@ -2471,58 +2514,58 @@ fun LoginSettingDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // 1. 顶部 Header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(GreenPrimary.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = if (isLoggedIn) Icons.Default.AccountCircle else Icons.Default.MusicNote,
-                                contentDescription = null,
-                                tint = GreenPrimary,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = if (isLoggedIn) "账号与全局设置" else "WebMusic 账号登录",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 17.sp
-                            )
-                            Text(
-                                text = if (isLoggedIn) "管理连接与本地偏好" else "连接到私有流媒体服务",
-                                color = Color.Gray,
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "关闭",
-                            tint = Color.Gray
-                        )
-                    }
-                }
-
-                HorizontalDivider(color = Color(0xFF2E2E2E))
-
                 if (isLoggedIn) {
                     // ========================= 已登录视图 =========================
+                    // 1. 顶部 Header
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(GreenPrimary.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AccountCircle,
+                                    contentDescription = null,
+                                    tint = GreenPrimary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "账号与全局设置",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 17.sp
+                                )
+                                Text(
+                                    text = "管理连接与本地偏好",
+                                    color = Color.Gray,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "关闭",
+                                tint = Color.Gray
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = Color(0xFF2E2E2E))
+
                     // 2.1 账号身份卡片
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
@@ -2854,118 +2897,330 @@ fun LoginSettingDialog(
                     }
 
                 } else {
-                    // ========================= 未登录视图 =========================
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(
-                            value = serverUrl,
-                            onValueChange = { serverUrl = it },
-                            label = { Text("服务器地址") },
-                            leadingIcon = {
-                                Icon(Icons.Default.CloudQueue, contentDescription = null, tint = GreenPrimary)
-                            },
-                            singleLine = true,
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                    // ========================= 未登录界面 (美学重构与合理布局) =========================
+                    // 顶部关闭按钮（右上角）
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(32.dp)
+                                .background(Color.White.copy(alpha = 0.08f), CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "关闭",
+                                tint = Color(0xFFB0B0B0),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        // 居中品牌区域
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp, bottom = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(
+                                        Brush.linearGradient(
+                                            colors = listOf(GreenPrimary, Color(0xFF0F7A36))
+                                        )
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MusicNote,
+                                    contentDescription = null,
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "WebMusic",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 20.sp,
+                                letterSpacing = 0.5.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "连接私有流媒体服务，同步歌单与喜好",
+                                color = Color(0xFF9E9E9E),
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+
+                    // 控件组：账号 -> 密码 -> 服务器地址
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // 1. 账号输入
                         OutlinedTextField(
                             value = username,
-                            onValueChange = { username = it },
+                            onValueChange = {
+                                username = it
+                                if (statusText.isNotEmpty()) statusText = ""
+                            },
                             label = { Text("账号") },
+                            placeholder = { Text("请输入用户名", color = Color(0xFF666666), fontSize = 14.sp) },
                             leadingIcon = {
-                                Icon(Icons.Default.Person, contentDescription = null, tint = GreenPrimary)
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = null,
+                                    tint = if (username.isNotEmpty()) GreenPrimary else Color(0xFF888888),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            trailingIcon = {
+                                if (username.isNotEmpty()) {
+                                    IconButton(
+                                        onClick = { username = "" },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Clear,
+                                            contentDescription = "清空",
+                                            tint = Color(0xFF888888),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
                             },
                             singleLine = true,
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = GreenPrimary,
+                                unfocusedBorderColor = Color(0xFF2E2E2E),
+                                focusedContainerColor = Color(0xFF1E1E1E),
+                                unfocusedContainerColor = Color(0xFF161616),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                cursorColor = GreenPrimary,
+                                focusedLabelColor = GreenPrimary,
+                                unfocusedLabelColor = Color(0xFF888888)
+                            ),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Text,
+                                imeAction = ImeAction.Next
+                            ),
                             modifier = Modifier.fillMaxWidth()
                         )
+
+                        // 2. 密码输入
                         OutlinedTextField(
                             value = password,
-                            onValueChange = { password = it },
-                            label = { Text("密码") },
-                            leadingIcon = {
-                                Icon(Icons.Default.Lock, contentDescription = null, tint = GreenPrimary)
+                            onValueChange = {
+                                password = it
+                                if (statusText.isNotEmpty()) statusText = ""
                             },
-                            singleLine = true,
-                            shape = RoundedCornerShape(10.dp),
-                            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                            label = { Text("密码") },
+                            placeholder = { Text("请输入登录密码", color = Color(0xFF666666), fontSize = 14.sp) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = if (password.isNotEmpty()) GreenPrimary else Color(0xFF888888),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
                             trailingIcon = {
                                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                     Icon(
                                         imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                        contentDescription = if (passwordVisible) "隐藏密码" else "显示密码"
+                                        contentDescription = if (passwordVisible) "隐藏密码" else "显示密码",
+                                        tint = if (passwordVisible) GreenPrimary else Color(0xFF888888),
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                             },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = GreenPrimary,
+                                unfocusedBorderColor = Color(0xFF2E2E2E),
+                                focusedContainerColor = Color(0xFF1E1E1E),
+                                unfocusedContainerColor = Color(0xFF161616),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                cursorColor = GreenPrimary,
+                                focusedLabelColor = GreenPrimary,
+                                unfocusedLabelColor = Color(0xFF888888)
+                            ),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Password,
+                                imeAction = ImeAction.Done
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onDone = { doLogin() }
+                            ),
                             modifier = Modifier.fillMaxWidth()
                         )
 
-                        if (statusText.isNotEmpty()) {
-                            Text(statusText, color = GreenPrimary, fontSize = 12.sp)
-                        }
-
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    isLoggingIn = true
-                                    statusText = "正在连接登录..."
-                                    try {
-                                        tokenManager.serverUrl = serverUrl
-                                        val api = WebMusicNetwork.createApi(tokenManager)
-                                        val res = withContext(Dispatchers.IO) {
-                                            api.login(LoginRequest(username, password))
-                                        }
-                                        tokenManager.token = res.token
-                                        tokenManager.username = username
-                                        isLoggedIn = true
-                                        statusText = "登录成功！"
-                                        delay(400)
-                                        onLoginSuccess()
-                                    } catch (e: Exception) {
-                                        statusText = "登录失败: ${e.message}"
-                                    } finally {
-                                        isLoggingIn = false
+                        // 3. 服务器地址
+                        OutlinedTextField(
+                            value = serverUrl,
+                            onValueChange = {
+                                serverUrl = it
+                                if (statusText.isNotEmpty()) statusText = ""
+                            },
+                            label = { Text("服务器地址") },
+                            placeholder = { Text("https://music.maifeipin.com", color = Color(0xFF666666), fontSize = 14.sp) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Dns,
+                                    contentDescription = null,
+                                    tint = if (serverUrl != "https://music.maifeipin.com") GreenPrimary else Color(0xFF888888),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            trailingIcon = {
+                                if (serverUrl.trim() != "https://music.maifeipin.com") {
+                                    TextButton(
+                                        onClick = { serverUrl = "https://music.maifeipin.com" },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Text("恢复默认", color = GreenPrimary, fontSize = 11.sp)
                                     }
                                 }
                             },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = GreenPrimary,
+                                unfocusedBorderColor = Color(0xFF2E2E2E),
+                                focusedContainerColor = Color(0xFF1E1E1E),
+                                unfocusedContainerColor = Color(0xFF161616),
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                cursorColor = GreenPrimary,
+                                focusedLabelColor = GreenPrimary,
+                                unfocusedLabelColor = Color(0xFF888888)
+                            ),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Uri,
+                                imeAction = ImeAction.Done
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onDone = { doLogin() }
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    // 状态与错误提示横幅
+                    if (statusText.isNotEmpty()) {
+                        val isError = statusText.contains("失败") || statusText.contains("错误") || statusText.contains("请输入")
+                        val bannerBg = if (isError) Color(0xFF2B1616) else Color(0xFF132A1A)
+                        val bannerBorder = if (isError) Color(0xFF6B2B2B) else Color(0xFF1E6030)
+                        val bannerContentColor = if (isError) Color(0xFFFF6B6B) else GreenPrimary
+                        val bannerIcon = if (isError) Icons.Default.ErrorOutline else Icons.Default.CheckCircleOutline
+
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            color = bannerBg,
+                            border = BorderStroke(1.dp, bannerBorder)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = bannerIcon,
+                                    contentDescription = null,
+                                    tint = bannerContentColor,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = statusText,
+                                    color = bannerContentColor,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    // 操作按钮区
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Button(
+                            onClick = { doLogin() },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(48.dp),
-                            shape = RoundedCornerShape(10.dp),
+                                .height(46.dp),
+                            shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = GreenPrimary,
                                 contentColor = Color.Black
                             ),
-                            enabled = !isLoggingIn && username.isNotEmpty() && password.isNotEmpty()
+                            enabled = !isLoggingIn
                         ) {
                             if (isLoggingIn) {
                                 CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
+                                    modifier = Modifier.size(18.dp),
                                     color = Color.Black,
                                     strokeWidth = 2.dp
                                 )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("正在连接登录...", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             } else {
                                 Text("立即登录", fontWeight = FontWeight.Bold, fontSize = 15.sp)
                             }
                         }
 
-                        // 版本与检查更新
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        TextButton(
+                            onClick = onDismiss,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                         ) {
                             Text(
-                                text = "v${AppUpdateManager.currentVersionName} (${AppUpdateManager.currentVersionCode})",
-                                color = Color.Gray,
+                                text = "暂不登录，使用离线模式",
+                                color = Color(0xFF9E9E9E),
                                 fontSize = 12.sp
                             )
-                            TextButton(onClick = onCheckUpdate) {
-                                Text("检查更新", color = GreenPrimary, fontSize = 12.sp)
-                            }
                         }
+                    }
+
+                    // 底部优雅居中信息与检查更新
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 2.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "WebMusic v${AppUpdateManager.currentVersionName} (${AppUpdateManager.currentVersionCode})",
+                            color = Color(0xFF666666),
+                            fontSize = 11.sp
+                        )
+                        Text(
+                            text = "  ·  ",
+                            color = Color(0xFF444444),
+                            fontSize = 11.sp
+                        )
+                        Text(
+                            text = "检查更新",
+                            color = GreenPrimary.copy(alpha = 0.85f),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.clickable { onCheckUpdate() }
+                        )
                     }
                 }
             }
