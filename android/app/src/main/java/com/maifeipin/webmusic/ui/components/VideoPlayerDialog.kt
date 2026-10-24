@@ -183,7 +183,7 @@ fun VideoPlayerDialog(
                 Log.d(
                     FULLSCREEN_TAG,
                     "apply fullscreen=$isFullscreen applied=${isApplied()} " +
-                        "orientation=${configuration.orientation} ratio=$videoRatio"
+                        "orientation=${configuration.orientation}"
                 )
             }
         }
