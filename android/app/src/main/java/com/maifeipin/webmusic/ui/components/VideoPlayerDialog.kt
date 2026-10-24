@@ -11,7 +11,6 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,7 +42,6 @@ import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.maifeipin.webmusic.core.cache.MediaCacheManager
 import com.maifeipin.webmusic.core.network.MediaFileDto
@@ -60,7 +58,7 @@ import java.io.File
  * 全屏看起来和竖屏一样「黑边很大」。
  *
  * 改成 Activity 自身窗口里的一层全屏浮层后，窗口就是真实的 2400x1080（边到边），
- * 黑边只可能来自视频比例本身，于是再用「铺满（裁剪）/适应」两个缩放模式来处理 20:9 屏幕的差异。
+ * 画面按视频原始比例居中显示（PlayerView 默认 RESIZE_MODE_FIT），不做裁剪或拉伸。
  */
 @Composable
 fun VideoPlayerDialog(
@@ -101,10 +99,6 @@ fun VideoPlayerDialog(
         if (vm != null) vm.applied = applied else localApplied.value = applied
     }
 
-    // 全屏时默认「铺满」（裁掉多余上下边缘，黑边为零），可一键切回「适应」（完整画面 + 黑边）
-    var fillScreen by remember { mutableStateOf(true) }
-    var videoRatio by remember { mutableStateOf(0f) }
-
     LaunchedEffect(song.id) {
         val vm = fullscreenVm
         if (vm != null && vm.songId != song.id) {
@@ -141,13 +135,10 @@ fun VideoPlayerDialog(
         exoPlayer.prepare()
     }
 
-    // 记录真实视频比例，铺满/适应的取舍有据可查（也方便现场排查黑边问题）
+    // 记录一次真实视频尺寸，排查黑边/比例问题时有据可查
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onVideoSizeChanged(videoSize: VideoSize) {
-                if (videoSize.width > 0 && videoSize.height > 0) {
-                    videoRatio = videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height
-                }
                 Log.d(
                     FULLSCREEN_TAG,
                     "video size=${videoSize.width}x${videoSize.height} par=${videoSize.pixelWidthHeightRatio}"
@@ -225,13 +216,8 @@ fun VideoPlayerDialog(
         if (isFullscreen) isFullscreen = false else onDismiss()
     }
 
-    // 铺满只在全屏时有意义：竖屏下画面是中间一条，铺满会把内容裁到只剩中间一小块
-    val resizeMode = if (isFullscreen && fillScreen) {
-        AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-    } else {
-        AspectRatioFrameLayout.RESIZE_MODE_FIT
-    }
-
+    // 画面一律按视频原始比例显示（media3 PlayerView 默认的 RESIZE_MODE_FIT），
+    // 不做裁剪或拉伸：20:9 屏幕看 16:9 视频左右留下的黑边属于正常比例留白，不额外处理。
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -250,7 +236,6 @@ fun VideoPlayerDialog(
                     controllerShowTimeoutMs = 3500
                 }
             },
-            update = { view -> view.resizeMode = resizeMode },
             modifier = Modifier.fillMaxSize()
         )
 
@@ -319,41 +304,21 @@ fun VideoPlayerDialog(
                 }
             }
         } else {
-            // 全屏时收起标题栏，只留两个常驻入口：
+            // 全屏时收起标题栏，只留一个常驻的退出入口：
             // media3 控制器 3.5 秒后会自动隐藏，只靠它找出口很不顺手
-            Row(
+            IconButton(
+                onClick = { isFullscreen = false },
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .displayCutoutPadding()
-                    .padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(8.dp)
+                    .background(Color.Black.copy(alpha = 0.45f), CircleShape)
             ) {
-                // 20:9 的屏幕上，16:9 的视频按「适应」必然留左右黑边。
-                // 这里给一个显式开关：铺满 = 裁掉多余边缘铺满屏幕，适应 = 完整画面 + 黑边
-                Surface(
-                    color = Color.Black.copy(alpha = 0.45f),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier
-                        .padding(end = 8.dp)
-                        .clickable { fillScreen = !fillScreen }
-                ) {
-                    Text(
-                        text = if (fillScreen) "适应" else "铺满",
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                    )
-                }
-                IconButton(
-                    onClick = { isFullscreen = false },
-                    modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.FullscreenExit,
-                        contentDescription = "退出全屏",
-                        tint = Color.White
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Default.FullscreenExit,
+                    contentDescription = "退出全屏",
+                    tint = Color.White
+                )
             }
         }
     }
