@@ -2407,17 +2407,21 @@ fun MainAppScreen(
     }
 
     // 全屏 MV 视频播放器
+    // 播放器是 Activity 窗口内的一层全屏浮层（不是独立 Dialog 窗口）：
+    // Dialog 窗口会被系统 inset 收窄，导致全屏仍有大黑边，详见 VideoPlayerDialog 注释
     if (activeVideoSong != null) {
-        VideoPlayerDialog(
-            song = activeVideoSong!!,
-            serverUrl = tokenManager.serverUrl,
-            token = tokenManager.token,
-            localFilePath = activeVideoLocalPath,
-            onDismiss = {
-                activeVideoSong = null
-                activeVideoLocalPath = null
-            }
-        )
+        Box(modifier = Modifier.fillMaxSize()) {
+            VideoPlayerDialog(
+                song = activeVideoSong!!,
+                serverUrl = tokenManager.serverUrl,
+                token = tokenManager.token,
+                localFilePath = activeVideoLocalPath,
+                onDismiss = {
+                    activeVideoSong = null
+                    activeVideoLocalPath = null
+                }
+            )
+        }
     }
 
     // 应用内更新流程（检查 / 下载 / 安装 状态机驱动）

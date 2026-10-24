@@ -9,7 +9,9 @@ import android.net.Uri
 import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,6 +24,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
@@ -29,16 +32,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.zIndex
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.maifeipin.webmusic.core.cache.MediaCacheManager
 import com.maifeipin.webmusic.core.network.MediaFileDto
@@ -47,11 +52,15 @@ import com.maifeipin.webmusic.ui.theme.GreenPrimary
 import java.io.File
 
 /**
- * 沉浸式 MV 视频播放器对话框
- * - 支持流媒体与离线本地视频播放
- * - 结合 MediaCacheManager 实现边播边存分片与 HTTP 206 Range 高效拖拽
- * - 顶部标题栏提供「全屏」入口：切到横屏 + 隐藏状态栏/导航栏 + 收起标题栏，
- *   退出全屏后恢复进入前的屏幕方向与系统栏
+ * 沉浸式 MV 视频播放器。
+ *
+ * 注意：这里**不再用 Compose `Dialog` 承载**。Dialog 是独立窗口，实测（一加 9 / ColorOS 14）
+ * 即使 `usePlatformDefaultWidth = false`，窗口依然被系统按 `fitTypes=STATUS_BARS|NAVIGATION_BARS`
+ * 收成 2298x930（四边各让出 51~99px），于是 16:9 画面在窗口里再按适应缩放，左右各留 367px 黑边，
+ * 全屏看起来和竖屏一样「黑边很大」。
+ *
+ * 改成 Activity 自身窗口里的一层全屏浮层后，窗口就是真实的 2400x1080（边到边），
+ * 黑边只可能来自视频比例本身，于是再用「铺满（裁剪）/适应」两个缩放模式来处理 20:9 屏幕的差异。
  */
 @Composable
 fun VideoPlayerDialog(
@@ -62,9 +71,10 @@ fun VideoPlayerDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    // Dialog 里的 LocalContext 是 ContextThemeWrapper，需要顺着 baseContext 找到宿主 Activity
+    // 顺着 ContextWrapper 链找宿主 Activity（这一层现在可能被主题包了一层）
     val activity = remember(context) { context.findHostActivity() }
     val composeView = LocalView.current
+    val configuration = LocalConfiguration.current
 
     // 记住进入播放器前的方向，退出全屏时原样恢复，避免覆盖用户自己锁定的屏幕方向
     val originalOrientation = remember(activity) {
@@ -75,8 +85,8 @@ fun VideoPlayerDialog(
         activity?.resources?.configuration?.orientation != Configuration.ORIENTATION_LANDSCAPE
     }
 
-    // 全屏状态挂在 Activity 作用域：旋转会重建 Dialog 内的 Compose 内容，remember 会丢，
-    // 表现为「刚进全屏就自己退出来」，以及「全屏时按返回把播放器一起关掉」。
+    // 全屏状态挂在 Activity 作用域：极端情况下（如系统重建）会丢失组合状态，
+    // 挂在 ViewModel 上可以保证「全屏 + 旋转」时不会莫名其妙退回竖屏
     val hostActivity = activity as? ComponentActivity
     val fullscreenVm = remember(hostActivity) {
         hostActivity?.let { ViewModelProvider(it).get(MvFullscreenState::class.java) }
@@ -90,6 +100,10 @@ fun VideoPlayerDialog(
         val vm = fullscreenVm
         if (vm != null) vm.applied = applied else localApplied.value = applied
     }
+
+    // 全屏时默认「铺满」（裁掉多余上下边缘，黑边为零），可一键切回「适应」（完整画面 + 黑边）
+    var fillScreen by remember { mutableStateOf(true) }
+    var videoRatio by remember { mutableStateOf(0f) }
 
     LaunchedEffect(song.id) {
         val vm = fullscreenVm
@@ -127,6 +141,23 @@ fun VideoPlayerDialog(
         exoPlayer.prepare()
     }
 
+    // 记录真实视频比例，铺满/适应的取舍有据可查（也方便现场排查黑边问题）
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    videoRatio = videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height
+                }
+                Log.d(
+                    FULLSCREEN_TAG,
+                    "video size=${videoSize.width}x${videoSize.height} par=${videoSize.pixelWidthHeightRatio}"
+                )
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose { exoPlayer.removeListener(listener) }
+    }
+
     DisposableEffect(exoPlayer) {
         onDispose {
             exoPlayer.stop()
@@ -135,8 +166,8 @@ fun VideoPlayerDialog(
     }
 
     // 全屏 = 横向 + 隐藏系统栏 + 屏幕常亮。
-    // 方向只对 Activity 生效，系统栏作用于当前窗口（这个 Dialog 自己的 window）。
-    DisposableEffect(isFullscreen) {
+    // 现在播放器就在 Activity 窗口里，方向与系统栏都直接作用于这个窗口。
+    DisposableEffect(isFullscreen, configuration.orientation, configuration.screenWidthDp) {
         var alive = true
         val applySystemUi = {
             if (alive) {
@@ -158,7 +189,11 @@ fun VideoPlayerDialog(
                         ?.show(WindowInsetsCompat.Type.systemBars())
                     activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
-                Log.d(FULLSCREEN_TAG, "apply fullscreen=$isFullscreen applied=${isApplied()}")
+                Log.d(
+                    FULLSCREEN_TAG,
+                    "apply fullscreen=$isFullscreen applied=${isApplied()} " +
+                        "orientation=${configuration.orientation} ratio=$videoRatio"
+                )
             }
         }
         // 首次组合时 view 可能还没 attach，insets controller 会是 null，等一帧再试
@@ -170,10 +205,7 @@ fun VideoPlayerDialog(
         onDispose { alive = false }
     }
 
-    // 兜底：播放器真的被销毁时清掉系统栏与常亮。
-    // 方向只在「已经不是全屏」（也就是走完了正常退出流程）时补一次恢复；
-    // 若销毁时仍处于全屏，多半是旋转引起的 Compose 内容重建，此时新内容会重新应用全屏，
-    // 在这里回退方向反而会把画面掰回竖向。
+    // 兜底：播放器真的被销毁时清掉系统栏与常亮
     DisposableEffect(Unit) {
         onDispose {
             if (!isFullscreen && isApplied()) {
@@ -182,120 +214,139 @@ fun VideoPlayerDialog(
             }
             ViewCompat.getWindowInsetsController(composeView)
                 ?.show(WindowInsetsCompat.Type.systemBars())
-            // Dialog 的 window 这时可能已经销毁，同时对 Activity 的窗口恢复一次更保险
-            activity?.window?.decorView?.let {
-                ViewCompat.getWindowInsetsController(it)
-                    ?.show(WindowInsetsCompat.Type.systemBars())
-            }
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             Log.d(FULLSCREEN_TAG, "dispose song=${song.id} fullscreen=$isFullscreen applied=${isApplied()}")
         }
     }
 
-    Dialog(
-        onDismissRequest = {
-            // 全屏时返回键先退出全屏，而不是直接关掉播放器（再按一次才关闭）
-            if (isFullscreen) isFullscreen = false else onDismiss()
-        },
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false
-        )
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-        ) {
-            // 视频渲染器视图
-            AndroidView(
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        player = exoPlayer
-                        useController = true
-                        setShowNextButton(false)
-                        setShowPreviousButton(false)
-                        controllerAutoShow = true
-                        controllerShowTimeoutMs = 3500
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
+    // 返回键：全屏时先退出全屏，再按才关闭播放器（原来由 Dialog 的 onDismissRequest 兜住，
+    // 现在播放器是 Activity 里的浮层，得自己接管返回）
+    BackHandler(enabled = true) {
+        if (isFullscreen) isFullscreen = false else onDismiss()
+    }
 
-            if (!isFullscreen) {
-                // 顶部导航与视频标题信息栏
-                Row(
+    // 铺满只在全屏时有意义：竖屏下画面是中间一条，铺满会把内容裁到只剩中间一小块
+    val resizeMode = if (isFullscreen && fillScreen) {
+        AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+    } else {
+        AspectRatioFrameLayout.RESIZE_MODE_FIT
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(1f)
+            .background(Color.Black)
+    ) {
+        // 视频渲染器视图
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    player = exoPlayer
+                    useController = true
+                    setShowNextButton(false)
+                    setShowPreviousButton(false)
+                    controllerAutoShow = true
+                    controllerShowTimeoutMs = 3500
+                }
+            },
+            update = { view -> view.resizeMode = resizeMode },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        if (!isFullscreen) {
+            // 顶部导航与视频标题信息栏
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .statusBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "返回",
+                        tint = Color.White
+                    )
+                }
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.TopCenter)
-                        .background(Color.Black.copy(alpha = 0.65f))
-                        .statusBarsPadding()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .weight(1f)
+                        .padding(start = 8.dp)
                 ) {
-                    IconButton(onClick = onDismiss) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "返回",
-                            tint = Color.White
-                        )
-                    }
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(start = 8.dp)
+                    Text(
+                        text = song.title ?: "未知 MV",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "${song.artist ?: "未知艺术家"}${if (!song.album.isNullOrEmpty()) " • ${song.album}" else ""}",
+                        color = Color.LightGray,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                if (!localFilePath.isNullOrEmpty() && File(localFilePath).exists()) {
+                    Surface(
+                        color = GreenPrimary.copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.padding(end = 4.dp)
                     ) {
                         Text(
-                            text = song.title ?: "未知 MV",
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "${song.artist ?: "未知艺术家"}${if (!song.album.isNullOrEmpty()) " • ${song.album}" else ""}",
-                            color = Color.LightGray,
+                            text = "已离线",
+                            color = GreenPrimary,
                             fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    if (!localFilePath.isNullOrEmpty() && File(localFilePath).exists()) {
-                        Surface(
-                            color = GreenPrimary.copy(alpha = 0.2f),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.padding(end = 4.dp)
-                        ) {
-                            Text(
-                                text = "已离线",
-                                color = GreenPrimary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
-
-                    IconButton(onClick = { isFullscreen = true }) {
-                        Icon(
-                            imageVector = Icons.Default.Fullscreen,
-                            contentDescription = "全屏",
-                            tint = Color.White
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
                 }
-            } else {
-                // 全屏时收起标题栏，只留一个常驻的退出入口：
-                // media3 控制器 3.5 秒后会自动隐藏，只靠它找出口很不顺手
+
+                IconButton(onClick = { isFullscreen = true }) {
+                    Icon(
+                        imageVector = Icons.Default.Fullscreen,
+                        contentDescription = "全屏",
+                        tint = Color.White
+                    )
+                }
+            }
+        } else {
+            // 全屏时收起标题栏，只留两个常驻入口：
+            // media3 控制器 3.5 秒后会自动隐藏，只靠它找出口很不顺手
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .displayCutoutPadding()
+                    .padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 20:9 的屏幕上，16:9 的视频按「适应」必然留左右黑边。
+                // 这里给一个显式开关：铺满 = 裁掉多余边缘铺满屏幕，适应 = 完整画面 + 黑边
+                Surface(
+                    color = Color.Black.copy(alpha = 0.45f),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .padding(end = 8.dp)
+                        .clickable { fillScreen = !fillScreen }
+                ) {
+                    Text(
+                        text = if (fillScreen) "适应" else "铺满",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
                 IconButton(
                     onClick = { isFullscreen = false },
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .displayCutoutPadding()
-                        .padding(8.dp)
-                        .background(Color.Black.copy(alpha = 0.45f), CircleShape)
+                    modifier = Modifier.background(Color.Black.copy(alpha = 0.45f), CircleShape)
                 ) {
                     Icon(
                         imageVector = Icons.Default.FullscreenExit,
@@ -313,9 +364,9 @@ private const val FULLSCREEN_TAG = "MvFullscreen"
 /**
  * MV 播放器的全屏状态，挂在 Activity 作用域上。
  *
- * 旋转会把 Dialog 内的 Compose 内容重建一次，`remember` 随之丢失 ——
- * 那会让「刚进全屏就自己退出来」，也会让全屏状态下按返回键直接把播放器关掉。
- * ViewModel 跟随 Activity，不受内容重建影响；换曲时才重置。
+ * 播放器已经是 Activity 里的浮层，正常旋转不会丢状态；但 Activity 重建、进程恢复之类的情形
+ * 仍可能让 `remember` 归零，那会让「刚进全屏就自己退出来」再次出现。ViewModel 跟随 Activity，
+ * 换曲时才重置。
  */
 class MvFullscreenState : ViewModel() {
     val isFullscreen = mutableStateOf(false)
@@ -327,7 +378,7 @@ class MvFullscreenState : ViewModel() {
     var songId: Int = Int.MIN_VALUE
 }
 
-/** 顺着 ContextWrapper 链向上找到宿主 Activity（Dialog 的 context 只是层包装）。 */
+/** 顺着 ContextWrapper 链向上找到宿主 Activity（Compose 的 context 只是层包装）。 */
 private fun Context.findHostActivity(): Activity? {
     var current: Context? = this
     while (current is ContextWrapper) {
