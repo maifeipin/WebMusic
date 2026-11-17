@@ -882,7 +882,7 @@ fun MainAppScreen(
         },
         containerColor = DarkBackground
     ) { padding ->
-        var selectedTab by remember { mutableIntStateOf(0) } // 0: 全部曲库, 1: MV视频, 2: 我的收藏, 3: 自建歌单, 4: 播放历史, 5: 离线音乐
+        var selectedTab by remember { mutableIntStateOf(0) } // 0: 最近播放, 1: 我的收藏, 2: 自建歌单, 3: 离线音乐, 4: 全部曲库, 5: MV视频
         var offlineSongs by remember { mutableStateOf<List<DownloadedSong>>(emptyList()) }
 
         // 自动缓存有新曲目落盘后，刷新离线列表计数与内容
@@ -894,20 +894,25 @@ fun MainAppScreen(
         LaunchedEffect(selectedTab, offlineRefreshTrigger, tokenManager.token) {
             when (selectedTab) {
                 0 -> {
+                    if (tokenManager.token != null) {
+                        if (favoriteSongIds.isEmpty()) loadFavoriteIds()
+                        loadHistoryList()
+                    }
+                }
+                1 -> if (tokenManager.token != null) loadFavoritesList()
+                2 -> if (tokenManager.token != null) loadPlaylists()
+                3 -> {
+                    withContext(Dispatchers.IO) {
+                        offlineSongs = OfflineDownloadManager.getAllDownloaded(context, tokenManager.serverUrl, tokenManager.username)
+                    }
+                }
+                4 -> {
                     if (tokenManager.token != null && favoriteSongIds.isEmpty()) loadFavoriteIds()
                 }
-                1 -> {
+                5 -> {
                     if (tokenManager.token != null && mvList.isEmpty()) {
                         mvQueryVersion++
                         executeMvQuery(1, null, append = false, mvQueryVersion)
-                    }
-                }
-                2 -> if (tokenManager.token != null) loadFavoritesList()
-                3 -> if (tokenManager.token != null) loadPlaylists()
-                4 -> if (tokenManager.token != null) loadHistoryList()
-                5 -> {
-                    withContext(Dispatchers.IO) {
-                        offlineSongs = OfflineDownloadManager.getAllDownloaded(context, tokenManager.serverUrl, tokenManager.username)
                     }
                 }
             }
@@ -928,10 +933,13 @@ fun MainAppScreen(
             ) {
                 Tab(
                     selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
+                    onClick = {
+                        selectedTab = 0
+                        loadHistoryList()
+                    },
                     text = {
                         Text(
-                            text = "全部曲库 (${totalSongs})",
+                            text = "最近播放",
                             fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal,
                             color = if (selectedTab == 0) GreenPrimary else Color.Gray
                         )
@@ -941,14 +949,11 @@ fun MainAppScreen(
                     selected = selectedTab == 1,
                     onClick = {
                         selectedTab = 1
-                        if (mvList.isEmpty()) {
-                            mvQueryVersion++
-                            executeMvQuery(1, null, append = false, mvQueryVersion)
-                        }
+                        loadFavoritesList()
                     },
                     text = {
                         Text(
-                            text = "MV视频 (${totalMvs})",
+                            text = "我的收藏 (${favoriteSongIds.size})",
                             fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal,
                             color = if (selectedTab == 1) GreenPrimary else Color.Gray
                         )
@@ -958,11 +963,11 @@ fun MainAppScreen(
                     selected = selectedTab == 2,
                     onClick = {
                         selectedTab = 2
-                        loadFavoritesList()
+                        loadPlaylists()
                     },
                     text = {
                         Text(
-                            text = "我的收藏 (${favoriteSongIds.size})",
+                            text = "自建歌单 (${playlists.size})",
                             fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal,
                             color = if (selectedTab == 2) GreenPrimary else Color.Gray
                         )
@@ -972,11 +977,11 @@ fun MainAppScreen(
                     selected = selectedTab == 3,
                     onClick = {
                         selectedTab = 3
-                        loadPlaylists()
+                        offlineRefreshTrigger++
                     },
                     text = {
                         Text(
-                            text = "自建歌单 (${playlists.size})",
+                            text = "离线音乐 (${offlineSongs.size})",
                             fontWeight = if (selectedTab == 3) FontWeight.Bold else FontWeight.Normal,
                             color = if (selectedTab == 3) GreenPrimary else Color.Gray
                         )
@@ -984,13 +989,10 @@ fun MainAppScreen(
                 )
                 Tab(
                     selected = selectedTab == 4,
-                    onClick = {
-                        selectedTab = 4
-                        loadHistoryList()
-                    },
+                    onClick = { selectedTab = 4 },
                     text = {
                         Text(
-                            text = "播放历史",
+                            text = "全部曲库 (${totalSongs})",
                             fontWeight = if (selectedTab == 4) FontWeight.Bold else FontWeight.Normal,
                             color = if (selectedTab == 4) GreenPrimary else Color.Gray
                         )
@@ -1000,11 +1002,14 @@ fun MainAppScreen(
                     selected = selectedTab == 5,
                     onClick = {
                         selectedTab = 5
-                        offlineRefreshTrigger++
+                        if (mvList.isEmpty()) {
+                            mvQueryVersion++
+                            executeMvQuery(1, null, append = false, mvQueryVersion)
+                        }
                     },
                     text = {
                         Text(
-                            text = "离线音乐 (${offlineSongs.size})",
+                            text = "MV视频 (${totalMvs})",
                             fontWeight = if (selectedTab == 5) FontWeight.Bold else FontWeight.Normal,
                             color = if (selectedTab == 5) GreenPrimary else Color.Gray
                         )
@@ -1012,18 +1017,18 @@ fun MainAppScreen(
                 )
             }
 
-            // 搜索框 (在全部曲库、MV视频与离线音乐展示)
-            if (selectedTab == 0 || selectedTab == 1 || selectedTab == 5) {
+            // 搜索框 (在离线音乐、全部曲库与MV视频展示)
+            if (selectedTab == 3 || selectedTab == 4 || selectedTab == 5) {
                 val currentQueryText = when (selectedTab) {
-                    0 -> searchQuery
-                    1 -> mvSearchQuery
+                    4 -> searchQuery
+                    5 -> mvSearchQuery
                     else -> searchQuery
                 }
                 OutlinedTextField(
                     value = currentQueryText,
                     onValueChange = { newQuery ->
                         when (selectedTab) {
-                            0 -> {
+                            4 -> {
                                 searchQuery = newQuery
                                 isDebouncingSearch = true
                                 activeFetchJob?.cancel()
@@ -1035,7 +1040,7 @@ fun MainAppScreen(
                                     }
                                 }
                             }
-                            1 -> {
+                            5 -> {
                                 mvSearchQuery = newQuery
                                 isDebouncingMvSearch = true
                                 activeMvFetchJob?.cancel()
@@ -1047,7 +1052,7 @@ fun MainAppScreen(
                                     }
                                 }
                             }
-                            5 -> {
+                            3 -> {
                                 searchQuery = newQuery
                             }
                         }
@@ -1055,8 +1060,8 @@ fun MainAppScreen(
                     placeholder = {
                         Text(
                             when (selectedTab) {
-                                0 -> "搜索全库 $totalSongs 首音乐、歌手、专辑..."
-                                1 -> "搜索 $totalMvs 部 MV 视频、歌手..."
+                                4 -> "搜索全库 $totalSongs 首音乐、歌手、专辑..."
+                                5 -> "搜索 $totalMvs 部 MV 视频、歌手..."
                                 else -> "搜索 ${offlineSongs.size} 首本地离线音乐..."
                             }
                         )
@@ -1066,21 +1071,21 @@ fun MainAppScreen(
                         if (currentQueryText.isNotEmpty()) {
                             IconButton(onClick = {
                                 when (selectedTab) {
-                                    0 -> {
+                                    4 -> {
                                         searchQuery = ""
                                         isDebouncingSearch = true
                                         activeFetchJob?.cancel()
                                         val version = ++queryVersion
                                         executeQuery(1, null, append = false, version)
                                     }
-                                    1 -> {
+                                    5 -> {
                                         mvSearchQuery = ""
                                         isDebouncingMvSearch = true
                                         activeMvFetchJob?.cancel()
                                         val version = ++mvQueryVersion
                                         executeMvQuery(1, null, append = false, version)
                                     }
-                                    5 -> {
+                                    3 -> {
                                         searchQuery = ""
                                     }
                                 }
@@ -1104,7 +1109,7 @@ fun MainAppScreen(
             }
 
             when (selectedTab) {
-                0 -> {
+                4 -> {
                     // 全部曲库
                     val listState = rememberLazyListState()
                     val shouldLoadMore = remember {
@@ -1225,7 +1230,7 @@ fun MainAppScreen(
                         }
                     }
                 }
-                1 -> {
+                5 -> {
                     // MV视频列表
                     val mvListState = rememberLazyListState()
                     val shouldLoadMoreMv = remember {
@@ -1367,7 +1372,7 @@ fun MainAppScreen(
                         }
                     }
                 }
-                2 -> {
+                1 -> {
                     val favSongDtos = favoriteList.mapNotNull { it.mediaFile?.toMediaFileDto() }
 
                     Row(
@@ -1526,7 +1531,7 @@ fun MainAppScreen(
                         }
                     }
                 }
-                3 -> {
+                2 -> {
                     // 自建歌单
                     if (activePlaylistId != null) {
                         PlaylistDetailView(
@@ -1676,7 +1681,7 @@ fun MainAppScreen(
                         }
                     }
                 }
-                4 -> {
+                0 -> {
                     val historySongDtos = historyList.mapNotNull { it.mediaFile?.toMediaFileDto() }
 
                     Row(
@@ -1833,7 +1838,7 @@ fun MainAppScreen(
                         }
                     }
                 }
-                5 -> {
+                3 -> {
                     // 离线音乐列表展示
                     val filteredOffline = remember(offlineSongs, searchQuery) {
                         if (searchQuery.isEmpty()) offlineSongs
