@@ -10,6 +10,7 @@ import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
@@ -31,7 +32,8 @@ data class MediaFileDto(
     val contentVersion: String? = null,
     /** 服务端以秒（含小数）返回的曲目时长，网易云歌词匹配按它就近排序 */
     val totalSeconds: Double? = null,
-    val mediaType: String? = null
+    val mediaType: String? = null,
+    val coverArt: String? = null
 ) {
     fun isVideo(): Boolean {
         if (mediaType.equals("video", ignoreCase = true) || mediaType.equals("mv", ignoreCase = true)) return true
@@ -80,7 +82,8 @@ data class UserMediaItem(
             fileHash = null,
             contentVersion = null,
             totalSeconds = seconds,
-            mediaType = mediaType
+            mediaType = mediaType,
+            coverArt = coverArt
         )
     }
 }
@@ -154,6 +157,10 @@ data class SaveLyricsBody(
     val version: String? = null
 )
 
+data class UpdateMediaCoverBody(
+    val coverArt: String
+)
+
 data class AiStatusDto(val available: Boolean = false)
 
 interface WebMusicApi {
@@ -190,6 +197,20 @@ interface WebMusicApi {
         @Path("pluginId") pluginId: Int,
         @Query("id") neteaseSongId: Long
     ): com.google.gson.JsonObject
+
+    /** 通过服务端插件代理拉取网易云歌曲详情（获取高清专辑封面） */
+    @GET("api/plugins/{pluginId}/proxy/song/detail")
+    suspend fun getNeteaseSongDetail(
+        @Path("pluginId") pluginId: Int,
+        @Query("ids") ids: Long
+    ): com.google.gson.JsonObject
+
+    /** 更新曲目元数据（如封面 URL） */
+    @PUT("api/media/{mediaId}")
+    suspend fun updateMediaMetadata(
+        @Path("mediaId") mediaId: Int,
+        @Body body: UpdateMediaCoverBody
+    ): retrofit2.Response<com.google.gson.JsonObject>
 
     /** 直写歌词库（需管理员），失败时返回非 2xx 供上层提示 */
     @POST("api/lyrics/{mediaId}/save")

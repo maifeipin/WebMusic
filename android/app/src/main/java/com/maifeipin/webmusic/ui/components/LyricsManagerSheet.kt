@@ -17,12 +17,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.google.gson.JsonObject
 import com.maifeipin.webmusic.core.lyrics.LyricsParser
 import com.maifeipin.webmusic.core.lyrics.NeteaseCandidate
@@ -34,6 +36,7 @@ import com.maifeipin.webmusic.core.network.MediaFileDto
 import com.maifeipin.webmusic.core.network.PluginDto
 import com.maifeipin.webmusic.core.network.SaveLyricsBody
 import com.maifeipin.webmusic.core.network.TokenManager
+import com.maifeipin.webmusic.core.network.UpdateMediaCoverBody
 import com.maifeipin.webmusic.core.network.WebMusicNetwork
 import com.maifeipin.webmusic.ui.theme.DarkSurface
 import com.maifeipin.webmusic.ui.theme.GreenPrimary
@@ -59,7 +62,8 @@ fun LyricsManagerSheet(
     /** 播放器已知的当前曲目时长（毫秒），用于候选列表就近排序；0 表示未知 */
     knownDurationMs: Long = 0L,
     onDismiss: () -> Unit,
-    onSaved: (String) -> Unit
+    onSaved: (String) -> Unit,
+    onCoverUpdated: (String) -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     val api = remember(tokenManager.token, tokenManager.serverUrl) {
@@ -84,6 +88,7 @@ fun LyricsManagerSheet(
     var previewLrc by remember { mutableStateOf<String?>(null) }
     var previewLabel by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
+    var savingCover by remember { mutableStateOf(false) }
 
     // —— AI 生成 ——
     var aiAvailable by remember { mutableStateOf<Boolean?>(null) }
@@ -365,12 +370,23 @@ fun LyricsManagerSheet(
                                 .padding(horizontal = 8.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = if (selected && loadingPreview) Icons.Default.Downloading else Icons.Default.MusicNote,
-                                contentDescription = null,
-                                tint = if (selected) GreenPrimary else Color.Gray,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            if (!candidate.picUrl.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = candidate.picUrl + "?param=80y80",
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = if (selected && loadingPreview) Icons.Default.Downloading else Icons.Default.MusicNote,
+                                    contentDescription = null,
+                                    tint = if (selected) GreenPrimary else Color.Gray,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                             Spacer(modifier = Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
@@ -421,52 +437,116 @@ fun LyricsManagerSheet(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                Button(
-                    onClick = {
-                        val content = previewLrc ?: return@Button
-                        scope.launch {
-                            saving = true
-                            error = null
-                            info = null
-                            try {
-                                val resp = withContext(Dispatchers.IO) {
-                                    api.saveLyrics(
-                                        song.id,
-                                        SaveLyricsBody(
-                                            content = content,
-                                            source = "网易云音乐 (官方LRC)",
-                                            version = "netease"
-                                        )
-                                    )
-                                }
-                                when {
-                                    resp.isSuccessful -> {
-                                        info = "已保存到歌词库"
-                                        onSaved(content)
-                                    }
-                                    resp.code() == 403 -> error = "当前账号不是管理员，无法写入歌词库"
-                                    else -> error = "保存失败：HTTP ${resp.code()}"
-                                }
-                            } catch (e: Exception) {
-                                error = "保存失败：${e.message ?: "网络异常"}"
-                            } finally {
-                                saving = false
-                            }
-                        }
-                    },
+                val selectedCandidate = sortedResults.firstOrNull { it.id == previewId }
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = previewLrc != null && !saving,
-                    colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    if (saving) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            color = Color.Black,
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
+                    OutlinedButton(
+                        onClick = {
+                            val candidate = selectedCandidate ?: return@OutlinedButton
+                            val pluginId = neteasePlugin?.id ?: return@OutlinedButton
+                            scope.launch {
+                                savingCover = true
+                                error = null
+                                info = null
+                                try {
+                                    // 对齐 Web 端：先取 song/detail 高清封面，取不到时退回搜索结果里的封面
+                                    var hdUrl = candidate.picUrl
+                                    runCatching {
+                                        val detail = withContext(Dispatchers.IO) {
+                                            api.getNeteaseSongDetail(pluginId, candidate.id)
+                                        }
+                                        val songsArr = detail.arrayOrNull("songs")
+                                        val firstSong = songsArr?.firstOrNull() as? JsonObject
+                                        val albumObj = firstSong?.objOrNull("al") ?: firstSong?.objOrNull("album")
+                                        val detailPic = albumObj?.stringOrNull("picUrl")
+                                        if (!detailPic.isNullOrBlank()) hdUrl = detailPic
+                                    }
+                                    val finalUrl = hdUrl?.takeIf { it.isNotBlank() }
+                                    if (finalUrl == null) {
+                                        error = "该候选歌曲没有可用封面"
+                                        return@launch
+                                    }
+                                    val resp = withContext(Dispatchers.IO) {
+                                        api.updateMediaMetadata(song.id, UpdateMediaCoverBody(finalUrl))
+                                    }
+                                    when {
+                                        resp.isSuccessful -> {
+                                            info = "封面已更新"
+                                            onCoverUpdated(finalUrl)
+                                        }
+                                        resp.code() == 403 -> error = "当前账号无权修改曲目封面"
+                                        else -> error = "更新封面失败：HTTP ${resp.code()}"
+                                    }
+                                } catch (e: Exception) {
+                                    error = "更新封面失败：${e.message ?: "网络异常"}"
+                                } finally {
+                                    savingCover = false
+                                }
+                            }
+                        },
+                        enabled = selectedCandidate != null && !savingCover && !saving,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        if (savingCover) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                color = GreenPrimary,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+                        Text("应用封面", color = Color.White, fontSize = 13.sp)
                     }
-                    Text("保存到歌词库", color = Color.Black, fontWeight = FontWeight.Bold)
+
+                    Button(
+                        onClick = {
+                            val content = previewLrc ?: return@Button
+                            scope.launch {
+                                saving = true
+                                error = null
+                                info = null
+                                try {
+                                    val resp = withContext(Dispatchers.IO) {
+                                        api.saveLyrics(
+                                            song.id,
+                                            SaveLyricsBody(
+                                                content = content,
+                                                source = "网易云音乐 (官方LRC)",
+                                                version = "netease"
+                                            )
+                                        )
+                                    }
+                                    when {
+                                        resp.isSuccessful -> {
+                                            info = "已保存到歌词库"
+                                            onSaved(content)
+                                        }
+                                        resp.code() == 403 -> error = "当前账号不是管理员，无法写入歌词库"
+                                        else -> error = "保存失败：HTTP ${resp.code()}"
+                                    }
+                                } catch (e: Exception) {
+                                    error = "保存失败：${e.message ?: "网络异常"}"
+                                } finally {
+                                    saving = false
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1.4f),
+                        enabled = previewLrc != null && !saving && !savingCover,
+                        colors = ButtonDefaults.buttonColors(containerColor = GreenPrimary)
+                    ) {
+                        if (saving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = Color.Black,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text("保存到歌词库", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
                 }
             } else {
                 // —— AI 生成 ——
@@ -669,9 +749,12 @@ private fun parseNeteaseCandidates(root: JsonObject): List<NeteaseCandidate> {
         val artists = artistsArray?.mapNotNull { artist ->
             (artist as? JsonObject)?.stringOrNull("name")
         }?.joinToString(" / ").orEmpty()
-        val album = (obj.objOrNull("al") ?: obj.objOrNull("album"))?.stringOrNull("name").orEmpty()
+        val albumObj = obj.objOrNull("al") ?: obj.objOrNull("album")
+        val album = albumObj?.stringOrNull("name").orEmpty()
+        val picUrl = albumObj?.stringOrNull("picUrl")
+            ?: (artistsArray?.firstOrNull() as? JsonObject)?.stringOrNull("img1v1Url")
         val durationMs = obj.longOrNull("dt") ?: obj.longOrNull("duration") ?: 0L
-        list.add(NeteaseCandidate(id, name, artists, album, durationMs))
+        list.add(NeteaseCandidate(id, name, artists, album, durationMs, picUrl))
     }
     return list
 }

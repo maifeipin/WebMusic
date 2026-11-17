@@ -24,10 +24,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.maifeipin.webmusic.core.network.MediaFileDto
 import com.maifeipin.webmusic.ui.theme.DarkSurface
 import com.maifeipin.webmusic.ui.theme.GreenPrimary
@@ -36,6 +38,7 @@ import kotlinx.coroutines.isActive
 @Composable
 fun MiniPlayerBar(
     currentSong: MediaFileDto?,
+    coverUrl: String? = null,
     isPlaying: Boolean,
     progress: Float,
     onPlayPauseClick: () -> Unit,
@@ -83,7 +86,7 @@ fun MiniPlayerBar(
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 迷你黑胶黑唱片图标
+            // 迷你黑胶唱片图标（有封面时展示封面，无封面时保留绿心兜底）
             Box(
                 modifier = Modifier
                     .size(44.dp)
@@ -92,12 +95,29 @@ fun MiniPlayerBar(
                     .rotate(rotation.value),
                 contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(16.dp)
-                        .clip(CircleShape)
-                        .background(GreenPrimary)
-                )
+                if (!coverUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = coverUrl,
+                        contentDescription = "专辑封面",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(DarkSurface)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clip(CircleShape)
+                            .background(GreenPrimary)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.width(12.dp))

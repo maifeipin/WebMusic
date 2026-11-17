@@ -425,10 +425,16 @@ class MainActivity : ComponentActivity() {
         song: MediaFileDto,
         localPath: String?
     ): MediaItem {
+        val coverUrl = WebMusicNetwork.buildCoverUrl(serverUrl, song.coverArt)
         val metadata = MediaMetadata.Builder()
             .setTitle(song.title ?: "未知曲目 #${song.id}")
             .setArtist(song.artist ?: "未知艺术家")
             .setAlbumTitle(song.album ?: "未知专辑")
+            .apply {
+                if (!coverUrl.isNullOrBlank()) {
+                    setArtworkUri(Uri.parse(coverUrl))
+                }
+            }
             .build()
 
         val uri = if (localPath != null) {
@@ -889,6 +895,7 @@ fun MainAppScreen(
         }
     }
 
+    val updatedCoverUrls = remember { mutableStateMapOf<Int, String>() }
     val currentSongDto = remember(currentMediaItem) {
         if (currentMediaItem == null) null
         else MediaFileDto(
@@ -901,8 +908,12 @@ fun MainAppScreen(
             year = null,
             duration = null,
             sizeBytes = null,
-            fileHash = null
+            fileHash = null,
+            coverArt = currentMediaItem.mediaMetadata.artworkUri?.toString()
         )
+    }
+    val currentCoverUrl = currentSongDto?.let { song ->
+        updatedCoverUrls[song.id] ?: WebMusicNetwork.buildCoverUrl(tokenManager.serverUrl, song.coverArt)
     }
 
     Scaffold(
@@ -927,6 +938,7 @@ fun MainAppScreen(
             if (currentSongDto != null) {
                 MiniPlayerBar(
                     currentSong = currentSongDto,
+                    coverUrl = currentCoverUrl,
                     isPlaying = isPlaying,
                     progress = progress,
                     onPlayPauseClick = onPlayPauseClick,
@@ -2358,6 +2370,7 @@ fun MainAppScreen(
     if (showFullPlayer && currentSongDto != null) {
         FullPlayerSheet(
             currentSong = currentSongDto,
+            coverUrl = currentCoverUrl,
             isPlaying = isPlaying,
             progress = progress,
             durationMs = durationMs,
@@ -2389,7 +2402,14 @@ fun MainAppScreen(
             tokenManager = tokenManager,
             knownDurationMs = durationMs,
             onDismiss = { lyricsManagerSong = null },
-            onSaved = { content -> onLyricsUpdated(lyricsManagerTarget.id, content) }
+            onSaved = { content -> onLyricsUpdated(lyricsManagerTarget.id, content) },
+            onCoverUpdated = { coverUrl ->
+                updatedCoverUrls[lyricsManagerTarget.id] = coverUrl
+                val idx = mediaList.indexOfFirst { it.id == lyricsManagerTarget.id }
+                if (idx >= 0) {
+                    mediaList[idx] = mediaList[idx].copy(coverArt = coverUrl)
+                }
+            }
         )
     }
 

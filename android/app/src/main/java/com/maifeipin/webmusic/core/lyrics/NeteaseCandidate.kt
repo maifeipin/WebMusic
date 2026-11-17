@@ -3,13 +3,14 @@ package com.maifeipin.webmusic.core.lyrics
 import com.maifeipin.webmusic.core.network.MediaFileDto
 import kotlin.math.abs
 
-/** 网易云搜索结果条目（只保留展示与拉取歌词需要的字段） */
+/** 网易云搜索结果条目（只保留展示与拉取歌词/封面需要的字段） */
 data class NeteaseCandidate(
     val id: Long,
     val name: String,
     val artists: String,
     val album: String,
-    val durationMs: Long
+    val durationMs: Long,
+    val picUrl: String? = null
 )
 
 /**

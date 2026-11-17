@@ -22,11 +22,13 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.maifeipin.webmusic.core.lyrics.LyricLine
 import com.maifeipin.webmusic.core.network.MediaFileDto
 import com.maifeipin.webmusic.core.player.PlaybackMode
@@ -46,6 +48,7 @@ data class PlaybackQueueItem(
 @Composable
 fun FullPlayerSheet(
     currentSong: MediaFileDto?,
+    coverUrl: String? = null,
     isPlaying: Boolean,
     progress: Float,
     durationMs: Long,
@@ -173,20 +176,42 @@ fun FullPlayerSheet(
                             .clickable { showLyrics = true },
                         contentAlignment = Alignment.Center
                     ) {
-                        // 唱片纹理与中心轴
-                        Box(
-                            modifier = Modifier
-                                .size(90.dp)
-                                .clip(CircleShape)
-                                .background(GreenPrimary),
-                            contentAlignment = Alignment.Center
-                        ) {
+                        // 唱片纹理与中心封面/中心轴
+                        if (!coverUrl.isNullOrBlank()) {
                             Box(
                                 modifier = Modifier
-                                    .size(24.dp)
+                                    .size(180.dp)
+                                    .clip(CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AsyncImage(
+                                    model = coverUrl,
+                                    contentDescription = "专辑封面",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clip(CircleShape)
+                                        .background(DarkBackground)
+                                )
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(90.dp)
                                     .clip(CircleShape)
-                                    .background(DarkBackground)
-                            )
+                                    .background(GreenPrimary),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clip(CircleShape)
+                                        .background(DarkBackground)
+                                )
+                            }
                         }
                     }
                 }
