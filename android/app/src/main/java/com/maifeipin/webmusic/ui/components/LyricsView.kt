@@ -16,6 +16,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -80,13 +83,18 @@ fun LyricsView(
 
     val currentIndex = LyricsParser.findCurrentIndex(lyrics, currentPositionMs)
     val listState = rememberLazyListState()
+    var lastUserScrollMs by remember { mutableLongStateOf(0L) }
 
-    // 当前行锚定在视口上方的三分之一处。
-    // 之前是 contentPadding(vertical = 120.dp) + 回退 3 行，两者叠加把当前行推到了
-    // 歌词区最底部（约 320dp），正好压在下面的播放器控件上；这里把顶部留白收到 16dp，
-    // 只保留「当前行上方还有 3 行歌词」这一个偏移来源。
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            lastUserScrollMs = System.currentTimeMillis()
+        }
+    }
+
+    // 当前行锚定在视口上方的三分之一处；若用户刚手动滑动过，暂缓自动滚动以免抢夺视线。
     LaunchedEffect(currentIndex) {
-        if (currentIndex in lyrics.indices) {
+        val now = System.currentTimeMillis()
+        if (currentIndex in lyrics.indices && !listState.isScrollInProgress && now - lastUserScrollMs > 3500L) {
             val targetScroll = (currentIndex - ANCHOR_LINES_ABOVE).coerceAtLeast(0)
             listState.animateScrollToItem(targetScroll)
         }

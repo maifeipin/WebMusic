@@ -1,9 +1,14 @@
 package com.maifeipin.webmusic.ui.components
 
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,6 +32,15 @@ import com.maifeipin.webmusic.core.network.MediaFileDto
 import com.maifeipin.webmusic.core.player.PlaybackMode
 import com.maifeipin.webmusic.ui.theme.DarkBackground
 import com.maifeipin.webmusic.ui.theme.GreenPrimary
+import kotlinx.coroutines.isActive
+
+data class PlaybackQueueItem(
+    val index: Int,
+    val mediaId: String,
+    val title: String,
+    val artist: String,
+    val isCurrent: Boolean
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,6 +53,7 @@ fun FullPlayerSheet(
     seekEnabled: Boolean = true,
     playbackMode: PlaybackMode,
     lyrics: List<LyricLine>,
+    queueItems: List<PlaybackQueueItem> = emptyList(),
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
     onAddToPlaylist: () -> Unit = {},
@@ -47,6 +62,8 @@ fun FullPlayerSheet(
     onNextClick: () -> Unit,
     onSeekTo: (Long) -> Unit,
     onToggleMode: () -> Unit,
+    onPlayQueueIndex: (Int) -> Unit = {},
+    onRemoveQueueIndex: (Int) -> Unit = {},
     onManageLyrics: () -> Unit = {},
     onDismiss: () -> Unit
 ) {
@@ -54,17 +71,21 @@ fun FullPlayerSheet(
 
     var showLyrics by remember { mutableStateOf(false) }
     var showEqualizerDialog by remember { mutableStateOf(false) }
+    var showQueueSheet by remember { mutableStateOf(false) }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "vinyl_disc")
-    val rotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 15000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "rotation"
-    )
+    val rotation = remember { Animatable(0f) }
+    LaunchedEffect(isPlaying) {
+        if (isPlaying) {
+            while (isActive) {
+                val current = rotation.value % 360f
+                rotation.snapTo(current)
+                rotation.animateTo(
+                    targetValue = current + 360f,
+                    animationSpec = tween(durationMillis = 15000, easing = LinearEasing)
+                )
+            }
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -148,7 +169,7 @@ fun FullPlayerSheet(
                                     colors = listOf(Color(0xFF222222), Color(0xFF111111), Color.Black)
                                 )
                             )
-                            .rotate(if (isPlaying) rotation else 0f)
+                            .rotate(rotation.value)
                             .clickable { showLyrics = true },
                         contentAlignment = Alignment.Center
                     ) {
@@ -233,12 +254,31 @@ fun FullPlayerSheet(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // 进度条与时间（时长未知或当前曲目不可 seek 时禁用拖动）
+                // 进度条与时间（拖动时仅更新预览时间，松手后再真正 Seek，避免在线流反复缓冲）
+                var isDraggingProgress by remember { mutableStateOf(false) }
+                var dragProgress by remember { mutableFloatStateOf(0f) }
+                LaunchedEffect(currentSong.id) {
+                    isDraggingProgress = false
+                }
+                val displayProgress = if (isDraggingProgress) dragProgress else progress
+                val displayPosMs = if (isDraggingProgress && durationMs > 0L) {
+                    (dragProgress * durationMs).toLong()
+                } else {
+                    currentPosMs
+                }
+
                 Slider(
-                    value = progress,
+                    value = displayProgress.coerceIn(0f, 1f),
                     onValueChange = { newProg ->
-                        val target = (newProg * durationMs).toLong()
-                        onSeekTo(target)
+                        isDraggingProgress = true
+                        dragProgress = newProg.coerceIn(0f, 1f)
+                    },
+                    onValueChangeFinished = {
+                        if (isDraggingProgress) {
+                            val target = (dragProgress * durationMs).toLong()
+                            isDraggingProgress = false
+                            onSeekTo(target)
+                        }
                     },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = seekEnabled && durationMs > 0L,
@@ -253,7 +293,7 @@ fun FullPlayerSheet(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(formatTime(currentPosMs), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    Text(formatTime(displayPosMs), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                     Text(formatTime(durationMs), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                 }
 
@@ -313,12 +353,12 @@ fun FullPlayerSheet(
                         )
                     }
 
-                    // 歌词快捷切入
-                    IconButton(onClick = { showLyrics = !showLyrics }) {
+                    // 当前播放队列
+                    IconButton(onClick = { showQueueSheet = true }) {
                         Icon(
-                            imageVector = Icons.Default.MenuBook,
-                            contentDescription = "歌词",
-                            tint = if (showLyrics) GreenPrimary else Color.White
+                            imageVector = Icons.Default.QueueMusic,
+                            contentDescription = "播放队列",
+                            tint = Color.White
                         )
                     }
                 }
@@ -330,6 +370,146 @@ fun FullPlayerSheet(
         com.maifeipin.webmusic.ui.EqualizerDialog(
             onDismiss = { showEqualizerDialog = false }
         )
+    }
+
+    if (showQueueSheet) {
+        PlaybackQueueSheet(
+            queueItems = queueItems,
+            onPlayIndex = { index ->
+                onPlayQueueIndex(index)
+            },
+            onRemoveIndex = onRemoveQueueIndex,
+            onDismiss = { showQueueSheet = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlaybackQueueSheet(
+    queueItems: List<PlaybackQueueItem>,
+    onPlayIndex: (Int) -> Unit,
+    onRemoveIndex: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val listState = rememberLazyListState()
+    LaunchedEffect(queueItems.size) {
+        val currentIdx = queueItems.indexOfFirst { it.isCurrent }
+        if (currentIdx > 2) {
+            listState.scrollToItem((currentIdx - 2).coerceAtLeast(0))
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF161616)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 240.dp, max = 480.dp)
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "当前播放队列 (${queueItems.size})",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
+                )
+                TextButton(onClick = onDismiss) {
+                    Text("关闭", color = Color.Gray)
+                }
+            }
+
+            if (queueItems.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("当前队列为空", color = Color.Gray, fontSize = 14.sp)
+                }
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(queueItems, key = { "${it.index}_${it.mediaId}" }) { item ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(
+                                    if (item.isCurrent) GreenPrimary.copy(alpha = 0.12f)
+                                    else Color.Transparent
+                                )
+                                .clickable { onPlayIndex(item.index) }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (item.isCurrent) {
+                                Icon(
+                                    imageVector = Icons.Default.GraphicEq,
+                                    contentDescription = "正在播放",
+                                    tint = GreenPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                            } else {
+                                Text(
+                                    text = "${item.index + 1}",
+                                    color = Color.Gray,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.width(28.dp)
+                                )
+                            }
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = item.title,
+                                    color = if (item.isCurrent) GreenPrimary else Color.White,
+                                    fontWeight = if (item.isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 14.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = item.artist,
+                                    color = Color.Gray,
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            if (!item.isCurrent) {
+                                IconButton(
+                                    onClick = { onRemoveIndex(item.index) },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "移出队列",
+                                        tint = Color.Gray,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -1,6 +1,8 @@
 package com.maifeipin.webmusic.ui.components
 
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -15,7 +17,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.maifeipin.webmusic.core.network.MediaFileDto
 import com.maifeipin.webmusic.ui.theme.DarkSurface
 import com.maifeipin.webmusic.ui.theme.GreenPrimary
+import kotlinx.coroutines.isActive
 
 @Composable
 fun MiniPlayerBar(
@@ -41,16 +45,19 @@ fun MiniPlayerBar(
 ) {
     if (currentSong == null) return
 
-    val infiniteTransition = rememberInfiniteTransition(label = "disc_rotation")
-    val rotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 8000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "rotation"
-    )
+    val rotation = remember { Animatable(0f) }
+    LaunchedEffect(isPlaying) {
+        if (isPlaying) {
+            while (isActive) {
+                val current = rotation.value % 360f
+                rotation.snapTo(current)
+                rotation.animateTo(
+                    targetValue = current + 360f,
+                    animationSpec = tween(durationMillis = 8000, easing = LinearEasing)
+                )
+            }
+        }
+    }
 
     Column(
         modifier = modifier
@@ -82,7 +89,7 @@ fun MiniPlayerBar(
                     .size(44.dp)
                     .clip(CircleShape)
                     .background(Color.Black)
-                    .rotate(if (isPlaying) rotation else 0f),
+                    .rotate(rotation.value),
                 contentAlignment = Alignment.Center
             ) {
                 Box(

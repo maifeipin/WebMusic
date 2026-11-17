@@ -50,6 +50,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
@@ -64,6 +65,7 @@ import com.maifeipin.webmusic.ui.components.AddToPlaylistDialog
 import com.maifeipin.webmusic.ui.components.FullPlayerSheet
 import com.maifeipin.webmusic.ui.components.LyricsManagerSheet
 import com.maifeipin.webmusic.ui.components.MiniPlayerBar
+import com.maifeipin.webmusic.ui.components.PlaybackQueueItem
 import com.maifeipin.webmusic.ui.components.PlaylistDetailView
 import com.maifeipin.webmusic.ui.components.SongDownloadAction
 import com.maifeipin.webmusic.ui.components.VideoPlayerDialog
@@ -108,6 +110,7 @@ class MainActivity : ComponentActivity() {
     private val currentPositionMsState = mutableStateOf(0L)
     private val playbackModeState = mutableStateOf(PlaybackMode.SEQUENCE)
     private val lyricsState = mutableStateOf<List<LyricLine>>(emptyList())
+    private val queueItemsState = mutableStateOf<List<PlaybackQueueItem>>(emptyList())
 
     // 歌词防竞态异步 Job
     private var lyricsJob: Job? = null
@@ -178,11 +181,29 @@ class MainActivity : ComponentActivity() {
                     seekEnabled = seekEnabledState.value,
                     playbackMode = playbackModeState.value,
                     lyrics = lyricsState.value,
+                    queueItems = queueItemsState.value,
                     onPlayPauseClick = { togglePlayPause() },
                     onPreviousClick = { mediaController?.seekToPreviousMediaItem() },
                     onNextClick = { mediaController?.seekToNextMediaItem() },
                     onSeekTo = { posMs -> mediaController?.seekTo(posMs) },
                     onToggleMode = { togglePlaybackMode() },
+                    onPlayQueueIndex = { index ->
+                        mediaController?.let { c ->
+                            if (index in 0 until c.mediaItemCount) {
+                                c.seekToDefaultPosition(index)
+                                c.play()
+                                syncQueueItems(c)
+                            }
+                        }
+                    },
+                    onRemoveQueueIndex = { index ->
+                        mediaController?.let { c ->
+                            if (index in 0 until c.mediaItemCount) {
+                                c.removeMediaItem(index)
+                                syncQueueItems(c)
+                            }
+                        }
+                    },
                     onClearSession = { clearPlaybackSession() },
                     onPlaySongFromList = { songList, index ->
                         playQueue(songList, index)
@@ -241,6 +262,7 @@ class MainActivity : ComponentActivity() {
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     currentMediaItemState.value = mediaItem
+                    syncQueueItems(controller)
                     PlaybackTimeline.onTransition(mediaItem?.mediaId)
                     // 切歌瞬间即时清零：新曲在 prepare 完成前拿不到时长，
                     // 若沿用上一曲的时长/位置，进度条与 seek 计算都会基于错误基准。
@@ -252,6 +274,10 @@ class MainActivity : ComponentActivity() {
                     } else {
                         lyricsState.value = emptyList()
                     }
+                }
+
+                override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+                    syncQueueItems(controller)
                 }
 
                 override fun onRepeatModeChanged(repeatMode: Int) {
@@ -273,6 +299,7 @@ class MainActivity : ComponentActivity() {
                     c.repeatMode = Player.REPEAT_MODE_ALL
                 }
                 syncPlaybackMode(c)
+                syncQueueItems(c)
 
                 // 2. Activity 重建后主动恢复当前正在播放歌曲的歌词
                 c.currentMediaItem?.mediaId?.toIntOrNull()?.let { songId ->
@@ -387,6 +414,7 @@ class MainActivity : ComponentActivity() {
             controller.setMediaItems(mediaItems, safeStartIndex, 0L)
             controller.prepare()
             controller.play()
+            syncQueueItems(controller)
             PlaybackTimeline.onPrepared()
         }
     }
@@ -531,8 +559,32 @@ class MainActivity : ComponentActivity() {
         }
         isPlayingState.value = false
         currentMediaItemState.value = null
+        queueItemsState.value = emptyList()
         resetProgressState()
         lyricsState.value = emptyList()
+    }
+
+    private fun syncQueueItems(controller: MediaController?) {
+        if (controller == null) {
+            queueItemsState.value = emptyList()
+            return
+        }
+        val count = controller.mediaItemCount
+        val currentIdx = controller.currentMediaItemIndex
+        val list = ArrayList<PlaybackQueueItem>(count)
+        for (i in 0 until count) {
+            val item = controller.getMediaItemAt(i)
+            list.add(
+                PlaybackQueueItem(
+                    index = i,
+                    mediaId = item.mediaId,
+                    title = item.mediaMetadata.title?.toString()?.ifBlank { null } ?: "未知曲目",
+                    artist = item.mediaMetadata.artist?.toString()?.ifBlank { null } ?: "未知艺术家",
+                    isCurrent = i == currentIdx
+                )
+            )
+        }
+        queueItemsState.value = list
     }
 
     override fun onDestroy() {
@@ -555,11 +607,14 @@ fun MainAppScreen(
     seekEnabled: Boolean,
     playbackMode: PlaybackMode,
     lyrics: List<LyricLine>,
+    queueItems: List<PlaybackQueueItem> = emptyList(),
     onPlayPauseClick: () -> Unit,
     onPreviousClick: () -> Unit,
     onNextClick: () -> Unit,
     onSeekTo: (Long) -> Unit,
     onToggleMode: () -> Unit,
+    onPlayQueueIndex: (Int) -> Unit = {},
+    onRemoveQueueIndex: (Int) -> Unit = {},
     onClearSession: () -> Unit,
     onPlaySongFromList: (List<MediaFileDto>, Int) -> Unit,
     onLyricsUpdated: (Int, String) -> Unit,
@@ -2310,6 +2365,7 @@ fun MainAppScreen(
             seekEnabled = seekEnabled,
             playbackMode = playbackMode,
             lyrics = lyrics,
+            queueItems = queueItems,
             isFavorite = currentSongDto.id != 0 && favoriteSongIds.contains(currentSongDto.id),
             onToggleFavorite = { toggleFavorite(currentSongDto.id) },
             onAddToPlaylist = { songToAddToPlaylist = currentSongDto },
@@ -2318,6 +2374,8 @@ fun MainAppScreen(
             onNextClick = onNextClick,
             onSeekTo = onSeekTo,
             onToggleMode = onToggleMode,
+            onPlayQueueIndex = onPlayQueueIndex,
+            onRemoveQueueIndex = onRemoveQueueIndex,
             onManageLyrics = { lyricsManagerSong = currentSongDto },
             onDismiss = { showFullPlayer = false }
         )
