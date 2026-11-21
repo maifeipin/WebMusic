@@ -268,19 +268,27 @@ export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
         e.stopPropagation();
         if (!currentSourceId) return;
 
-        const params = new URLSearchParams();
-        params.append('sourceId', currentSourceId.toString());
-        params.append('path', item.path);
-
-        const relativeUrl = `/api/files/download?${params.toString()}`;
-        const absoluteUrl = `${window.location.origin}${relativeUrl}`;
-
         try {
+            const res = await api.post('/files/share', {
+                sourceId: currentSourceId,
+                path: item.path
+            });
+
+            const params = new URLSearchParams();
+            params.append('sourceId', currentSourceId.toString());
+            params.append('path', item.path);
+            if (res.data?.shareToken) {
+                params.append('shareToken', res.data.shareToken);
+            }
+
+            const relativeUrl = `/api/files/download?${params.toString()}`;
+            const absoluteUrl = `${window.location.origin}${relativeUrl}`;
+
             await navigator.clipboard.writeText(absoluteUrl);
-            alert("Download link copied to clipboard!");
+            alert("Download link copied to clipboard (valid for 24 hours)!");
         } catch (err) {
-            console.error('Failed to copy', err);
-            alert("Failed to copy link");
+            console.error('Failed to create or copy share link', err);
+            alert("Failed to create share link");
         }
     };
 
@@ -288,10 +296,14 @@ export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
         e.stopPropagation();
         if (!currentSourceId) return;
 
-        // Construct URL
+        // Construct URL with access_token for browser native download
         const params = new URLSearchParams();
         params.append('sourceId', currentSourceId.toString());
         params.append('path', item.path);
+        const token = localStorage.getItem('token');
+        if (token) {
+            params.append('access_token', token);
+        }
 
         const url = `/api/files/download?${params.toString()}`;
 

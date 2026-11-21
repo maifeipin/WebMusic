@@ -107,9 +107,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 var accessToken = context.Request.Query["access_token"];
                 var path = context.HttpContext.Request.Path;
                 
-                // Read token from query string for Stream endpoint
+                // Read token from query string for Stream and File Download endpoints
                 if (!string.IsNullOrEmpty(accessToken) && 
-                    path.StartsWithSegments("/api/media/stream"))
+                    (path.StartsWithSegments("/api/media/stream") || path.StartsWithSegments("/api/files/download")))
                 {
                     context.Token = accessToken;
                 }

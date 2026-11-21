@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using WebMusic.Backend.Data;
 using WebMusic.Backend.Services;
 using WebMusic.Backend.Models;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text.Json;
 using System.Threading.Tasks;
 using System.Security.Claims;
 
@@ -26,13 +29,20 @@ public class FilesController : ControllerBase
     private readonly ISmbService _smbService;
     private readonly ScannerService _scannerService;
     private readonly ILogger<FilesController> _logger;
+    private readonly IDataProtector _shareProtector;
 
-    public FilesController(AppDbContext context, ISmbService smbService, ScannerService scannerService, ILogger<FilesController> logger)
+    public FilesController(
+        AppDbContext context,
+        ISmbService smbService,
+        ScannerService scannerService,
+        ILogger<FilesController> logger,
+        IDataProtectionProvider dataProtectionProvider)
     {
         _context = context;
         _smbService = smbService;
         _scannerService = scannerService;
         _logger = logger;
+        _shareProtector = dataProtectionProvider.CreateProtector("WebMusic.FileShare.v1");
     }
 
     private int GetUserId() => int.TryParse(User.FindFirst("sub")?.Value ?? User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var userId) ? userId : 0;
@@ -118,15 +128,50 @@ public class FilesController : ControllerBase
         }
     }
 
+    public record CreateFileShareRequest(int SourceId, string Path, int? ExpiresInHours = 24);
+    private record FileSharePayload(int SourceId, string Path, long ExpiresAt);
+
+    [HttpPost("share")]
+    public async Task<IActionResult> CreateShareLink([FromBody] CreateFileShareRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Path) || !IsSafeRelativePath(request.Path))
+            return BadRequest("Invalid path.");
+
+        var source = await _context.ScanSources.FirstOrDefaultAsync(s => s.Id == request.SourceId);
+        if (source == null) return NotFound("Source not found");
+        if (!CanAccess(source)) return Forbid();
+
+        var hours = Math.Clamp(request.ExpiresInHours ?? 24, 1, 24 * 30);
+        var expiresAt = DateTimeOffset.UtcNow.AddHours(hours).ToUnixTimeSeconds();
+        var payload = JsonSerializer.Serialize(new FileSharePayload(request.SourceId, request.Path, expiresAt));
+        var shareToken = _shareProtector.Protect(payload);
+
+        return Ok(new { shareToken, expiresAt });
+    }
+
+    [AllowAnonymous]
     [HttpGet("download")]
-    public async Task<IActionResult> Download([FromQuery] int sourceId, [FromQuery] string path)
+    public async Task<IActionResult> Download([FromQuery] int sourceId, [FromQuery] string path, [FromQuery] string? shareToken = null)
     {
         if (!IsSafeRelativePath(path)) return BadRequest("Invalid path.");
+
+        if (!string.IsNullOrEmpty(shareToken))
+        {
+            if (!TryValidateShareToken(shareToken, sourceId, path))
+            {
+                return Unauthorized("Invalid or expired share link.");
+            }
+        }
+        else if (User.Identity?.IsAuthenticated != true)
+        {
+            return Unauthorized();
+        }
+
         var source = await _context.ScanSources
             .Include(s => s.StorageCredential)
             .FirstOrDefaultAsync(s => s.Id == sourceId);
         if (source == null) return NotFound("Source not found");
-        if (!CanAccess(source)) return Forbid();
+        if (string.IsNullOrEmpty(shareToken) && !CanAccess(source)) return Forbid();
 
         try
         {
@@ -154,6 +199,23 @@ public class FilesController : ControllerBase
         {
             _logger.LogError(ex, "Download Failed");
             return StatusCode(500, ex.Message);
+        }
+    }
+
+    private bool TryValidateShareToken(string shareToken, int sourceId, string path)
+    {
+        try
+        {
+            var raw = _shareProtector.Unprotect(shareToken);
+            var payload = JsonSerializer.Deserialize<FileSharePayload>(raw);
+            if (payload == null) return false;
+            return payload.SourceId == sourceId &&
+                   string.Equals(payload.Path, path, StringComparison.Ordinal) &&
+                   DateTimeOffset.UtcNow.ToUnixTimeSeconds() <= payload.ExpiresAt;
+        }
+        catch (Exception ex) when (ex is CryptographicException or JsonException)
+        {
+            return false;
         }
     }
 
