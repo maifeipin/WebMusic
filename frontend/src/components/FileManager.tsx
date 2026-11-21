@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { browseFiles, createDirectory, uploadFile, deleteFile, type FileItem } from '../services/files';
+import { browseFiles, createDirectory, uploadFile, deleteFile, createFileShareLink, type FileItem } from '../services/files';
 import { DuplicateCleanerModal } from './DuplicateCleanerModal';
 import { X, Folder, FileText, HardDrive, ArrowLeft, Upload, Plus, Trash2, Download, Share2, AlertTriangle, Music, Video, Image as ImageIcon, FileCode } from 'lucide-react';
 
@@ -269,16 +269,13 @@ export const FileManager: React.FC<FileManagerProps> = ({ onClose }) => {
         if (!currentSourceId) return;
 
         try {
-            const res = await api.post('/files/share', {
-                sourceId: currentSourceId,
-                path: item.path
-            });
+            const res = await createFileShareLink(currentSourceId, item.path);
 
             const params = new URLSearchParams();
             params.append('sourceId', currentSourceId.toString());
             params.append('path', item.path);
-            if (res.data?.shareToken) {
-                params.append('shareToken', res.data.shareToken);
+            if (res?.shareToken) {
+                params.append('shareToken', res.shareToken);
             }
 
             const relativeUrl = `/api/files/download?${params.toString()}`;
