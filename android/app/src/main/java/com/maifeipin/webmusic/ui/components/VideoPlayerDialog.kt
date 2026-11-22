@@ -7,12 +7,9 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
-import android.media.AudioAttributes as PlatformAudioAttributes
-import android.media.MediaPlayer
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import android.util.Log
-import android.view.SurfaceHolder
-import android.view.SurfaceView
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -73,6 +70,10 @@ import com.maifeipin.webmusic.core.cache.MediaCacheManager
 import com.maifeipin.webmusic.core.network.MediaFileDto
 import com.maifeipin.webmusic.core.network.WebMusicNetwork
 import com.maifeipin.webmusic.ui.theme.GreenPrimary
+import org.videolan.libvlc.LibVLC
+import org.videolan.libvlc.Media
+import org.videolan.libvlc.MediaPlayer as VlcMediaPlayer
+import org.videolan.libvlc.util.VLCVideoLayout
 import java.io.File
 
 /**
@@ -140,6 +141,7 @@ fun VideoPlayerDialog(
     var playbackError by remember { mutableStateOf<PlaybackException?>(null) }
     var useNativeFallback by remember { mutableStateOf(false) }
     var nativeError by remember { mutableStateOf<String?>(null) }
+    var retryTrigger by remember { mutableIntStateOf(0) }
 
     val exoPlayer = remember {
         // 优先硬件解码，不支持的音频/封装格式（如 AC-3/DTS/EAC-3 等）自动回退至 FFmpeg 软解扩展
@@ -171,11 +173,17 @@ fun VideoPlayerDialog(
             }
     }
 
-    LaunchedEffect(song.id, localFilePath) {
+    LaunchedEffect(song.id, localFilePath, retryTrigger) {
         playbackError = null
         nativeError = null
-        useNativeFallback = false
         isBuffering = true
+        // .avi / .flv 等 ExoPlayer 原生不支持的容器直接走内置 LibVLC，避免先报错再切换的等待
+        if (isVlcPreferredFormat(localFilePath ?: song.filePath)) {
+            exoPlayer.stop()
+            useNativeFallback = true
+            return@LaunchedEffect
+        }
+        useNativeFallback = false
         val metadata = MediaMetadata.Builder()
             .setTitle(song.title ?: "未知 MV")
             .setArtist(song.artist ?: "未知艺术家")
@@ -253,8 +261,8 @@ fun VideoPlayerDialog(
                 Log.e(FULLSCREEN_TAG, "video playback error: ${error.errorCodeName}", error)
                 isBuffering = false
                 isVideoPlaying = false
-                if (!useNativeFallback && shouldFallbackToNativeMediaPlayer(error)) {
-                    Log.w(FULLSCREEN_TAG, "Switching to Android native MediaPlayer fallback for song=${song.id}")
+                if (!useNativeFallback && shouldFallbackToVlc(error)) {
+                    Log.w(FULLSCREEN_TAG, "Switching to LibVLC fallback for song=${song.id}")
                     exoPlayer.stop()
                     playbackError = null
                     nativeError = null
@@ -352,13 +360,14 @@ fun VideoPlayerDialog(
             .zIndex(1f)
             .background(Color.Black)
     ) {
-        // 视频渲染器视图：ExoPlayer 遇到容器/硬件解码失败时自动切换到原生 MediaPlayer 兼容模式
+        // 视频渲染器视图：.avi/.flv 等直走 LibVLC；其余优先 ExoPlayer，遇到编码/容器异常自动切 LibVLC
         if (useNativeFallback) {
-            NativeMediaPlayerView(
+            VlcVideoPlayerView(
                 song = song,
                 serverUrl = serverUrl,
                 token = token,
                 localFilePath = localFilePath,
+                retryTrigger = retryTrigger,
                 onBufferingChanged = { isBuffering = it },
                 onPlayingChanged = { isVideoPlaying = it },
                 onError = { msg ->
@@ -448,11 +457,7 @@ fun VideoPlayerDialog(
                             playbackError = null
                             nativeError = null
                             isBuffering = true
-                            if (useNativeFallback) {
-                                useNativeFallback = false
-                            }
-                            exoPlayer.prepare()
-                            exoPlayer.playWhenReady = true
+                            retryTrigger++
                         },
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
                     ) {
@@ -539,7 +544,7 @@ fun VideoPlayerDialog(
                         modifier = Modifier.padding(end = 4.dp)
                     ) {
                         Text(
-                            text = "兼容模式",
+                            text = "VLC 内核",
                             color = Color.White,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
@@ -767,8 +772,14 @@ private fun openInExternalPlayer(
     }
 }
 
-/** 判断 ExoPlayer 异常是否属于解码/封装/渲染兼容性问题，适合切换至系统原生 MediaPlayer 兜底。 */
-private fun shouldFallbackToNativeMediaPlayer(error: PlaybackException): Boolean {
+/** 判断文件扩展名是否属于 ExoPlayer 原生不支持、应直接交由 LibVLC 播放的容器格式。 */
+private fun isVlcPreferredFormat(filePath: String?): Boolean {
+    val ext = filePath?.substringAfterLast('.', "")?.lowercase() ?: ""
+    return ext in setOf("avi", "flv", "wmv", "rmvb", "rm", "vob", "mpg", "mpeg", "divx", "asf")
+}
+
+/** 判断 ExoPlayer 异常是否属于解码/封装/渲染兼容性问题，适合自动切换至 LibVLC 兜底。 */
+private fun shouldFallbackToVlc(error: PlaybackException): Boolean {
     return when (error.errorCode) {
         PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
         PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
@@ -783,37 +794,40 @@ private fun shouldFallbackToNativeMediaPlayer(error: PlaybackException): Boolean
 }
 
 /**
- * Android 原生 MediaPlayer + SurfaceView 兜底播放器：
- * 复用手机系统自带媒体框架（NuPlayer / 厂商内置解码插件）播放 ExoPlayer 无法解码的视频。
+ * 基于 LibVLC 的全能视频兜底播放器：
+ * 内置完整 FFmpeg 解复用与软/硬解能力，通吃 .avi / .mkv / .ts / .flv 等冷门容器与编码。
  */
 @Composable
-private fun NativeMediaPlayerView(
+private fun VlcVideoPlayerView(
     song: MediaFileDto,
     serverUrl: String,
     token: String?,
     localFilePath: String?,
+    retryTrigger: Int,
     onBufferingChanged: (Boolean) -> Unit,
     onPlayingChanged: (Boolean) -> Unit,
     onError: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
-    var isPrepared by remember { mutableStateOf(false) }
     var isPlaying by remember { mutableStateOf(false) }
     var showControls by remember { mutableStateOf(true) }
-    var durationMs by remember { mutableIntStateOf(0) }
-    var positionMs by remember { mutableIntStateOf(0) }
-    var videoWidth by remember { mutableIntStateOf(0) }
-    var videoHeight by remember { mutableIntStateOf(0) }
+    var durationMs by remember { mutableLongStateOf(0L) }
+    var positionMs by remember { mutableLongStateOf(0L) }
+    var isSeeking by remember { mutableStateOf(false) }
 
-    // 播放中定期刷新进度，并在 3.5 秒无操作后自动收起控制栏
-    LaunchedEffect(isPlaying, isPrepared) {
-        while (isPlaying && isPrepared) {
-            positionMs = mediaPlayer?.currentPosition ?: positionMs
-            delay(500)
-        }
+    val libVlc = remember {
+        LibVLC(
+            context.applicationContext,
+            arrayListOf(
+                "--no-drop-late-frames",
+                "--no-skip-frames",
+                "--network-caching=1500"
+            )
+        )
     }
+    val vlcPlayer = remember(libVlc) { VlcMediaPlayer(libVlc) }
+
     LaunchedEffect(showControls, isPlaying) {
         if (showControls && isPlaying) {
             delay(3500)
@@ -821,15 +835,94 @@ private fun NativeMediaPlayerView(
         }
     }
 
-    DisposableEffect(song.id, localFilePath) {
+    // 绑定事件监听并加载媒体（本地文件 / content:// / 远端鉴权流）
+    DisposableEffect(song.id, localFilePath, retryTrigger, vlcPlayer) {
+        var pfd: ParcelFileDescriptor? = null
+        onBufferingChanged(true)
+        durationMs = 0L
+        positionMs = 0L
+        isPlaying = false
+
+        vlcPlayer.setEventListener { event ->
+            when (event.type) {
+                VlcMediaPlayer.Event.Opening -> onBufferingChanged(true)
+                VlcMediaPlayer.Event.Buffering -> {
+                    onBufferingChanged(event.buffering < 100f)
+                }
+                VlcMediaPlayer.Event.Playing -> {
+                    isPlaying = true
+                    onPlayingChanged(true)
+                    onBufferingChanged(false)
+                    if (vlcPlayer.length > 0) {
+                        durationMs = vlcPlayer.length
+                    }
+                }
+                VlcMediaPlayer.Event.Paused,
+                VlcMediaPlayer.Event.Stopped -> {
+                    isPlaying = false
+                    onPlayingChanged(false)
+                }
+                VlcMediaPlayer.Event.EndReached -> {
+                    isPlaying = false
+                    onPlayingChanged(false)
+                    showControls = true
+                }
+                VlcMediaPlayer.Event.TimeChanged -> {
+                    if (!isSeeking) {
+                        positionMs = event.timeChanged.coerceAtLeast(0L)
+                    }
+                }
+                VlcMediaPlayer.Event.LengthChanged -> {
+                    durationMs = event.lengthChanged.coerceAtLeast(0L)
+                }
+                VlcMediaPlayer.Event.EncounteredError -> {
+                    Log.e(FULLSCREEN_TAG, "LibVLC playback encountered error for song=${song.id}")
+                    isPlaying = false
+                    onPlayingChanged(false)
+                    onBufferingChanged(false)
+                    onError("VLC 内核播放失败，请检查网络或尝试外部播放器打开。")
+                }
+            }
+        }
+
+        try {
+            val media = if (!localFilePath.isNullOrEmpty()) {
+                val trimmed = localFilePath.trim()
+                if (trimmed.startsWith("content://")) {
+                    pfd = context.contentResolver.openFileDescriptor(Uri.parse(trimmed), "r")
+                    val fd = pfd?.fileDescriptor
+                        ?: throw IllegalStateException("无法打开本地视频描述符")
+                    Media(libVlc, fd)
+                } else {
+                    Media(libVlc, trimmed.removePrefix("file://"))
+                }
+            } else {
+                val base = "${serverUrl.trimEnd('/')}/api/media/stream/${song.id}"
+                val url = if (!token.isNullOrBlank()) "$base?access_token=${Uri.encode(token)}" else base
+                Media(libVlc, Uri.parse(url))
+            }
+            media.setHWDecoderEnabled(true, false)
+            vlcPlayer.media = media
+            media.release()
+            vlcPlayer.play()
+        } catch (ex: Exception) {
+            Log.e(FULLSCREEN_TAG, "LibVLC media init failed", ex)
+            onBufferingChanged(false)
+            onError("VLC 内核初始化失败：${ex.message ?: "未知错误"}")
+        }
+
         onDispose {
-            runCatching {
-                mediaPlayer?.stop()
-            }
-            runCatching {
-                mediaPlayer?.release()
-            }
-            mediaPlayer = null
+            runCatching { vlcPlayer.setEventListener(null) }
+            runCatching { vlcPlayer.stop() }
+            runCatching { pfd?.close() }
+        }
+    }
+
+    DisposableEffect(vlcPlayer, libVlc) {
+        onDispose {
+            runCatching { vlcPlayer.detachViews() }
+            runCatching { vlcPlayer.release() }
+            runCatching { libVlc.release() }
         }
     }
 
@@ -842,105 +935,16 @@ private fun NativeMediaPlayerView(
             ) { showControls = !showControls },
         contentAlignment = Alignment.Center
     ) {
-        val ratioModifier = if (videoWidth > 0 && videoHeight > 0) {
-            Modifier.aspectRatio(videoWidth.toFloat() / videoHeight.toFloat())
-        } else {
-            Modifier.fillMaxSize()
-        }
-
         AndroidView(
             factory = { ctx ->
-                SurfaceView(ctx).apply {
-                    holder.addCallback(object : SurfaceHolder.Callback {
-                        override fun surfaceCreated(holder: SurfaceHolder) {
-                            val existing = mediaPlayer
-                            if (existing != null) {
-                                runCatching { existing.setDisplay(holder) }
-                                return
-                            }
-                            onBufferingChanged(true)
-                            val mp = MediaPlayer().apply {
-                                setAudioAttributes(
-                                    PlatformAudioAttributes.Builder()
-                                        .setUsage(PlatformAudioAttributes.USAGE_MEDIA)
-                                        .setContentType(PlatformAudioAttributes.CONTENT_TYPE_MOVIE)
-                                        .build()
-                                )
-                                setDisplay(holder)
-                                setScreenOnWhilePlaying(true)
-                                setOnVideoSizeChangedListener { _, w, h ->
-                                    if (w > 0 && h > 0) {
-                                        videoWidth = w
-                                        videoHeight = h
-                                    }
-                                }
-                                setOnPreparedListener { preparedMp ->
-                                    isPrepared = true
-                                    durationMs = preparedMp.duration.coerceAtLeast(0)
-                                    onBufferingChanged(false)
-                                    preparedMp.start()
-                                    isPlaying = true
-                                    onPlayingChanged(true)
-                                }
-                                setOnInfoListener { _, what, _ ->
-                                    when (what) {
-                                        MediaPlayer.MEDIA_INFO_BUFFERING_START -> onBufferingChanged(true)
-                                        MediaPlayer.MEDIA_INFO_BUFFERING_END,
-                                        MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START -> onBufferingChanged(false)
-                                    }
-                                    false
-                                }
-                                setOnCompletionListener {
-                                    isPlaying = false
-                                    onPlayingChanged(false)
-                                    showControls = true
-                                }
-                                setOnErrorListener { _, what, extra ->
-                                    Log.e(FULLSCREEN_TAG, "Native MediaPlayer error what=$what extra=$extra")
-                                    isPlaying = false
-                                    onPlayingChanged(false)
-                                    onError("系统兼容播放器也无法播放此视频 (what=$what, extra=$extra)，请尝试使用外部播放器打开。")
-                                    true
-                                }
-                            }
-                            mediaPlayer = mp
-                            try {
-                                if (!localFilePath.isNullOrEmpty()) {
-                                    val trimmed = localFilePath.trim()
-                                    if (trimmed.startsWith("content://") || trimmed.startsWith("file://")) {
-                                        mp.setDataSource(ctx, Uri.parse(trimmed))
-                                    } else {
-                                        mp.setDataSource(trimmed)
-                                    }
-                                } else {
-                                    val streamUrl = "${serverUrl.trimEnd('/')}/api/media/stream/${song.id}"
-                                    val headers = if (!token.isNullOrBlank()) {
-                                        mapOf("Authorization" to "Bearer $token")
-                                    } else {
-                                        emptyMap()
-                                    }
-                                    mp.setDataSource(ctx, Uri.parse(streamUrl), headers)
-                                }
-                                mp.prepareAsync()
-                            } catch (ex: Exception) {
-                                Log.e(FULLSCREEN_TAG, "Native MediaPlayer setDataSource failed", ex)
-                                onBufferingChanged(false)
-                                onError("系统兼容播放器初始化失败：${ex.message ?: "未知错误"}")
-                            }
-                        }
-
-                        override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
-
-                        override fun surfaceDestroyed(holder: SurfaceHolder) {
-                            runCatching { mediaPlayer?.setDisplay(null) }
-                        }
-                    })
+                VLCVideoLayout(ctx).also { layout ->
+                    vlcPlayer.attachViews(layout, null, false, false)
                 }
             },
-            modifier = ratioModifier
+            modifier = Modifier.fillMaxSize()
         )
 
-        if (showControls && isPrepared) {
+        if (showControls) {
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -949,15 +953,10 @@ private fun NativeMediaPlayerView(
             ) {
                 IconButton(
                     onClick = {
-                        val mp = mediaPlayer ?: return@IconButton
-                        if (isPlaying) {
-                            mp.pause()
-                            isPlaying = false
-                            onPlayingChanged(false)
+                        if (vlcPlayer.isPlaying) {
+                            vlcPlayer.pause()
                         } else {
-                            mp.start()
-                            isPlaying = true
-                            onPlayingChanged(true)
+                            vlcPlayer.play()
                         }
                     },
                     modifier = Modifier.fillMaxSize()
@@ -971,7 +970,7 @@ private fun NativeMediaPlayerView(
                 }
             }
 
-            if (durationMs > 0) {
+            if (durationMs > 0L) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -989,10 +988,12 @@ private fun NativeMediaPlayerView(
                     Slider(
                         value = positionMs.toFloat().coerceIn(0f, durationMs.toFloat()),
                         onValueChange = { value ->
-                            positionMs = value.toInt()
+                            isSeeking = true
+                            positionMs = value.toLong()
                         },
                         onValueChangeFinished = {
-                            runCatching { mediaPlayer?.seekTo(positionMs) }
+                            vlcPlayer.time = positionMs
+                            isSeeking = false
                         },
                         valueRange = 0f..durationMs.toFloat(),
                         colors = SliderDefaults.colors(
@@ -1014,9 +1015,9 @@ private fun NativeMediaPlayerView(
     }
 }
 
-private fun formatMediaTime(ms: Int): String {
-    val totalSeconds = (ms / 1000).coerceAtLeast(0)
-    val minutes = totalSeconds / 60
-    val seconds = totalSeconds % 60
+private fun formatMediaTime(ms: Long): String {
+    val totalSeconds = (ms / 1000L).coerceAtLeast(0L)
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
     return "%02d:%02d".format(minutes, seconds)
 }

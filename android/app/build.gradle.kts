@@ -97,6 +97,7 @@ dependencies {
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.datasource.okhttp)
     implementation(libs.jellyfin.media3.ffmpeg.decoder)
+    implementation(libs.libvlc.all)
 
     // 网络与 API
     implementation(libs.okhttp)
