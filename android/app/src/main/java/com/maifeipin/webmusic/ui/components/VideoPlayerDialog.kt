@@ -141,7 +141,7 @@ fun VideoPlayerDialog(
             exoPlayer.setMediaItem(mediaItem)
         } else {
             val streamUrl = "${serverUrl.trimEnd('/')}/api/media/stream/${song.id}"
-            val okHttpClient = WebMusicNetwork.createClientWithToken(token ?: "")
+            val okHttpClient = WebMusicNetwork.createClientWithToken(token ?: "", readTimeoutSeconds = 60)
             val cacheDataSourceFactory = MediaCacheManager.createCacheDataSourceFactory(
                 context.applicationContext,
                 okHttpClient
@@ -312,6 +312,17 @@ fun VideoPlayerDialog(
                     fontSize = 11.sp,
                     textAlign = TextAlign.Center
                 )
+                val causeDetail = remember(error) { formatPlaybackErrorCause(error) }
+                if (causeDetail.isNotEmpty()) {
+                    Text(
+                        text = causeDetail,
+                        color = Color.Gray,
+                        fontSize = 11.sp,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center
+                    )
+                }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.padding(top = 4.dp)
@@ -550,6 +561,15 @@ private fun formatPlaybackErrorMessage(error: PlaybackException): String {
 
         else -> error.localizedMessage ?: "播放遇到未知异常，可尝试重试或使用外部播放器打开。"
     }
+}
+
+/** 提取底层异常原因（如 SocketTimeoutException / HttpDataSourceException），方便无 ADB 时直接排查。 */
+private fun formatPlaybackErrorCause(error: PlaybackException): String {
+    val root = generateSequence<Throwable>(error) { it.cause }.lastOrNull()
+    if (root == null || root === error) return ""
+    val name = root.javaClass.simpleName
+    val msg = root.message?.takeIf { it.isNotBlank() }
+    return if (msg != null) "$name: $msg" else name
 }
 
 /** 根据文件路径后缀推断视频 MIME 类型，用于拉起外部播放器。 */
