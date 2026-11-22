@@ -7,13 +7,19 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.media.AudioAttributes as PlatformAudioAttributes
+import android.media.MediaPlayer
 import android.net.Uri
 import android.util.Log
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,6 +29,8 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -56,8 +64,11 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.ts.AdtsExtractor
 import androidx.media3.session.MediaSession
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.delay
 import com.maifeipin.webmusic.core.cache.MediaCacheManager
 import com.maifeipin.webmusic.core.network.MediaFileDto
 import com.maifeipin.webmusic.core.network.WebMusicNetwork
@@ -127,6 +138,8 @@ fun VideoPlayerDialog(
     var isBuffering by remember { mutableStateOf(true) }
     var isVideoPlaying by remember { mutableStateOf(false) }
     var playbackError by remember { mutableStateOf<PlaybackException?>(null) }
+    var useNativeFallback by remember { mutableStateOf(false) }
+    var nativeError by remember { mutableStateOf<String?>(null) }
 
     val exoPlayer = remember {
         // 优先硬件解码，不支持的音频/封装格式（如 AC-3/DTS/EAC-3 等）自动回退至 FFmpeg 软解扩展
@@ -160,6 +173,8 @@ fun VideoPlayerDialog(
 
     LaunchedEffect(song.id, localFilePath) {
         playbackError = null
+        nativeError = null
+        useNativeFallback = false
         isBuffering = true
         val metadata = MediaMetadata.Builder()
             .setTitle(song.title ?: "未知 MV")
@@ -184,7 +199,11 @@ fun VideoPlayerDialog(
                 context.applicationContext,
                 okHttpClient
             )
-            val mediaSourceFactory = DefaultMediaSourceFactory(context.applicationContext)
+            // 启用恒定码率 Seek 兜底，提升 TS / ADTS 等容器的解复用与拖动兼容性
+            val extractorsFactory = DefaultExtractorsFactory()
+                .setConstantBitrateSeekingEnabled(true)
+                .setAdtsExtractorFlags(AdtsExtractor.FLAG_ENABLE_CONSTANT_BITRATE_SEEKING)
+            val mediaSourceFactory = DefaultMediaSourceFactory(context.applicationContext, extractorsFactory)
                 .setDataSourceFactory(cacheDataSourceFactory)
             val cacheKey = "video_${serverUrl.trimEnd('/')}_${song.id}_${song.contentVersion ?: song.fileHash ?: ""}"
             val mediaItem = MediaItem.Builder()
@@ -234,7 +253,16 @@ fun VideoPlayerDialog(
                 Log.e(FULLSCREEN_TAG, "video playback error: ${error.errorCodeName}", error)
                 isBuffering = false
                 isVideoPlaying = false
-                playbackError = error
+                if (!useNativeFallback && shouldFallbackToNativeMediaPlayer(error)) {
+                    Log.w(FULLSCREEN_TAG, "Switching to Android native MediaPlayer fallback for song=${song.id}")
+                    exoPlayer.stop()
+                    playbackError = null
+                    nativeError = null
+                    isBuffering = true
+                    useNativeFallback = true
+                } else {
+                    playbackError = error
+                }
             }
         }
         exoPlayer.addListener(listener)
@@ -242,8 +270,8 @@ fun VideoPlayerDialog(
     }
 
     // 无论横屏全屏还是竖屏播放，只要正在播放且无报错就保持屏幕常亮
-    DisposableEffect(isVideoPlaying, playbackError, activity) {
-        if (isVideoPlaying && playbackError == null) {
+    DisposableEffect(isVideoPlaying, playbackError, nativeError, activity) {
+        if (isVideoPlaying && playbackError == null && nativeError == null) {
             activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -324,29 +352,47 @@ fun VideoPlayerDialog(
             .zIndex(1f)
             .background(Color.Black)
     ) {
-        // 视频渲染器视图
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    player = exoPlayer
-                    useController = true
-                    setShowNextButton(false)
-                    setShowPreviousButton(false)
-                    controllerAutoShow = true
-                    controllerShowTimeoutMs = 3500
-                }
-            },
-            modifier = Modifier.fillMaxSize()
-        )
+        // 视频渲染器视图：ExoPlayer 遇到容器/硬件解码失败时自动切换到原生 MediaPlayer 兼容模式
+        if (useNativeFallback) {
+            NativeMediaPlayerView(
+                song = song,
+                serverUrl = serverUrl,
+                token = token,
+                localFilePath = localFilePath,
+                onBufferingChanged = { isBuffering = it },
+                onPlayingChanged = { isVideoPlaying = it },
+                onError = { msg ->
+                    isBuffering = false
+                    isVideoPlaying = false
+                    nativeError = msg
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            AndroidView(
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        player = exoPlayer
+                        useController = true
+                        setShowNextButton(false)
+                        setShowPreviousButton(false)
+                        controllerAutoShow = true
+                        controllerShowTimeoutMs = 3500
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
 
-        if (isBuffering && playbackError == null) {
+        val activeErrorMessage = nativeError ?: playbackError?.let { formatPlaybackErrorMessage(it) }
+        if (isBuffering && activeErrorMessage == null) {
             CircularProgressIndicator(
                 color = GreenPrimary,
                 modifier = Modifier.align(Alignment.Center)
             )
         }
 
-        playbackError?.let { error ->
+        if (activeErrorMessage != null) {
             Column(
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -369,27 +415,29 @@ fun VideoPlayerDialog(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = formatPlaybackErrorMessage(error),
+                    text = activeErrorMessage,
                     color = Color.LightGray,
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center
                 )
-                Text(
-                    text = "错误代码：${error.errorCodeName}",
-                    color = Color.Gray,
-                    fontSize = 11.sp,
-                    textAlign = TextAlign.Center
-                )
-                val causeDetail = remember(error) { formatPlaybackErrorCause(error) }
-                if (causeDetail.isNotEmpty()) {
+                playbackError?.let { error ->
                     Text(
-                        text = causeDetail,
+                        text = "错误代码：${error.errorCodeName}",
                         color = Color.Gray,
                         fontSize = 11.sp,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center
                     )
+                    val causeDetail = remember(error) { formatPlaybackErrorCause(error) }
+                    if (causeDetail.isNotEmpty()) {
+                        Text(
+                            text = causeDetail,
+                            color = Color.Gray,
+                            fontSize = 11.sp,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -398,7 +446,11 @@ fun VideoPlayerDialog(
                     OutlinedButton(
                         onClick = {
                             playbackError = null
+                            nativeError = null
                             isBuffering = true
+                            if (useNativeFallback) {
+                                useNativeFallback = false
+                            }
                             exoPlayer.prepare()
                             exoPlayer.playWhenReady = true
                         },
@@ -478,6 +530,22 @@ fun VideoPlayerDialog(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                }
+
+                if (useNativeFallback) {
+                    Surface(
+                        color = Color.White.copy(alpha = 0.16f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.padding(end = 4.dp)
+                    ) {
+                        Text(
+                            text = "兼容模式",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
 
                 if (!localFilePath.isNullOrEmpty() && File(localFilePath).exists()) {
@@ -697,4 +765,258 @@ private fun openInExternalPlayer(
         Log.e(FULLSCREEN_TAG, "Failed to launch external player", ex)
         Toast.makeText(context, "无法打开外部播放器：${ex.message ?: "未知错误"}", Toast.LENGTH_SHORT).show()
     }
+}
+
+/** 判断 ExoPlayer 异常是否属于解码/封装/渲染兼容性问题，适合切换至系统原生 MediaPlayer 兜底。 */
+private fun shouldFallbackToNativeMediaPlayer(error: PlaybackException): Boolean {
+    return when (error.errorCode) {
+        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+        PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+        PlaybackException.ERROR_CODE_UNSPECIFIED -> true
+        else -> false
+    }
+}
+
+/**
+ * Android 原生 MediaPlayer + SurfaceView 兜底播放器：
+ * 复用手机系统自带媒体框架（NuPlayer / 厂商内置解码插件）播放 ExoPlayer 无法解码的视频。
+ */
+@Composable
+private fun NativeMediaPlayerView(
+    song: MediaFileDto,
+    serverUrl: String,
+    token: String?,
+    localFilePath: String?,
+    onBufferingChanged: (Boolean) -> Unit,
+    onPlayingChanged: (Boolean) -> Unit,
+    onError: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    var isPrepared by remember { mutableStateOf(false) }
+    var isPlaying by remember { mutableStateOf(false) }
+    var showControls by remember { mutableStateOf(true) }
+    var durationMs by remember { mutableIntStateOf(0) }
+    var positionMs by remember { mutableIntStateOf(0) }
+    var videoWidth by remember { mutableIntStateOf(0) }
+    var videoHeight by remember { mutableIntStateOf(0) }
+
+    // 播放中定期刷新进度，并在 3.5 秒无操作后自动收起控制栏
+    LaunchedEffect(isPlaying, isPrepared) {
+        while (isPlaying && isPrepared) {
+            positionMs = mediaPlayer?.currentPosition ?: positionMs
+            delay(500)
+        }
+    }
+    LaunchedEffect(showControls, isPlaying) {
+        if (showControls && isPlaying) {
+            delay(3500)
+            showControls = false
+        }
+    }
+
+    DisposableEffect(song.id, localFilePath) {
+        onDispose {
+            runCatching {
+                mediaPlayer?.stop()
+            }
+            runCatching {
+                mediaPlayer?.release()
+            }
+            mediaPlayer = null
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .background(Color.Black)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { showControls = !showControls },
+        contentAlignment = Alignment.Center
+    ) {
+        val ratioModifier = if (videoWidth > 0 && videoHeight > 0) {
+            Modifier.aspectRatio(videoWidth.toFloat() / videoHeight.toFloat())
+        } else {
+            Modifier.fillMaxSize()
+        }
+
+        AndroidView(
+            factory = { ctx ->
+                SurfaceView(ctx).apply {
+                    holder.addCallback(object : SurfaceHolder.Callback {
+                        override fun surfaceCreated(holder: SurfaceHolder) {
+                            val existing = mediaPlayer
+                            if (existing != null) {
+                                runCatching { existing.setDisplay(holder) }
+                                return
+                            }
+                            onBufferingChanged(true)
+                            val mp = MediaPlayer().apply {
+                                setAudioAttributes(
+                                    PlatformAudioAttributes.Builder()
+                                        .setUsage(PlatformAudioAttributes.USAGE_MEDIA)
+                                        .setContentType(PlatformAudioAttributes.CONTENT_TYPE_MOVIE)
+                                        .build()
+                                )
+                                setDisplay(holder)
+                                setScreenOnWhilePlaying(true)
+                                setOnVideoSizeChangedListener { _, w, h ->
+                                    if (w > 0 && h > 0) {
+                                        videoWidth = w
+                                        videoHeight = h
+                                    }
+                                }
+                                setOnPreparedListener { preparedMp ->
+                                    isPrepared = true
+                                    durationMs = preparedMp.duration.coerceAtLeast(0)
+                                    onBufferingChanged(false)
+                                    preparedMp.start()
+                                    isPlaying = true
+                                    onPlayingChanged(true)
+                                }
+                                setOnInfoListener { _, what, _ ->
+                                    when (what) {
+                                        MediaPlayer.MEDIA_INFO_BUFFERING_START -> onBufferingChanged(true)
+                                        MediaPlayer.MEDIA_INFO_BUFFERING_END,
+                                        MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START -> onBufferingChanged(false)
+                                    }
+                                    false
+                                }
+                                setOnCompletionListener {
+                                    isPlaying = false
+                                    onPlayingChanged(false)
+                                    showControls = true
+                                }
+                                setOnErrorListener { _, what, extra ->
+                                    Log.e(FULLSCREEN_TAG, "Native MediaPlayer error what=$what extra=$extra")
+                                    isPlaying = false
+                                    onPlayingChanged(false)
+                                    onError("系统兼容播放器也无法播放此视频 (what=$what, extra=$extra)，请尝试使用外部播放器打开。")
+                                    true
+                                }
+                            }
+                            mediaPlayer = mp
+                            try {
+                                if (!localFilePath.isNullOrEmpty()) {
+                                    val trimmed = localFilePath.trim()
+                                    if (trimmed.startsWith("content://") || trimmed.startsWith("file://")) {
+                                        mp.setDataSource(ctx, Uri.parse(trimmed))
+                                    } else {
+                                        mp.setDataSource(trimmed)
+                                    }
+                                } else {
+                                    val streamUrl = "${serverUrl.trimEnd('/')}/api/media/stream/${song.id}"
+                                    val headers = if (!token.isNullOrBlank()) {
+                                        mapOf("Authorization" to "Bearer $token")
+                                    } else {
+                                        emptyMap()
+                                    }
+                                    mp.setDataSource(ctx, Uri.parse(streamUrl), headers)
+                                }
+                                mp.prepareAsync()
+                            } catch (ex: Exception) {
+                                Log.e(FULLSCREEN_TAG, "Native MediaPlayer setDataSource failed", ex)
+                                onBufferingChanged(false)
+                                onError("系统兼容播放器初始化失败：${ex.message ?: "未知错误"}")
+                            }
+                        }
+
+                        override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
+
+                        override fun surfaceDestroyed(holder: SurfaceHolder) {
+                            runCatching { mediaPlayer?.setDisplay(null) }
+                        }
+                    })
+                }
+            },
+            modifier = ratioModifier
+        )
+
+        if (showControls && isPrepared) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(64.dp)
+                    .background(Color.Black.copy(alpha = 0.55f), CircleShape)
+            ) {
+                IconButton(
+                    onClick = {
+                        val mp = mediaPlayer ?: return@IconButton
+                        if (isPlaying) {
+                            mp.pause()
+                            isPlaying = false
+                            onPlayingChanged(false)
+                        } else {
+                            mp.start()
+                            isPlaying = true
+                            onPlayingChanged(true)
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) "暂停" else "播放",
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+            }
+
+            if (durationMs > 0) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                        .background(Color.Black.copy(alpha = 0.65f))
+                        .navigationBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = formatMediaTime(positionMs),
+                        color = Color.White,
+                        fontSize = 12.sp
+                    )
+                    Slider(
+                        value = positionMs.toFloat().coerceIn(0f, durationMs.toFloat()),
+                        onValueChange = { value ->
+                            positionMs = value.toInt()
+                        },
+                        onValueChangeFinished = {
+                            runCatching { mediaPlayer?.seekTo(positionMs) }
+                        },
+                        valueRange = 0f..durationMs.toFloat(),
+                        colors = SliderDefaults.colors(
+                            thumbColor = GreenPrimary,
+                            activeTrackColor = GreenPrimary
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 8.dp)
+                    )
+                    Text(
+                        text = formatMediaTime(durationMs),
+                        color = Color.White,
+                        fontSize = 12.sp
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun formatMediaTime(ms: Int): String {
+    val totalSeconds = (ms / 1000).coerceAtLeast(0)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "%02d:%02d".format(minutes, seconds)
 }
