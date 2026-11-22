@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -48,33 +49,39 @@ import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.ForwardingTimeline
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.AdtsExtractor
-import androidx.media3.session.MediaSession
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import com.maifeipin.webmusic.core.cache.MediaCacheManager
 import com.maifeipin.webmusic.core.network.MediaFileDto
 import com.maifeipin.webmusic.core.network.WebMusicNetwork
+import com.maifeipin.webmusic.service.PlaybackService
 import com.maifeipin.webmusic.ui.theme.GreenPrimary
 import org.videolan.libvlc.LibVLC
 import org.videolan.libvlc.Media
 import org.videolan.libvlc.MediaPlayer as VlcMediaPlayer
 import org.videolan.libvlc.util.VLCVideoLayout
 import java.io.File
+import java.util.concurrent.CopyOnWriteArraySet
 
 /**
  * 沉浸式 MV 视频播放器。
@@ -173,22 +180,33 @@ fun VideoPlayerDialog(
             }
     }
 
+    val vlcBridgePlayer = remember(exoPlayer) { VlcSessionBridgePlayer(exoPlayer) }
+
     LaunchedEffect(song.id, localFilePath, retryTrigger) {
         playbackError = null
         nativeError = null
         isBuffering = true
-        // .avi / .flv 等 ExoPlayer 原生不支持的容器直接走内置 LibVLC，避免先报错再切换的等待
-        if (isVlcPreferredFormat(localFilePath ?: song.filePath)) {
-            exoPlayer.stop()
-            useNativeFallback = true
-            return@LaunchedEffect
-        }
-        useNativeFallback = false
         val metadata = MediaMetadata.Builder()
             .setTitle(song.title ?: "未知 MV")
             .setArtist(song.artist ?: "未知艺术家")
             .setAlbumTitle(song.album ?: "")
             .build()
+        val placeholderItem = MediaItem.Builder()
+            .setUri(Uri.parse("webmusic://video/${song.id}"))
+            .setMediaId("video_${song.id}")
+            .setMediaMetadata(metadata)
+            .build()
+        // .avi / .flv 等 ExoPlayer 原生不支持的容器直接走内置 LibVLC，避免先报错再切换的等待
+        if (isVlcPreferredFormat(localFilePath ?: song.filePath)) {
+            exoPlayer.stop()
+            // 仅注入单条目 Timeline 与元数据（不调用 prepare），供 PlaybackService 的 MediaSession 渲染锁屏卡片
+            exoPlayer.setMediaItem(placeholderItem)
+            vlcBridgePlayer.setVlcMode(true)
+            useNativeFallback = true
+            return@LaunchedEffect
+        }
+        vlcBridgePlayer.setVlcMode(false)
+        useNativeFallback = false
         if (!localFilePath.isNullOrEmpty()) {
             val uri = com.maifeipin.webmusic.core.storage.MediaImportFilter.toPlayableUri(localFilePath)
             val mediaItem = MediaItem.Builder()
@@ -226,18 +244,18 @@ fun VideoPlayerDialog(
         exoPlayer.prepare()
     }
 
-    // 对接系统 MediaSession，使锁屏界面与系统媒体控制面板能显示播放/暂停/进度控制
-    DisposableEffect(exoPlayer) {
-        val mediaSession = MediaSession.Builder(context.applicationContext, exoPlayer)
-            .setId("webmusic_video_session")
-            .build()
+    // 接入 PlaybackService 的唯一 MediaSession：
+    // 1. 打开视频时自动暂停后台音频并由视频播放器接管系统锁屏/通知栏控制卡片；
+    // 2. 关闭视频时自动将 MediaSession 归还给音频播放器，保留原音频队列与进度。
+    DisposableEffect(vlcBridgePlayer) {
+        PlaybackService.attachVideoPlayer(vlcBridgePlayer)
         onDispose {
-            mediaSession.release()
+            PlaybackService.detachVideoPlayer(vlcBridgePlayer)
         }
     }
 
     // 记录一次真实视频尺寸，并监听缓冲/播放/错误状态，避免不支持的视频静默黑屏或卡死
-    DisposableEffect(exoPlayer) {
+    DisposableEffect(exoPlayer, song.id) {
         val listener = object : Player.Listener {
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 Log.d(
@@ -263,7 +281,19 @@ fun VideoPlayerDialog(
                 isVideoPlaying = false
                 if (!useNativeFallback && shouldFallbackToVlc(error)) {
                     Log.w(FULLSCREEN_TAG, "Switching to LibVLC fallback for song=${song.id}")
+                    val metadata = MediaMetadata.Builder()
+                        .setTitle(song.title ?: "未知 MV")
+                        .setArtist(song.artist ?: "未知艺术家")
+                        .setAlbumTitle(song.album ?: "")
+                        .build()
+                    val placeholderItem = MediaItem.Builder()
+                        .setUri(Uri.parse("webmusic://video/${song.id}"))
+                        .setMediaId("video_${song.id}")
+                        .setMediaMetadata(metadata)
+                        .build()
                     exoPlayer.stop()
+                    exoPlayer.setMediaItem(placeholderItem)
+                    vlcBridgePlayer.setVlcMode(true)
                     playbackError = null
                     nativeError = null
                     isBuffering = true
@@ -368,6 +398,7 @@ fun VideoPlayerDialog(
                 token = token,
                 localFilePath = localFilePath,
                 retryTrigger = retryTrigger,
+                bridgePlayer = vlcBridgePlayer,
                 onBufferingChanged = { isBuffering = it },
                 onPlayingChanged = { isVideoPlaying = it },
                 onError = { msg ->
@@ -378,6 +409,32 @@ fun VideoPlayerDialog(
                 modifier = Modifier.fillMaxSize()
             )
         } else {
+            val lifecycleOwner = LocalLifecycleOwner.current
+            var exoPlayerView by remember { mutableStateOf<PlayerView?>(null) }
+            DisposableEffect(lifecycleOwner, exoPlayer) {
+                var wasStopped = false
+                val observer = LifecycleEventObserver { _, event ->
+                    when (event) {
+                        Lifecycle.Event.ON_STOP -> wasStopped = true
+                        Lifecycle.Event.ON_START -> {
+                            if (wasStopped) {
+                                wasStopped = false
+                                exoPlayerView?.let { view ->
+                                    // 锁屏重新亮屏后重绑 Surface 并刷新当前帧，防止 SurfaceView 黑屏
+                                    view.player = null
+                                    view.player = exoPlayer
+                                    if (!exoPlayer.isPlaying && exoPlayer.currentPosition > 0L) {
+                                        exoPlayer.seekTo(exoPlayer.currentPosition)
+                                    }
+                                }
+                            }
+                        }
+                        else -> Unit
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+            }
             AndroidView(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
@@ -387,6 +444,7 @@ fun VideoPlayerDialog(
                         setShowPreviousButton(false)
                         controllerAutoShow = true
                         controllerShowTimeoutMs = 3500
+                        exoPlayerView = this
                     }
                 },
                 modifier = Modifier.fillMaxSize()
@@ -804,17 +862,22 @@ private fun VlcVideoPlayerView(
     token: String?,
     localFilePath: String?,
     retryTrigger: Int,
+    bridgePlayer: VlcSessionBridgePlayer,
     onBufferingChanged: (Boolean) -> Unit,
     onPlayingChanged: (Boolean) -> Unit,
     onError: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     var isPlaying by remember { mutableStateOf(false) }
+    var isBufferingLocal by remember { mutableStateOf(true) }
     var showControls by remember { mutableStateOf(true) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var positionMs by remember { mutableLongStateOf(0L) }
     var isSeeking by remember { mutableStateOf(false) }
+    var savedVideoTrackId by remember { mutableIntStateOf(-1) }
+    var surfaceEpoch by remember { mutableIntStateOf(0) }
 
     val libVlc = remember {
         LibVLC(
@@ -835,51 +898,136 @@ private fun VlcVideoPlayerView(
         }
     }
 
+    // 绑定锁屏 MediaSession 控制指令到 LibVLC，并在熄屏/解锁时妥善解绑与重建 Surface
+    DisposableEffect(lifecycleOwner, vlcPlayer, bridgePlayer) {
+        bridgePlayer.onPlayPauseCommand = { shouldPlay ->
+            if (shouldPlay) {
+                if (!vlcPlayer.isPlaying) vlcPlayer.play()
+            } else {
+                if (vlcPlayer.isPlaying) vlcPlayer.pause()
+            }
+        }
+        bridgePlayer.onSeekCommand = { targetMs ->
+            val safePos = targetMs.coerceAtLeast(0L)
+            positionMs = safePos
+            vlcPlayer.time = safePos
+            bridgePlayer.updateVlcState(
+                isPlaying = isPlaying,
+                isBuffering = isBufferingLocal,
+                positionMs = safePos,
+                durationMs = durationMs,
+                notifyTimeline = false
+            )
+        }
+
+        var wasStopped = false
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> {
+                    // 熄屏时 SurfaceView 会被系统销毁：先记住当前视频轨并主动解绑视图，
+                    // 让 LibVLC 在后台继续输出音频流并响应锁屏控制，避免持有失效 Surface
+                    val curTrack = runCatching { vlcPlayer.videoTrack }.getOrDefault(-1)
+                    if (curTrack != -1) {
+                        savedVideoTrackId = curTrack
+                    }
+                    wasStopped = true
+                    runCatching { vlcPlayer.detachViews() }
+                }
+                Lifecycle.Event.ON_START -> {
+                    if (wasStopped) {
+                        wasStopped = false
+                        // 解锁回前台后递增 surfaceEpoch，重建全新的 VLCVideoLayout 并恢复视频轨与画面帧
+                        surfaceEpoch++
+                    }
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            bridgePlayer.onPlayPauseCommand = null
+            bridgePlayer.onSeekCommand = null
+        }
+    }
+
     // 绑定事件监听并加载媒体（本地文件 / content:// / 远端鉴权流）
     DisposableEffect(song.id, localFilePath, retryTrigger, vlcPlayer) {
         var pfd: ParcelFileDescriptor? = null
+        isBufferingLocal = true
         onBufferingChanged(true)
         durationMs = 0L
         positionMs = 0L
         isPlaying = false
+        bridgePlayer.updateVlcState(
+            isPlaying = false,
+            isBuffering = true,
+            positionMs = 0L,
+            durationMs = 0L,
+            notifyTimeline = true
+        )
 
         vlcPlayer.setEventListener { event ->
             when (event.type) {
-                VlcMediaPlayer.Event.Opening -> onBufferingChanged(true)
+                VlcMediaPlayer.Event.Opening -> {
+                    isBufferingLocal = true
+                    onBufferingChanged(true)
+                    bridgePlayer.updateVlcState(isPlaying, true, positionMs, durationMs, false)
+                }
                 VlcMediaPlayer.Event.Buffering -> {
-                    onBufferingChanged(event.buffering < 100f)
+                    val buffering = event.buffering < 100f
+                    isBufferingLocal = buffering
+                    onBufferingChanged(buffering)
+                    bridgePlayer.updateVlcState(isPlaying, buffering, positionMs, durationMs, false)
                 }
                 VlcMediaPlayer.Event.Playing -> {
                     isPlaying = true
+                    isBufferingLocal = false
                     onPlayingChanged(true)
                     onBufferingChanged(false)
-                    if (vlcPlayer.length > 0) {
-                        durationMs = vlcPlayer.length
+                    val curTrack = runCatching { vlcPlayer.videoTrack }.getOrDefault(-1)
+                    if (curTrack != -1) {
+                        savedVideoTrackId = curTrack
                     }
+                    var timelineChanged = false
+                    if (vlcPlayer.length > 0 && vlcPlayer.length != durationMs) {
+                        durationMs = vlcPlayer.length
+                        timelineChanged = true
+                    }
+                    bridgePlayer.updateVlcState(true, false, positionMs, durationMs, timelineChanged)
                 }
                 VlcMediaPlayer.Event.Paused,
                 VlcMediaPlayer.Event.Stopped -> {
                     isPlaying = false
                     onPlayingChanged(false)
+                    bridgePlayer.updateVlcState(false, isBufferingLocal, positionMs, durationMs, false)
                 }
                 VlcMediaPlayer.Event.EndReached -> {
                     isPlaying = false
                     onPlayingChanged(false)
                     showControls = true
+                    bridgePlayer.updateVlcState(false, false, durationMs, durationMs, false)
                 }
                 VlcMediaPlayer.Event.TimeChanged -> {
                     if (!isSeeking) {
                         positionMs = event.timeChanged.coerceAtLeast(0L)
+                        bridgePlayer.updatePositionOnly(positionMs)
                     }
                 }
                 VlcMediaPlayer.Event.LengthChanged -> {
-                    durationMs = event.lengthChanged.coerceAtLeast(0L)
+                    val newLen = event.lengthChanged.coerceAtLeast(0L)
+                    if (newLen != durationMs) {
+                        durationMs = newLen
+                        bridgePlayer.updateVlcState(isPlaying, isBufferingLocal, positionMs, durationMs, true)
+                    }
                 }
                 VlcMediaPlayer.Event.EncounteredError -> {
                     Log.e(FULLSCREEN_TAG, "LibVLC playback encountered error for song=${song.id}")
                     isPlaying = false
+                    isBufferingLocal = false
                     onPlayingChanged(false)
                     onBufferingChanged(false)
+                    bridgePlayer.updateVlcState(false, false, positionMs, durationMs, false)
                     onError("VLC 内核播放失败，请检查网络或尝试外部播放器打开。")
                 }
             }
@@ -907,6 +1055,7 @@ private fun VlcVideoPlayerView(
             vlcPlayer.play()
         } catch (ex: Exception) {
             Log.e(FULLSCREEN_TAG, "LibVLC media init failed", ex)
+            isBufferingLocal = false
             onBufferingChanged(false)
             onError("VLC 内核初始化失败：${ex.message ?: "未知错误"}")
         }
@@ -935,14 +1084,39 @@ private fun VlcVideoPlayerView(
             ) { showControls = !showControls },
         contentAlignment = Alignment.Center
     ) {
-        AndroidView(
-            factory = { ctx ->
-                VLCVideoLayout(ctx).also { layout ->
-                    vlcPlayer.attachViews(layout, null, false, false)
-                }
-            },
-            modifier = Modifier.fillMaxSize()
-        )
+        key(surfaceEpoch) {
+            AndroidView(
+                factory = { ctx ->
+                    VLCVideoLayout(ctx).also { layout ->
+                        runCatching { vlcPlayer.detachViews() }
+                        vlcPlayer.attachViews(layout, null, false, false)
+                        if (surfaceEpoch > 0) {
+                            // 熄屏解锁后重新激活被 LibVLC 自动关闭的视频轨，并强制刷新当前帧消除黑屏
+                            val restoreVideoSurface = Runnable {
+                                runCatching {
+                                    val targetTrack = if (savedVideoTrackId != -1) {
+                                        savedVideoTrackId
+                                    } else {
+                                        vlcPlayer.videoTracks?.firstOrNull { it.id != -1 }?.id ?: -1
+                                    }
+                                    if (targetTrack != -1 && vlcPlayer.videoTrack != targetTrack) {
+                                        vlcPlayer.setVideoTrack(targetTrack)
+                                    }
+                                    vlcPlayer.updateVideoSurfaces()
+                                    val cur = vlcPlayer.time
+                                    if (cur > 0L) {
+                                        vlcPlayer.time = cur
+                                    }
+                                }
+                            }
+                            layout.postDelayed(restoreVideoSurface, 120L)
+                            layout.postDelayed(restoreVideoSurface, 350L)
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
 
         if (showControls) {
             Box(
@@ -1020,4 +1194,222 @@ private fun formatMediaTime(ms: Long): String {
     val minutes = totalSeconds / 60L
     val seconds = totalSeconds % 60L
     return "%02d:%02d".format(minutes, seconds)
+}
+
+/**
+ * 统一桥接 ExoPlayer 与 LibVLC 到 PlaybackService 的唯一 MediaSession：
+ * - vlcMode = false 时：全部行为直通底层 ExoPlayer；
+ * - vlcMode = true 时：将 LibVLC 的播放状态、时长、进度与锁屏 Play/Pause/Seek 指令双向桥接给 MediaSession。
+ */
+private class VlcSessionBridgePlayer(
+    exoPlayer: ExoPlayer
+) : ForwardingPlayer(exoPlayer) {
+
+    private val bridgeListeners = CopyOnWriteArraySet<Player.Listener>()
+
+    @Volatile
+    private var vlcMode: Boolean = false
+
+    @Volatile
+    private var vlcPlaying: Boolean = false
+
+    @Volatile
+    private var vlcBuffering: Boolean = true
+
+    @Volatile
+    private var vlcPositionMs: Long = 0L
+
+    @Volatile
+    private var vlcDurationMs: Long = 0L
+
+    var onPlayPauseCommand: ((Boolean) -> Unit)? = null
+    var onSeekCommand: ((Long) -> Unit)? = null
+
+    fun setVlcMode(enabled: Boolean) {
+        vlcMode = enabled
+        if (!enabled) {
+            vlcPlaying = false
+            vlcBuffering = false
+            vlcPositionMs = 0L
+            vlcDurationMs = 0L
+        }
+        notifyListeners(notifyTimeline = true)
+    }
+
+    fun updatePositionOnly(positionMs: Long) {
+        vlcPositionMs = positionMs
+    }
+
+    fun updateVlcState(
+        isPlaying: Boolean,
+        isBuffering: Boolean,
+        positionMs: Long,
+        durationMs: Long,
+        notifyTimeline: Boolean
+    ) {
+        val stateChanged = (vlcPlaying != isPlaying) || (vlcBuffering != isBuffering) || notifyTimeline
+        vlcPlaying = isPlaying
+        vlcBuffering = isBuffering
+        vlcPositionMs = positionMs
+        vlcDurationMs = durationMs
+        if (vlcMode && stateChanged) {
+            notifyListeners(notifyTimeline = notifyTimeline)
+        }
+    }
+
+    private fun notifyListeners(notifyTimeline: Boolean) {
+        val state = playbackState
+        val playing = isPlaying
+        val timeline = currentTimeline
+        for (listener in bridgeListeners) {
+            if (notifyTimeline) {
+                listener.onTimelineChanged(timeline, Player.TIMELINE_CHANGE_REASON_SOURCE_UPDATE)
+            }
+            listener.onPlaybackStateChanged(state)
+            listener.onPlayWhenReadyChanged(playing, Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST)
+            listener.onIsPlayingChanged(playing)
+        }
+    }
+
+    override fun addListener(listener: Player.Listener) {
+        super.addListener(listener)
+        bridgeListeners.add(listener)
+    }
+
+    override fun removeListener(listener: Player.Listener) {
+        super.removeListener(listener)
+        bridgeListeners.remove(listener)
+    }
+
+    override fun getAvailableCommands(): Player.Commands {
+        if (!vlcMode) return super.getAvailableCommands()
+        return super.getAvailableCommands()
+            .buildUpon()
+            .addAll(
+                Player.COMMAND_PLAY_PAUSE,
+                Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM,
+                Player.COMMAND_GET_CURRENT_MEDIA_ITEM,
+                Player.COMMAND_GET_TIMELINE,
+                Player.COMMAND_GET_METADATA
+            )
+            .build()
+    }
+
+    override fun isCommandAvailable(command: Int): Boolean {
+        if (!vlcMode) return super.isCommandAvailable(command)
+        return availableCommands.contains(command)
+    }
+
+    override fun getPlaybackState(): Int {
+        if (!vlcMode) return super.getPlaybackState()
+        return if (vlcBuffering && !vlcPlaying) Player.STATE_BUFFERING else Player.STATE_READY
+    }
+
+    override fun getPlayWhenReady(): Boolean {
+        if (!vlcMode) return super.getPlayWhenReady()
+        return vlcPlaying
+    }
+
+    override fun isPlaying(): Boolean {
+        if (!vlcMode) return super.isPlaying()
+        return vlcPlaying
+    }
+
+    override fun getCurrentPosition(): Long {
+        if (!vlcMode) return super.getCurrentPosition()
+        return vlcPositionMs
+    }
+
+    override fun getContentPosition(): Long {
+        if (!vlcMode) return super.getContentPosition()
+        return vlcPositionMs
+    }
+
+    override fun getDuration(): Long {
+        if (!vlcMode) return super.getDuration()
+        return if (vlcDurationMs > 0L) vlcDurationMs else C.TIME_UNSET
+    }
+
+    override fun getContentDuration(): Long {
+        if (!vlcMode) return super.getContentDuration()
+        return if (vlcDurationMs > 0L) vlcDurationMs else C.TIME_UNSET
+    }
+
+    override fun isCurrentMediaItemSeekable(): Boolean {
+        if (!vlcMode) return super.isCurrentMediaItemSeekable()
+        return vlcDurationMs > 0L
+    }
+
+    override fun isCurrentWindowSeekable(): Boolean {
+        if (!vlcMode) return super.isCurrentWindowSeekable()
+        return vlcDurationMs > 0L
+    }
+
+    override fun getCurrentTimeline(): Timeline {
+        val base = super.getCurrentTimeline()
+        if (!vlcMode || base.isEmpty || vlcDurationMs <= 0L) return base
+        val durationUs = vlcDurationMs * 1000L
+        return object : ForwardingTimeline(base) {
+            override fun getWindow(
+                windowIndex: Int,
+                window: Window,
+                defaultPositionProjectionUs: Long
+            ): Window {
+                super.getWindow(windowIndex, window, defaultPositionProjectionUs)
+                window.durationUs = durationUs
+                window.isSeekable = true
+                return window
+            }
+
+            override fun getPeriod(
+                periodIndex: Int,
+                period: Period,
+                setIds: Boolean
+            ): Period {
+                super.getPeriod(periodIndex, period, setIds)
+                period.durationUs = durationUs
+                return period
+            }
+        }
+    }
+
+    override fun play() {
+        if (vlcMode) {
+            onPlayPauseCommand?.invoke(true)
+        } else {
+            super.play()
+        }
+    }
+
+    override fun pause() {
+        if (vlcMode) {
+            onPlayPauseCommand?.invoke(false)
+        } else {
+            super.pause()
+        }
+    }
+
+    override fun setPlayWhenReady(playWhenReady: Boolean) {
+        if (vlcMode) {
+            onPlayPauseCommand?.invoke(playWhenReady)
+        } else {
+            super.setPlayWhenReady(playWhenReady)
+        }
+    }
+
+    override fun seekTo(positionMs: Long) {
+        if (vlcMode) {
+            onSeekCommand?.invoke(positionMs)
+        } else {
+            super.seekTo(positionMs)
+        }
+    }
+
+    override fun seekTo(mediaItemIndex: Int, positionMs: Long) {
+        if (vlcMode) {
+            onSeekCommand?.invoke(positionMs)
+        } else {
+            super.seekTo(mediaItemIndex, positionMs)
+        }
+    }
 }

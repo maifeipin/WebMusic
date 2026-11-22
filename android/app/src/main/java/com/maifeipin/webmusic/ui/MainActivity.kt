@@ -256,11 +256,19 @@ class MainActivity : ComponentActivity() {
             mediaController = controller
             controller?.addListener(object : Player.Listener {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    if (PlaybackService.isVideoPlayerActive) {
+                        isPlayingState.value = false
+                        return
+                    }
                     isPlayingState.value = isPlaying
                     if (isPlaying) PlaybackTimeline.onFirstAudio()
                 }
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    // 视频接管 MediaSession 期间，冻结主界面音频状态与播放队列，防止被视频条目覆盖
+                    if (PlaybackService.isVideoPlayerActive || mediaItem?.mediaId?.startsWith("video_") == true) {
+                        return
+                    }
                     currentMediaItemState.value = mediaItem
                     syncQueueItems(controller)
                     PlaybackTimeline.onTransition(mediaItem?.mediaId)
@@ -277,6 +285,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+                    if (PlaybackService.isVideoPlayerActive) return
                     syncQueueItems(controller)
                 }
 
@@ -357,6 +366,7 @@ class MainActivity : ComponentActivity() {
      * 绕开服务端首包偶发的 SMB 冷读超时（实测单次 5~6 秒，叠加播放器退避会放大到十几秒）。
      */
     private fun playQueue(songList: List<MediaFileDto>, startIndex: Int) {
+        PlaybackService.detachVideoPlayer()
         val controller = mediaController ?: return
         if (songList.isEmpty()) return
         val currentSong = songList.getOrNull(startIndex)
@@ -526,21 +536,23 @@ class MainActivity : ComponentActivity() {
     private fun startProgressTracker() {
         lifecycleScope.launch {
             while (true) {
-                mediaController?.let { controller ->
-                    // 暂停态也要同步一次：升级后恢复的队列默认暂停，
-                    // 若只在 isPlaying 时刷新，界面会一直停在 00:00 / 00:00，
-                    // 而播放器实际已定位到恢复的进度（如 01:54）。
-                    val dur = controller.duration
-                    if (dur > 0L) {
-                        val pos = controller.currentPosition.coerceIn(0L, dur)
-                        durationMsState.value = dur
-                        currentPositionMsState.value = pos
-                        progressState.value = (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
-                        seekEnabledState.value = controller.isCurrentMediaItemSeekable
-                    } else {
-                        // 时长未知（新曲未 prepare 完 / 不可 seek 的流）：
-                        // 清零并禁用拖动，绝不沿用上一曲的时长与位置。
-                        resetProgressState()
+                if (!PlaybackService.isVideoPlayerActive) {
+                    mediaController?.let { controller ->
+                        // 暂停态也要同步一次：升级后恢复的队列默认暂停，
+                        // 若只在 isPlaying 时刷新，界面会一直停在 00:00 / 00:00，
+                        // 而播放器实际已定位到恢复的进度（如 01:54）。
+                        val dur = controller.duration
+                        if (dur > 0L) {
+                            val pos = controller.currentPosition.coerceIn(0L, dur)
+                            durationMsState.value = dur
+                            currentPositionMsState.value = pos
+                            progressState.value = (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
+                            seekEnabledState.value = controller.isCurrentMediaItemSeekable
+                        } else {
+                            // 时长未知（新曲未 prepare 完 / 不可 seek 的流）：
+                            // 清零并禁用拖动，绝不沿用上一曲的时长与位置。
+                            resetProgressState()
+                        }
                     }
                 }
                 delay(300)
