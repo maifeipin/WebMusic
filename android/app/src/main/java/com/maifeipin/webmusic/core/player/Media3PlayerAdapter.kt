@@ -27,9 +27,10 @@ class Media3PlayerAdapter(
     private val player: ExoPlayer
 
     init {
-        // 配置渲染工厂：优先 MediaCodec 系统硬件解码
+        // 配置渲染工厂：优先 MediaCodec 系统硬件解码，不支持时自动回退至 FFmpeg 软解扩展
         val renderersFactory = DefaultRenderersFactory(context.applicationContext).apply {
             setEnableAudioTrackPlaybackParams(true)
+            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
         }
 
         // 使用支持本地协议路由（file://, content://）与 HTTP 透明边播边存的数据源

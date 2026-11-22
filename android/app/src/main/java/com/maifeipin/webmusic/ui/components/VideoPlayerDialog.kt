@@ -1,13 +1,16 @@
 package com.maifeipin.webmusic.ui.components
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.net.Uri
 import android.util.Log
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -16,8 +19,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,19 +33,23 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
@@ -109,13 +119,22 @@ fun VideoPlayerDialog(
         Log.d(FULLSCREEN_TAG, "bound song=${song.id} fullscreen=$isFullscreen applied=${isApplied()}")
     }
 
+    var isBuffering by remember { mutableStateOf(true) }
+    var playbackError by remember { mutableStateOf<PlaybackException?>(null) }
+
     val exoPlayer = remember {
-        ExoPlayer.Builder(context).build().apply {
+        // 优先硬件解码，不支持的音频/封装格式（如 AC-3/DTS/EAC-3 等）自动回退至 FFmpeg 软解扩展
+        val renderersFactory = DefaultRenderersFactory(context.applicationContext).apply {
+            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+        }
+        ExoPlayer.Builder(context, renderersFactory).build().apply {
             playWhenReady = true
         }
     }
 
     LaunchedEffect(song.id, localFilePath) {
+        playbackError = null
+        isBuffering = true
         if (!localFilePath.isNullOrEmpty()) {
             val uri = com.maifeipin.webmusic.core.storage.MediaImportFilter.toPlayableUri(localFilePath)
             val mediaItem = MediaItem.fromUri(uri)
@@ -135,7 +154,7 @@ fun VideoPlayerDialog(
         exoPlayer.prepare()
     }
 
-    // 记录一次真实视频尺寸，排查黑边/比例问题时有据可查
+    // 记录一次真实视频尺寸，并监听缓冲/错误状态，避免不支持的视频静默黑屏或卡死
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -143,6 +162,19 @@ fun VideoPlayerDialog(
                     FULLSCREEN_TAG,
                     "video size=${videoSize.width}x${videoSize.height} par=${videoSize.pixelWidthHeightRatio}"
                 )
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                isBuffering = playbackState == Player.STATE_BUFFERING
+                if (playbackState == Player.STATE_READY) {
+                    playbackError = null
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                Log.e(FULLSCREEN_TAG, "video playback error: ${error.errorCodeName}", error)
+                isBuffering = false
+                playbackError = error
             }
         }
         exoPlayer.addListener(listener)
@@ -239,6 +271,96 @@ fun VideoPlayerDialog(
             modifier = Modifier.fillMaxSize()
         )
 
+        if (isBuffering && playbackError == null) {
+            CircularProgressIndicator(
+                color = GreenPrimary,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
+
+        playbackError?.let { error ->
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 32.dp)
+                    .background(Color.Black.copy(alpha = 0.85f), RoundedCornerShape(16.dp))
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ErrorOutline,
+                    contentDescription = null,
+                    tint = Color(0xFFFF6B6B),
+                    modifier = Modifier.size(44.dp)
+                )
+                Text(
+                    text = "视频播放失败",
+                    color = Color.White,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = formatPlaybackErrorMessage(error),
+                    color = Color.LightGray,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = "错误代码：${error.errorCodeName}",
+                    color = Color.Gray,
+                    fontSize = 11.sp,
+                    textAlign = TextAlign.Center
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(top = 4.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            playbackError = null
+                            isBuffering = true
+                            exoPlayer.prepare()
+                            exoPlayer.playWhenReady = true
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("重试")
+                    }
+                    Button(
+                        onClick = {
+                            exoPlayer.pause()
+                            openInExternalPlayer(
+                                context = context,
+                                song = song,
+                                serverUrl = serverUrl,
+                                token = token,
+                                localFilePath = localFilePath
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = GreenPrimary,
+                            contentColor = Color.Black
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.OpenInNew,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("外部播放器打开")
+                    }
+                }
+            }
+        }
+
         if (!isFullscreen) {
             // 顶部导航与视频标题信息栏
             Row(
@@ -293,6 +415,25 @@ fun VideoPlayerDialog(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
+                }
+
+                IconButton(
+                    onClick = {
+                        exoPlayer.pause()
+                        openInExternalPlayer(
+                            context = context,
+                            song = song,
+                            serverUrl = serverUrl,
+                            token = token,
+                            localFilePath = localFilePath
+                        )
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.OpenInNew,
+                        contentDescription = "外部播放器打开",
+                        tint = Color.White
+                    )
                 }
 
                 IconButton(onClick = { isFullscreen = true }) {
@@ -386,3 +527,86 @@ private fun restoreOrientation(activity: Activity?, original: Int, wasPortrait: 
 }
 
 private const val ORIENTATION_SETTLE_MS = 400L
+
+/** 将 Media3 PlaybackException 映射为简洁可读的中文错误提示。 */
+private fun formatPlaybackErrorMessage(error: PlaybackException): String {
+    return when (error.errorCode) {
+        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+        PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+        PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ->
+            "当前视频封装或编码格式不受内置播放器支持，可尝试使用外部播放器（如 VLC / MX Player）打开。"
+
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+        PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
+            "视频流请求失败或网络超时，请检查网络连接后重试。"
+
+        PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ->
+            "视频文件不存在或暂无访问权限。"
+
+        else -> error.localizedMessage ?: "播放遇到未知异常，可尝试重试或使用外部播放器打开。"
+    }
+}
+
+/** 根据文件路径后缀推断视频 MIME 类型，用于拉起外部播放器。 */
+private fun resolveVideoMimeType(filePath: String?): String {
+    val ext = filePath?.substringAfterLast('.', "")?.lowercase() ?: ""
+    return when (ext) {
+        "mp4", "m4v" -> "video/mp4"
+        "mkv" -> "video/x-matroska"
+        "webm" -> "video/webm"
+        "mov" -> "video/quicktime"
+        "avi" -> "video/x-msvideo"
+        "flv" -> "video/x-flv"
+        "ts" -> "video/mp2t"
+        else -> "video/*"
+    }
+}
+
+/** 构造本地 FileProvider URI 或带鉴权参数的远端流地址，交由系统/第三方播放器打开。 */
+private fun openInExternalPlayer(
+    context: Context,
+    song: MediaFileDto,
+    serverUrl: String,
+    token: String?,
+    localFilePath: String?
+) {
+    val mimeType = resolveVideoMimeType(localFilePath ?: song.filePath)
+    val uri = if (!localFilePath.isNullOrEmpty()) {
+        val trimmed = localFilePath.trim()
+        if (trimmed.startsWith("content://")) {
+            Uri.parse(trimmed)
+        } else {
+            val file = File(trimmed.removePrefix("file://"))
+            try {
+                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            } catch (ex: IllegalArgumentException) {
+                Log.w(FULLSCREEN_TAG, "FileProvider failed for $trimmed, fallback to stream", ex)
+                null
+            }
+        }
+    } else {
+        null
+    } ?: run {
+        val base = "${serverUrl.trimEnd('/')}/api/media/stream/${song.id}"
+        val url = if (!token.isNullOrBlank()) "$base?access_token=${Uri.encode(token)}" else base
+        Uri.parse(url)
+    }
+
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, mimeType)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    try {
+        context.startActivity(Intent.createChooser(intent, "选择视频播放器"))
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, "未找到可用的外部视频播放器", Toast.LENGTH_SHORT).show()
+    } catch (ex: Exception) {
+        Log.e(FULLSCREEN_TAG, "Failed to launch external player", ex)
+        Toast.makeText(context, "无法打开外部播放器：${ex.message ?: "未知错误"}", Toast.LENGTH_SHORT).show()
+    }
+}

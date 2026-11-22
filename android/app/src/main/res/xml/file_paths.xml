@@ -12,4 +12,11 @@
     <files-path
         name="updates_internal"
         path="updates/" />
+    <!-- 离线下载目录：用于将已下载的视频分享给外部播放器打开 -->
+    <external-files-path
+        name="music_downloads_external"
+        path="Music/downloads/" />
+    <files-path
+        name="music_downloads_internal"
+        path="downloads/" />
 </paths>
