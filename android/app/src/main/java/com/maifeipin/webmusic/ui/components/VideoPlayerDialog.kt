@@ -45,13 +45,18 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.MediaSession
 import androidx.media3.ui.PlayerView
 import com.maifeipin.webmusic.core.cache.MediaCacheManager
 import com.maifeipin.webmusic.core.network.MediaFileDto
@@ -120,6 +125,7 @@ fun VideoPlayerDialog(
     }
 
     var isBuffering by remember { mutableStateOf(true) }
+    var isVideoPlaying by remember { mutableStateOf(false) }
     var playbackError by remember { mutableStateOf<PlaybackException?>(null) }
 
     val exoPlayer = remember {
@@ -127,34 +133,83 @@ fun VideoPlayerDialog(
         val renderersFactory = DefaultRenderersFactory(context.applicationContext).apply {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
         }
-        ExoPlayer.Builder(context, renderersFactory).build().apply {
-            playWhenReady = true
-        }
+        // 针对 NAS/SMB 大视频流调优缓冲窗口与回溯缓存，加快起播并减少回拖重新拉流
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs = */ 15_000,
+                /* maxBufferMs = */ 60_000,
+                /* bufferForPlaybackMs = */ 1_500,
+                /* bufferForPlaybackAfterRebufferMs = */ 3_000
+            )
+            .setBackBuffer(/* backBufferDurationMs = */ 10_000, /* retainBackBufferFromKeyframe = */ true)
+            .build()
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+            .build()
+        ExoPlayer.Builder(context, renderersFactory)
+            .setLoadControl(loadControl)
+            .setAudioAttributes(audioAttributes, /* handleAudioFocus = */ true)
+            .setHandleAudioBecomingNoisy(true)
+            .setWakeMode(C.WAKE_MODE_NETWORK)
+            .build()
+            .apply {
+                playWhenReady = true
+            }
     }
 
     LaunchedEffect(song.id, localFilePath) {
         playbackError = null
         isBuffering = true
+        val metadata = MediaMetadata.Builder()
+            .setTitle(song.title ?: "未知 MV")
+            .setArtist(song.artist ?: "未知艺术家")
+            .setAlbumTitle(song.album ?: "")
+            .build()
         if (!localFilePath.isNullOrEmpty()) {
             val uri = com.maifeipin.webmusic.core.storage.MediaImportFilter.toPlayableUri(localFilePath)
-            val mediaItem = MediaItem.fromUri(uri)
+            val mediaItem = MediaItem.Builder()
+                .setUri(uri)
+                .setMediaId("video_${song.id}")
+                .setMediaMetadata(metadata)
+                .build()
             exoPlayer.setMediaItem(mediaItem)
         } else {
             val streamUrl = "${serverUrl.trimEnd('/')}/api/media/stream/${song.id}"
             val okHttpClient = WebMusicNetwork.createClientWithToken(token ?: "", readTimeoutSeconds = 60)
+                .newBuilder()
+                .retryOnConnectionFailure(true)
+                .build()
             val cacheDataSourceFactory = MediaCacheManager.createCacheDataSourceFactory(
                 context.applicationContext,
                 okHttpClient
             )
             val mediaSourceFactory = DefaultMediaSourceFactory(context.applicationContext)
                 .setDataSourceFactory(cacheDataSourceFactory)
-            val mediaSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(Uri.parse(streamUrl)))
+            val cacheKey = "video_${serverUrl.trimEnd('/')}_${song.id}_${song.contentVersion ?: song.fileHash ?: ""}"
+            val mediaItem = MediaItem.Builder()
+                .setUri(Uri.parse(streamUrl))
+                .setMediaId("video_${song.id}")
+                .setCustomCacheKey(cacheKey)
+                .setMediaMetadata(metadata)
+                .build()
+            val mediaSource = mediaSourceFactory.createMediaSource(mediaItem)
             exoPlayer.setMediaSource(mediaSource)
         }
         exoPlayer.prepare()
     }
 
-    // 记录一次真实视频尺寸，并监听缓冲/错误状态，避免不支持的视频静默黑屏或卡死
+    // 对接系统 MediaSession，使锁屏界面与系统媒体控制面板能显示播放/暂停/进度控制
+    DisposableEffect(exoPlayer) {
+        val mediaSession = MediaSession.Builder(context.applicationContext, exoPlayer)
+            .setId("webmusic_video_session")
+            .build()
+        onDispose {
+            mediaSession.release()
+        }
+    }
+
+    // 记录一次真实视频尺寸，并监听缓冲/播放/错误状态，避免不支持的视频静默黑屏或卡死
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onVideoSizeChanged(videoSize: VideoSize) {
@@ -162,6 +217,10 @@ fun VideoPlayerDialog(
                     FULLSCREEN_TAG,
                     "video size=${videoSize.width}x${videoSize.height} par=${videoSize.pixelWidthHeightRatio}"
                 )
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                isVideoPlaying = isPlaying
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -174,11 +233,22 @@ fun VideoPlayerDialog(
             override fun onPlayerError(error: PlaybackException) {
                 Log.e(FULLSCREEN_TAG, "video playback error: ${error.errorCodeName}", error)
                 isBuffering = false
+                isVideoPlaying = false
                 playbackError = error
             }
         }
         exoPlayer.addListener(listener)
         onDispose { exoPlayer.removeListener(listener) }
+    }
+
+    // 无论横屏全屏还是竖屏播放，只要正在播放且无报错就保持屏幕常亮
+    DisposableEffect(isVideoPlaying, playbackError, activity) {
+        if (isVideoPlaying && playbackError == null) {
+            activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose { }
     }
 
     DisposableEffect(exoPlayer) {
@@ -203,14 +273,12 @@ fun VideoPlayerDialog(
                             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                         hide(WindowInsetsCompat.Type.systemBars())
                     }
-                    activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 } else if (isApplied()) {
                     // 只有真正应用过全屏才回退；首次组合不该动用户既有的屏幕方向
                     markApplied(false)
                     restoreOrientation(activity, originalOrientation, wasPortrait)
                     ViewCompat.getWindowInsetsController(composeView)
                         ?.show(WindowInsetsCompat.Type.systemBars())
-                    activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 }
                 Log.d(
                     FULLSCREEN_TAG,
